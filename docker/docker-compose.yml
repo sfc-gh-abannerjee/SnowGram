@@ -1,0 +1,69 @@
+# =====================================================
+# SnowGram Docker Compose Configuration
+# =====================================================
+# Purpose: Local development and testing environment
+# Usage: docker-compose up --build
+# =====================================================
+
+version: '3.8'
+
+services:
+  snowgram:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: snowgram-app
+    ports:
+      - "3000:3000"  # Frontend (Next.js)
+      - "8000:8000"  # Backend (FastAPI)
+      - "8080:80"    # Nginx reverse proxy
+    environment:
+      # Snowflake connection (use environment variables or .env file)
+      SNOWFLAKE_ACCOUNT: "${SNOWFLAKE_ACCOUNT}"
+      SNOWFLAKE_USER: "${SNOWFLAKE_USER}"
+      SNOWFLAKE_PASSWORD: "${SNOWFLAKE_PASSWORD}"
+      SNOWFLAKE_ROLE: "${SNOWFLAKE_ROLE:-SNOWGRAM_APP_ROLE}"
+      SNOWFLAKE_WAREHOUSE: "${SNOWFLAKE_WAREHOUSE:-SNOWGRAM_WH}"
+      SNOWFLAKE_DATABASE: "${SNOWFLAKE_DATABASE:-SNOWGRAM_DB}"
+      SNOWFLAKE_SCHEMA: "${SNOWFLAKE_SCHEMA:-CORE}"
+      
+      # Application settings
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      ENVIRONMENT: "development"
+      
+      # Cortex Agent (optional, if pre-configured)
+      CORTEX_AGENT_ID: "${CORTEX_AGENT_ID:-}"
+    
+    volumes:
+      # Mount source code for development (hot reload)
+      - ../backend:/app/backend
+      - ../frontend:/app/frontend
+      
+      # Mount logs
+      - ./logs:/var/log/snowgram
+    
+    networks:
+      - snowgram-network
+    
+    restart: unless-stopped
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  snowgram-network:
+    driver: bridge
+
+volumes:
+  logs:
+    driver: local
+
+
+
+
+
+

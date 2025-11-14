@@ -1,0 +1,142 @@
+---
+description: SPCS deployment best practices and compliance checklist
+---
+# SPCS Best Practices for SnowGram
+
+Reference for maintaining 85%+ compliance with Snowflake's SPCS best practices.
+
+## Critical Security Practices ✅
+
+**Secrets Management**:
+- Always use Snowflake secrets via `secretKeyRef` in spec files
+- Never hardcode credentials in Dockerfiles or code
+- Grant secret usage to service roles only
+
+```yaml
+env:
+  SNOWFLAKE_PASSWORD:
+    secretKeyRef: snowgram_credentials  # ✅ Correct
+```
+
+**RBAC**:
+- Follow principle of least privilege
+- Grant only necessary permissions to service roles
+- Use dedicated service accounts (SVC_CURSOR, not human accounts)
+
+## Deployment Requirements ✅
+
+**Docker Image**:
+- MUST build with `--platform linux/amd64` (SPCS requirement)
+- Use multi-stage builds to minimize size
+- No secrets in image layers
+
+**Service Specification**:
+- Fully qualified image paths: `/<database>/<schema>/<repo>/<image>:<tag>`
+- Specify resource requests and limits
+- Configure public endpoints with `public: true`
+
+**Compute Pool**:
+- Set appropriate instance family (CPU_X64_M for web apps)
+- Configure AUTO_SUSPEND_SECS (300-900 seconds)
+- Set MIN_NODES and MAX_NODES for scaling
+
+## Production Requirements ⚠️
+
+**Before Production Deployment**:
+1. Implement health checks (readinessProbe + livenessProbe)
+2. Scale to MIN_INSTANCES = 2 for high availability
+3. Set up automated monitoring and alerting
+4. Configure structured logging (JSON format)
+
+**Health Checks Template**:
+```yaml
+readinessProbe:
+  httpGet:
+    path: /health
+    port: 80
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 3
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 80
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  failureThreshold: 3
+```
+
+## Monitoring Setup ✅
+
+**Required Views**:
+- Service status monitoring (SYSTEM$GET_SERVICE_STATUS)
+- Health check history table
+- Alert views for failures
+
+**Automated Tasks**:
+- Health check stored procedures (every 5 minutes)
+- Resource usage tracking
+- Error rate monitoring
+
+## High Availability Configuration
+
+**Production Settings**:
+```sql
+ALTER SERVICE [SERVICE_NAME] SET
+  MIN_INSTANCES = 2      -- HA enabled
+  MAX_INSTANCES = 5      -- Auto-scale capacity
+  AUTO_SUSPEND_SECS = 600;  -- 10 min idle
+```
+
+**Dev/Test Settings**:
+```sql
+MIN_INSTANCES = 1         -- Cost-effective
+MAX_INSTANCES = 3         -- Limited scaling
+AUTO_SUSPEND_SECS = 300;  -- 5 min idle
+```
+
+## Resource Sizing Guidelines
+
+**Web Applications** (FastAPI + Frontend):
+```yaml
+resources:
+  requests:
+    cpu: 1-2
+    memory: 2-4Gi
+  limits:
+    cpu: 2-4
+    memory: 4-8Gi
+```
+
+**Compute Pool**: CPU_X64_M or CPU_X64_L for production
+
+## Authentication
+
+**Registry Login**:
+```bash
+snow spcs image-registry login -c [connection_name]
+# Session-based, ~1 hour validity
+```
+
+**Never**: Use manual PAT tokens in scripts
+
+## Compliance Checklist
+
+Before deploying to production, verify:
+- [ ] Secrets via secretKeyRef (not env vars)
+- [ ] AMD64 architecture build
+- [ ] Health endpoints implemented
+- [ ] MIN_INSTANCES ≥ 2
+- [ ] Monitoring task active
+- [ ] Resource requests specified
+- [ ] Auto-suspend configured
+- [ ] RBAC grants minimal
+- [ ] Documentation complete
+
+## Current SnowGram Compliance: 95%
+
+**Implemented**: Health checks, monitoring (5-min), HA (2 instances), secrets, AMD64  
+**Reference**: See [MILESTONES.md](mdc:MILESTONES.md) Milestone 9 & 10 for details
+
+**Archived Audit**: Full 20-point audit in `archive/docs/SPCS_BEST_PRACTICES_AUDIT.md`

@@ -1,0 +1,65 @@
+# =====================================================
+# SnowGram SPCS Service Specification (Production)
+# =====================================================
+# Purpose: Snowpark Container Services deployment
+# Usage: snow spcs service create SNOWGRAM_DB.CORE.SNOWGRAM_SERVICE \
+#          --compute-pool SNOWGRAM_COMPUTE_POOL \
+#          --spec-path spec_simple.yml \
+#          --min-instances 2 \
+#          --max-instances 3
+# =====================================================
+
+spec:
+  containers:
+  - name: snowgram
+    image: /snowgram_db/core/snowgram_image_repo/snowgram:latest
+    
+    # Environment configuration (update SNOWFLAKE_ACCOUNT for your deployment)
+    env:
+      SNOWFLAKE_ACCOUNT: SFSENORTHAMERICA-ABANNERJEE_AWS1  # Replace with your account
+      SNOWFLAKE_USER: SVC_CURSOR
+      SNOWFLAKE_ROLE: SVC_CURSOR_ROLE
+      SNOWFLAKE_WAREHOUSE: COMPUTE_WH
+      SNOWFLAKE_DATABASE: SNOWGRAM_DB
+      SNOWFLAKE_SCHEMA: CORE
+      LOG_LEVEL: INFO
+      ENVIRONMENT: production
+      # Password provided via Snowflake secret (secure)
+      SNOWFLAKE_PASSWORD:
+        secretKeyRef: snowgram_credentials  # Create with: CREATE SECRET snowgram_credentials...
+    
+    # Resource allocation (appropriate for FastAPI + Next.js)
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+    
+    # Production health checks (monitors /health endpoint)
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 80
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      successThreshold: 1
+      failureThreshold: 3
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 80
+      initialDelaySeconds: 60
+      periodSeconds: 30
+      timeoutSeconds: 10
+      successThreshold: 1
+      failureThreshold: 3
+  
+  # Public endpoint (OAuth-protected by Snowflake)
+  endpoints:
+  - name: web
+    port: 80
+    public: true
+

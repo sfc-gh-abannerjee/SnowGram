@@ -1,0 +1,311 @@
+# =====================================================
+# Semantic Model: Architecture Components
+# =====================================================
+# Purpose: Semantic model describing Snowflake architecture components,
+# their types, relationships, and how they connect in diagrams
+# =====================================================
+
+name: architecture_components
+description: |
+  Semantic model describing all Snowflake architectural components (Warehouse, Database, 
+  Schema, Table, Stream, Task, Pipe, etc.), their types, categories, and how they 
+  connect to each other. Used by Cortex Agent to understand component relationships.
+
+tables:
+  - name: components
+    description: |
+      Catalog of all Snowflake architectural components that can be used in diagrams.
+      Includes both Snowflake objects and external systems (AWS S3, Kafka, etc.)
+    base_table: SNOWGRAM_DB.CORE.COMPONENTS
+    dimensions:
+      - name: component_id
+        expr: component_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the component
+      
+      - name: component_name
+        expr: component_name
+        data_type: varchar
+        synonyms: [object, resource, element, component, snowflake_object]
+        description: Name of the architectural component
+        sample_values:
+          - "Warehouse"
+          - "Database"
+          - "Table"
+          - "Stream"
+          - "Task"
+          - "Snowpipe"
+          - "AWS S3"
+          - "Kafka"
+      
+      - name: component_type
+        expr: component_type
+        data_type: varchar
+        synonyms: [object_type, resource_type]
+        description: |
+          Technical type of the component (WAREHOUSE, DATABASE, TABLE, STREAM, 
+          TASK, PIPE, S3_BUCKET, KAFKA_TOPIC, etc.)
+        sample_values:
+          - "WAREHOUSE"
+          - "DATABASE"
+          - "SCHEMA"
+          - "TABLE"
+          - "VIEW"
+          - "STREAM"
+          - "TASK"
+          - "PIPE"
+          - "STAGE"
+          - "S3_BUCKET"
+          - "KAFKA_TOPIC"
+      
+      - name: type_category
+        expr: type_category
+        data_type: varchar
+        synonyms: [category, kind, classification]
+        description: |
+          High-level category: Compute, Storage, Data Movement, Security, External Integration
+        sample_values:
+          - "Compute"
+          - "Storage"
+          - "Data Movement"
+          - "Transformation"
+          - "Security"
+          - "External Integration"
+      
+      - name: snowflake_object_type
+        expr: snowflake_object_type
+        data_type: varchar
+        description: Actual Snowflake DDL object type (if applicable)
+        sample_values:
+          - "WAREHOUSE"
+          - "DATABASE"
+          - "SCHEMA"
+          - "TABLE"
+          - "VIEW"
+          - "STREAM"
+      
+      - name: description
+        expr: description
+        data_type: varchar
+        description: Detailed description of what this component does
+    
+    metrics:
+      - name: total_components
+        expr: COUNT(DISTINCT component_id)
+        description: Total number of components available
+        data_type: number
+  
+  - name: component_types
+    description: |
+      Taxonomy of component type categories. Defines the hierarchy of
+      component classifications (Compute → Warehouse, Storage → Database/Schema/Table, etc.)
+    base_table: SNOWGRAM_DB.CORE.COMPONENT_TYPES
+    dimensions:
+      - name: type_id
+        expr: type_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the component type
+      
+      - name: category_name
+        expr: category_name
+        data_type: varchar
+        synonyms: [category, type_name, classification]
+        description: Name of the component category
+        sample_values:
+          - "Compute"
+          - "Storage"
+          - "Data Movement"
+          - "Transformation"
+          - "Security"
+      
+      - name: parent_category
+        expr: parent_category
+        data_type: varchar
+        description: Parent category for hierarchical classification
+      
+      - name: description
+        expr: description
+        data_type: varchar
+        description: Description of this component type category
+    
+    metrics:
+      - name: total_categories
+        expr: COUNT(DISTINCT type_id)
+        description: Total number of component type categories
+        data_type: number
+  
+  - name: connections
+    description: |
+      Defines how components connect and relate to each other. For example:
+      - S3 Bucket feeds_data to External Stage
+      - External Stage feeds_data to Snowpipe
+      - Snowpipe loads_data to Table
+      - Table feeds_data to Stream
+      - Stream triggers Task
+    base_table: SNOWGRAM_DB.CORE.COMPONENT_CONNECTIONS
+    dimensions:
+      - name: connection_id
+        expr: connection_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the connection
+      
+      - name: connection_type
+        expr: connection_type
+        data_type: varchar
+        synonyms: [relationship, link, connection_kind]
+        description: |
+          Type of connection: feeds_data, authenticates, processes, stores_in, 
+          triggers, computes, provides_security, etc.
+        sample_values:
+          - "feeds_data"
+          - "authenticates"
+          - "processes"
+          - "stores_in"
+          - "triggers"
+          - "computes"
+          - "provides_security"
+          - "references"
+      
+      - name: source_component_id
+        expr: source_component_id
+        data_type: varchar
+        description: Component ID of the source (from)
+      
+      - name: target_component_id
+        expr: target_component_id
+        data_type: varchar
+        description: Component ID of the target (to)
+      
+      - name: description
+        expr: description
+        data_type: varchar
+        description: Description of this connection
+    
+    metrics:
+      - name: total_connections
+        expr: COUNT(DISTINCT connection_id)
+        description: Total number of defined connections between components
+        data_type: number
+  
+  - name: patterns
+    description: |
+      Common Snowflake architecture patterns defined as collections of connected components.
+      For example: "S3 Ingestion Pattern" = S3 Bucket → External Stage → Snowpipe → Table
+    base_table: SNOWGRAM_DB.CORE.ARCHITECTURE_PATTERNS
+    dimensions:
+      - name: pattern_id
+        expr: pattern_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the pattern
+      
+      - name: pattern_name
+        expr: pattern_name
+        data_type: varchar
+        synonyms: [template, blueprint, architecture_pattern]
+        description: Name of the architecture pattern
+        sample_values:
+          - "S3 Batch Ingestion"
+          - "Kafka Real-Time Streaming"
+          - "Stream-Task Transformation"
+          - "RBAC Security"
+      
+      - name: use_case
+        expr: use_case
+        data_type: varchar
+        synonyms: [scenario, application, purpose]
+        description: Primary use case for this pattern
+        sample_values:
+          - "batch_ingestion"
+          - "realtime_ingestion"
+          - "data_transformation"
+          - "access_control"
+          - "data_sharing"
+      
+      - name: description
+        expr: description
+        data_type: varchar
+        description: Detailed description of the pattern
+    
+    metrics:
+      - name: component_count
+        expr: COUNT(DISTINCT component_id)
+        description: Number of components in the pattern
+        data_type: number
+      
+      - name: total_patterns
+        expr: COUNT(DISTINCT pattern_id)
+        description: Total number of architecture patterns
+        data_type: number
+
+# Relationships between tables
+relationships:
+  - left_table: components
+    right_table: component_types
+    join_on: components.type_category = component_types.category_name
+    relationship_type: many_to_one
+  
+  - left_table: connections
+    right_table: components
+    join_on: connections.source_component_id = components.component_id
+    relationship_type: many_to_one
+    relationship_alias: source_component
+  
+  - left_table: connections
+    right_table: components
+    join_on: connections.target_component_id = components.component_id
+    relationship_type: many_to_one
+    relationship_alias: target_component
+
+# Verified queries for testing
+verified_queries:
+  - question: "What components are needed for S3 ingestion?"
+    sql: |
+      SELECT c.component_name, c.type_category, c.description
+      FROM components c
+      WHERE c.component_name IN ('AWS S3', 'External Stage', 'Snowpipe', 'Table')
+      ORDER BY 
+        CASE c.component_name
+          WHEN 'AWS S3' THEN 1
+          WHEN 'External Stage' THEN 2
+          WHEN 'Snowpipe' THEN 3
+          WHEN 'Table' THEN 4
+        END
+  
+  - question: "Show me all compute components"
+    sql: |
+      SELECT component_name, component_type, description
+      FROM components
+      WHERE type_category = 'Compute'
+  
+  - question: "How does a Stream connect to other components?"
+    sql: |
+      SELECT 
+        src.component_name AS from_component,
+        conn.connection_type,
+        tgt.component_name AS to_component
+      FROM connections conn
+      JOIN components src ON conn.source_component_id = src.component_id
+      JOIN components tgt ON conn.target_component_id = tgt.component_id
+      WHERE src.component_name = 'Stream' OR tgt.component_name = 'Stream'
+  
+  - question: "What are all the data movement components?"
+    sql: |
+      SELECT component_name, component_type, description
+      FROM components
+      WHERE type_category = 'Data Movement'
+  
+  - question: "Find patterns for real-time ingestion"
+    sql: |
+      SELECT pattern_name, use_case, description
+      FROM patterns
+      WHERE use_case ILIKE '%realtime%' OR use_case ILIKE '%streaming%'
+
+
+
+
+
+

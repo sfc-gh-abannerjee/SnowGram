@@ -1,0 +1,185 @@
+# =====================================================
+# Semantic Model: Reference Architectures
+# =====================================================
+# Purpose: Catalog of pre-built architecture templates for common use cases
+# =====================================================
+
+name: reference_architectures
+description: |
+  Catalog of pre-built, production-ready architecture templates with metadata.
+  Used by Cortex Agent to find matching reference architectures based on user requirements.
+
+tables:
+  - name: templates
+    description: |
+      Complete reference architecture templates combining multiple patterns.
+      Each template represents a full, production-ready architecture diagram.
+    base_table: SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+    dimensions:
+      - name: template_id
+        expr: template_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the template
+      
+      - name: template_name
+        expr: template_name
+        data_type: varchar
+        synonyms: [architecture, pattern, blueprint, reference_architecture, diagram_name]
+        description: Human-readable name of the architecture template
+        sample_values:
+          - "Real-Time IoT Pipeline"
+          - "Enterprise Batch Data Warehouse"
+          - "Multi-Cloud Data Mesh"
+          - "Real-Time Financial Transactions"
+          - "ML Feature Engineering Pipeline"
+          - "Data Governance & Compliance Framework"
+          - "Hybrid Cloud Data Lakehouse"
+      
+      - name: use_case_category
+        expr: use_case_category
+        data_type: varchar
+        synonyms: [scenario, application_type, use_case, category, domain]
+        description: High-level use case category
+        sample_values:
+          - "realtime_analytics"
+          - "batch_analytics"
+          - "data_mesh"
+          - "machine_learning"
+          - "governance"
+          - "lakehouse"
+      
+      - name: industry
+        expr: industry
+        data_type: varchar
+        synonyms: [sector, industry_vertical, vertical, target_industry]
+        description: Target industries for this template
+        sample_values:
+          - "Financial Services"
+          - "Healthcare"
+          - "Retail"
+          - "Manufacturing"
+          - "Technology"
+          - "IoT"
+          - "Media"
+          - "Telecommunications"
+      
+      - name: complexity_level
+        expr: |
+          CASE
+            WHEN ARRAY_SIZE(composed_patterns) <= 2 THEN 'simple'
+            WHEN ARRAY_SIZE(composed_patterns) <= 4 THEN 'medium'
+            ELSE 'complex'
+          END
+        data_type: varchar
+        synonyms: [difficulty, sophistication, complexity]
+        description: Complexity level based on number of patterns (simple, medium, complex)
+        sample_values:
+          - "simple"
+          - "medium"
+          - "complex"
+      
+      - name: description
+        expr: description
+        data_type: varchar
+        description: Detailed description of the architecture template
+      
+      - name: composed_patterns
+        expr: composed_patterns
+        data_type: array
+        description: Array of pattern IDs that make up this template
+    
+    metrics:
+      - name: usage_count
+        expr: SUM(times_used)
+        description: Total number of times this template has been used
+        data_type: number
+      
+      - name: avg_generation_time
+        expr: AVG(avg_generation_time_ms)
+        description: Average generation time in milliseconds
+        data_type: number
+      
+      - name: total_templates
+        expr: COUNT(DISTINCT template_id)
+        description: Total number of reference architecture templates available
+        data_type: number
+      
+      - name: pattern_count
+        expr: AVG(ARRAY_SIZE(composed_patterns))
+        description: Average number of patterns per template
+        data_type: number
+
+# No direct relationships since this is a single-table model, but patterns are referenced via arrays
+
+# Verified queries for testing
+verified_queries:
+  - question: "Find templates for real-time analytics"
+    sql: |
+      SELECT 
+        template_name, 
+        industry, 
+        times_used,
+        description
+      FROM SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+      WHERE use_case_category = 'realtime_analytics'
+      ORDER BY times_used DESC
+  
+  - question: "Show me all templates suitable for financial services"
+    sql: |
+      SELECT 
+        template_name,
+        use_case_category,
+        description,
+        times_used
+      FROM SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+      WHERE industry ILIKE '%Financial%'
+      ORDER BY times_used DESC
+  
+  - question: "What are the most popular architecture templates?"
+    sql: |
+      SELECT 
+        template_name,
+        use_case_category,
+        industry,
+        times_used
+      FROM SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+      ORDER BY times_used DESC
+      LIMIT 5
+  
+  - question: "Find simple templates for batch processing"
+    sql: |
+      SELECT 
+        template_name,
+        industry,
+        description
+      FROM SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+      WHERE use_case_category = 'batch_analytics'
+        AND ARRAY_SIZE(composed_patterns) <= 2
+  
+  - question: "Show me templates for data governance"
+    sql: |
+      SELECT 
+        template_name,
+        industry,
+        description,
+        times_used
+      FROM SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+      WHERE use_case_category = 'governance'
+  
+  - question: "Which templates include machine learning?"
+    sql: |
+      SELECT 
+        template_name,
+        industry,
+        description
+      FROM SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+      WHERE use_case_category = 'machine_learning'
+        OR template_name ILIKE '%ML%'
+        OR description ILIKE '%machine learning%'
+
+
+
+
+
+

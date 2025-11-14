@@ -1,0 +1,236 @@
+# SnowGram Project Rules
+
+## Project Overview
+SnowGram is a Cortex-powered diagram generation application for Snowflake Solution Engineers. It uses SPCS (Snowpark Container Services) deployment with a modular "Lego block" architecture for composable diagram components.
+
+## Core Principles
+
+### 1. Cortex-First Architecture
+- **ALWAYS** use Snowflake Cortex AI/ML services as the primary intelligence layer
+- **Semantic Models** define architecture component ontology
+- **Cortex Analyst** translates natural language to structured queries
+- **Cortex Search** provides RAG over documentation
+- **Cortex Agent** orchestrates across all tools
+- Custom tools supplement, never replace, Cortex capabilities
+
+### 2. Modular Component Framework (Lego Blocks)
+- **Three-tier hierarchy**: Component Blocks → Composed Patterns → Full Templates
+- **Reuse first**: Always check for existing blocks/patterns before creating new ones
+- **Consistency**: All instances of the same component should look identical
+- **Composition**: Build complex diagrams by stitching together pre-built blocks
+
+### 3. Code Quality Standards
+
+#### Python (Backend)
+- Follow PEP 8 style guide
+- Use type hints for all function parameters and return values
+- Maximum line length: 100 characters
+- Use docstrings (Google style) for all public functions and classes
+- Example:
+  ```python
+  def generate_mermaid_from_blocks(
+      block_ids: list[str],
+      connection_rules: dict
+  ) -> str:
+      """Generate Mermaid diagram code from component blocks.
+      
+      Args:
+          block_ids: List of component block identifiers
+          connection_rules: Dictionary defining how blocks connect
+          
+      Returns:
+          Complete Mermaid diagram code as string
+      """
+      pass
+  ```
+
+#### SQL (Snowflake)
+- **Keywords**: UPPERCASE (SELECT, FROM, WHERE, CREATE, etc.)
+- **Identifiers**: snake_case for tables/columns, UPPERCASE for databases/schemas
+- **Formatting**: Indent nested queries, align columns in SELECT
+- Use explicit JOINs, never implicit
+- Comment complex queries
+- Example:
+  ```sql
+  SELECT 
+      cb.block_name,
+      cb.block_category,
+      COUNT(DISTINCT pb.pattern_id) AS pattern_count
+  FROM SNOWGRAM_DB.CORE.COMPONENT_BLOCKS cb
+  LEFT JOIN SNOWGRAM_DB.CORE.PATTERN_BLOCK_RELATIONSHIPS pb
+      ON cb.block_id = pb.block_id
+  GROUP BY cb.block_name, cb.block_category
+  ORDER BY pattern_count DESC;
+  ```
+
+#### TypeScript/React (Frontend)
+- Use functional components with hooks
+- TypeScript strict mode enabled
+- Use interfaces for props, types for unions
+- Component names: PascalCase
+- File names: PascalCase for components, camelCase for utilities
+- Example:
+  ```typescript
+  interface AgentSidebarProps {
+      isExpanded: boolean;
+      onToggle: () => void;
+      messages: Message[];
+  }
+  
+  export const AgentSidebar: React.FC<AgentSidebarProps> = ({
+      isExpanded,
+      onToggle,
+      messages
+  }) => {
+      // Implementation
+  };
+  ```
+
+### 4. Snowflake-Specific Guidelines
+
+#### Cortex Services
+- Use `svcUser` connection for automation (no MFA)
+- Use `COMPUTE_WH` warehouse for agent queries (adjust size as needed)
+- Always specify timeout for Cortex Analyst queries (default: 30s)
+- Structure semantic models with clear synonyms and descriptions
+- Test Cortex Search queries with multiple filter combinations
+
+#### SPCS Deployment
+- Multi-stage Docker builds (separate backend and frontend layers)
+- Environment variables for Snowflake credentials (never hardcode)
+- Health check endpoints required for container orchestration
+- Resource limits: Start conservative, scale up based on usage
+
+### 5. Diagram Generation Best Practices
+
+#### Mermaid Code
+- Use flowchart TD (top-down) or LR (left-right) for architecture diagrams
+- Node IDs: descriptive snake_case (e.g., `s3_bucket`, `snowflake_stage`)
+- Labels: Clear, business-friendly names
+- Connection types: Use appropriate arrows (-->, -.-> for optional, ===> for thick)
+- Example:
+  ```mermaid
+  flowchart LR
+      s3_bucket[AWS S3 Bucket]
+      ext_stage[External Stage]
+      snowpipe[Snowpipe]
+      raw_table[Raw Table]
+      
+      s3_bucket --> ext_stage
+      ext_stage --> snowpipe
+      snowpipe --> raw_table
+  ```
+
+#### Component Block Design
+- Each block should be self-contained with clear input/output connectors
+- Include metadata: complexity, Snowflake components involved, reuse count
+- Mermaid snippets should be parameterizable (support variable names)
+- Document connector types (what can connect TO and FROM this block)
+
+### 6. Testing Strategy
+- **Local first**: Test with Docker Compose before SPCS deployment
+- **Mock Cortex**: Use sample responses for local development
+- **Integration tests**: Verify agent tool orchestration end-to-end
+- **UI tests**: Validate Mermaid ↔ Excalidraw conversions
+- **Load tests**: Ensure diagram generation works with 50+ components
+
+### 7. Documentation Requirements
+- Update BUILD_PROGRESS.md after completing each phase
+- Inline comments for complex logic only (code should be self-documenting)
+- README.md includes setup instructions and architecture overview
+- API endpoints documented with request/response examples
+
+### 8. Naming Conventions
+
+#### Databases & Schemas
+- Database: `SNOWGRAM_DB`
+- Schemas: `CORE`, `AGENTS`, `SEMANTICS`, `KNOWLEDGE`
+
+#### Tables
+- Component catalogs: `COMPONENT_BLOCKS`, `COMPOSED_PATTERNS`, `ARCHITECTURE_TEMPLATES`
+- Relationships: `PATTERN_BLOCK_RELATIONSHIPS`, `TEMPLATE_PATTERN_RELATIONSHIPS`
+- User data: `USER_DIAGRAMS`, `SESSIONS`
+
+#### Semantic Models/Views
+- YAML files: lowercase with underscores (`architecture_components.yaml`)
+- View names: lowercase with underscores (`modular_component_catalog`)
+
+#### Agent Tools
+- UDFs/SPs: UPPERCASE with underscores (`GENERATE_MERMAID_FROM_BLOCKS`)
+- Python functions: snake_case (`generate_mermaid_from_blocks`)
+
+### 9. Git Workflow
+- Branch strategy: feature branches from main
+- Commit messages: Descriptive, present tense ("Add Cortex Agent configuration")
+- No commits to main without review (exception: initial setup)
+- .gitignore: Python cache, Node modules, environment files, Snowflake credentials
+
+### 10. Security & Best Practices
+- **Never commit credentials**: Use environment variables or Snowflake config.toml
+- **Use svcUser for automation**: Service account avoids MFA friction
+- **Stage YAML files**: Upload semantic models to Snowflake stages (access control via stage permissions)
+- **Validate user input**: Sanitize any user-provided Mermaid code before rendering
+- **Rate limiting**: Implement for agent API calls to prevent abuse
+
+## Project Goals
+1. Enable SEs to create professional architecture diagrams in < 5 minutes
+2. Achieve >80% component reuse rate (avoid generating duplicate blocks)
+3. Support natural language queries like "Kafka to Snowflake with transformation"
+4. Generate syntactically correct Mermaid code 100% of the time
+5. Provide beautiful glassmorphic UI that's intuitive for non-technical users
+
+## Success Metrics
+- Agent correctly identifies component blocks 90%+ of the time
+- Diagram generation latency < 5 seconds
+- User satisfaction: 4.5/5 or higher
+- Export quality: PNG/SVG suitable for presentations (high DPI)
+
+## Common Pitfalls to Avoid
+- ❌ Don't generate Mermaid from scratch when blocks exist
+- ❌ Don't hardcode Snowflake credentials
+- ❌ Don't skip type hints or docstrings
+- ❌ Don't create duplicate component blocks (always check first)
+- ❌ Don't use raw SQL in frontend (use backend API)
+- ❌ Don't ignore linter errors
+- ❌ Don't forget to update BUILD_PROGRESS.md
+
+## External Resources
+- Snowflake Docs: https://docs.snowflake.com
+- Mermaid Docs: https://mermaid.js.org
+- Excalidraw Docs: https://docs.excalidraw.com
+- Cortex Agent API: https://docs.snowflake.com/en/cortex/agents
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

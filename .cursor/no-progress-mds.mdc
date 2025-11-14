@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+---
+# Progress Tracking Rule
+
+**NEVER create new .md files for progress summaries, status updates, or completion reports.**
+
+## Instead:
+1. **Update the chat directly** - Provide summaries inline in your response
+2. **Update MILESTONES.md** - Add new milestones with detailed timestamps
+3. **Auto-cleanup** - After generating files, check the root directory and archive any old progress/status .md files to `/archive/docs/`
+
+## Timestamp Format for MILESTONES.md
+```
+### Milestone X: [Title] ✅
+**Date**: YYYY-MM-DD HH:MM PST
+**Duration**: X hours
+**Impact**: [Critical/High/Medium/Low]
+```
+
+## Exceptions (allowed .md files in root):
+- README.md, CONTRIBUTING.md, LICENSE, QUICKSTART.md, MILESTONES.md
+- PRODUCTION_READINESS_COMPLETE.md, IMPLEMENTATION_SUMMARY.md, SPCS_BEST_PRACTICES_AUDIT.md
+- .github/ templates (bug reports, feature requests)
+
+## Files to Archive Automatically:
+*_STATUS.md, *_COMPLETE.md, *_PROGRESS.md, *_SUMMARY.md, *_SUCCESS.md, SESSION_*.md, BUILD_*.md, DEPLOYMENT_*.md
+
+## Cleanup After Any File Generation:
+```bash
+find . -maxdepth 1 -name "*_*.md" | grep -v "PRODUCTION\|IMPLEMENTATION\|SPCS_BEST" | while read f; do mv "$f" archive/docs/; done
+```
+
+Maximum 10 .md files in root. Archive anything beyond production-necessary documentation.

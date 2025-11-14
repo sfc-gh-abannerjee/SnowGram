@@ -1,0 +1,323 @@
+# =====================================================
+# Semantic Model: Diagram Components (Modular Framework)
+# =====================================================
+# Purpose: Semantic model for the modular diagram component library
+# Enables natural language queries over component blocks, patterns, and templates
+# =====================================================
+
+name: diagram_components
+description: |
+  Semantic model for SnowGram's modular diagram component library.
+  Supports queries like: "Find blocks related to Kafka ingestion" or
+  "Show me patterns for data transformation" or "What templates include security?"
+
+tables:
+  - name: component_blocks
+    description: |
+      Atomic reusable diagram components (Lego pieces). These are the smallest building blocks
+      that can be combined to create larger patterns and templates.
+    base_table: SNOWGRAM_DB.CORE.COMPONENT_BLOCKS
+    dimensions:
+      - name: block_id
+        expr: block_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the component block
+      
+      - name: block_name
+        expr: block_name
+        data_type: varchar
+        synonyms: [chunk, prefab, boilerplate, lego_piece, module, component]
+        description: Human-readable name of the component block
+        sample_values:
+          - "AWS S3 Bucket"
+          - "Snowpipe Auto-Ingestion"
+          - "Stream-Task Transformation"
+      
+      - name: block_category
+        expr: block_category
+        data_type: varchar
+        synonyms: [type, group, classification, category_type]
+        description: |
+          Category of the component block: ingestion, transformation, security, 
+          output, compute, storage, external
+        sample_values:
+          - "ingestion"
+          - "transformation"
+          - "security"
+          - "storage"
+          - "compute"
+          - "external"
+      
+      - name: complexity
+        expr: complexity
+        data_type: varchar
+        synonyms: [difficulty, size, complexity_level]
+        description: Complexity level of the block (simple, medium, complex)
+        sample_values:
+          - "simple"
+          - "medium"
+          - "complex"
+      
+      - name: description
+        expr: description
+        data_type: varchar
+        description: Detailed description of what this component does
+    
+    metrics:
+      - name: reuse_count
+        expr: SUM(reuse_count)
+        description: Total number of times this block has been reused across diagrams
+        data_type: number
+      
+      - name: total_blocks
+        expr: COUNT(DISTINCT block_id)
+        description: Total number of component blocks available
+        data_type: number
+  
+  - name: composed_patterns
+    description: |
+      Mid-level assemblies created by combining multiple component blocks.
+      These represent common workflow segments like "S3 to Snowflake Batch Ingestion"
+      or "Stream-Task Transformation Pipeline".
+    base_table: SNOWGRAM_DB.CORE.COMPOSED_PATTERNS
+    dimensions:
+      - name: pattern_id
+        expr: pattern_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the pattern
+      
+      - name: pattern_name
+        expr: pattern_name
+        data_type: varchar
+        synonyms: [workflow_pattern, pipeline_segment, pattern, workflow]
+        description: Human-readable name of the composed pattern
+        sample_values:
+          - "S3 to Snowflake Batch Ingestion"
+          - "Stream-Task Transformation Pipeline"
+          - "RBAC Security Layer"
+          - "Kafka Streaming Ingestion"
+      
+      - name: use_case
+        expr: use_case
+        data_type: varchar
+        synonyms: [scenario, application, use_case_type, purpose]
+        description: Primary use case for this pattern
+        sample_values:
+          - "batch_ingestion"
+          - "realtime_ingestion"
+          - "transformation"
+          - "security"
+          - "analytics"
+      
+      - name: complexity
+        expr: complexity
+        data_type: varchar
+        synonyms: [difficulty, complexity_level]
+        description: Complexity level of the pattern (simple, medium, complex)
+        sample_values:
+          - "simple"
+          - "medium"
+          - "complex"
+    
+    metrics:
+      - name: pattern_reuse_count
+        expr: SUM(reuse_count)
+        description: Number of times this pattern has been reused
+        data_type: number
+      
+      - name: total_patterns
+        expr: COUNT(DISTINCT pattern_id)
+        description: Total number of composed patterns available
+        data_type: number
+      
+      - name: avg_blocks_per_pattern
+        expr: AVG(ARRAY_SIZE(component_blocks))
+        description: Average number of component blocks per pattern
+        data_type: number
+  
+  - name: full_templates
+    description: |
+      Complete reference architectures composed from multiple patterns and blocks.
+      These are production-ready, end-to-end architecture diagrams like 
+      "Real-Time IoT Pipeline" or "Multi-Cloud Data Mesh".
+    base_table: SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+    dimensions:
+      - name: template_id
+        expr: template_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the template
+      
+      - name: template_name
+        expr: template_name
+        data_type: varchar
+        synonyms: [architecture, full_diagram, reference_architecture, blueprint]
+        description: Human-readable name of the architecture template
+        sample_values:
+          - "Real-Time IoT Pipeline"
+          - "Enterprise Batch Data Warehouse"
+          - "Multi-Cloud Data Mesh"
+          - "ML Feature Engineering Pipeline"
+      
+      - name: use_case_category
+        expr: use_case_category
+        data_type: varchar
+        synonyms: [domain, industry_vertical, category, use_case]
+        description: High-level use case category for this template
+        sample_values:
+          - "realtime_analytics"
+          - "batch_analytics"
+          - "data_mesh"
+          - "machine_learning"
+          - "governance"
+          - "lakehouse"
+      
+      - name: industry
+        expr: industry
+        data_type: varchar
+        synonyms: [sector, industry_vertical, vertical]
+        description: Target industries for this template
+        sample_values:
+          - "Financial Services"
+          - "Healthcare"
+          - "Retail"
+          - "Manufacturing"
+          - "Technology"
+          - "IoT"
+    
+    metrics:
+      - name: template_usage_count
+        expr: SUM(times_used)
+        description: Total number of times this template has been used
+        data_type: number
+      
+      - name: avg_generation_time_ms
+        expr: AVG(avg_generation_time_ms)
+        description: Average time to generate diagram from this template (milliseconds)
+        data_type: number
+      
+      - name: total_templates
+        expr: COUNT(DISTINCT template_id)
+        description: Total number of architecture templates available
+        data_type: number
+  
+  - name: pattern_block_relationships
+    description: |
+      Junction table showing which component blocks are used in each composed pattern.
+      Enables queries like "Which patterns use the Kafka Connector block?"
+    base_table: SNOWGRAM_DB.CORE.PATTERN_BLOCK_RELATIONSHIPS
+    dimensions:
+      - name: pattern_id
+        expr: pattern_id
+        data_type: varchar
+        description: Pattern identifier
+      
+      - name: block_id
+        expr: block_id
+        data_type: varchar
+        description: Component block identifier
+      
+      - name: block_order
+        expr: block_order
+        data_type: number
+        description: Sequence order of this block within the pattern
+  
+  - name: template_pattern_relationships
+    description: |
+      Junction table showing which patterns are used in each full template.
+      Enables queries like "Which templates include the RBAC Security Layer pattern?"
+    base_table: SNOWGRAM_DB.CORE.TEMPLATE_PATTERN_RELATIONSHIPS
+    dimensions:
+      - name: template_id
+        expr: template_id
+        data_type: varchar
+        description: Template identifier
+      
+      - name: pattern_id
+        expr: pattern_id
+        data_type: varchar
+        description: Pattern identifier
+      
+      - name: pattern_order
+        expr: pattern_order
+        data_type: number
+        description: Sequence order of this pattern within the template
+
+# Relationships define how tables connect to each other
+relationships:
+  - left_table: pattern_block_relationships
+    right_table: component_blocks
+    join_on: pattern_block_relationships.block_id = component_blocks.block_id
+    relationship_type: many_to_one
+  
+  - left_table: pattern_block_relationships
+    right_table: composed_patterns
+    join_on: pattern_block_relationships.pattern_id = composed_patterns.pattern_id
+    relationship_type: many_to_one
+  
+  - left_table: template_pattern_relationships
+    right_table: composed_patterns
+    join_on: template_pattern_relationships.pattern_id = composed_patterns.pattern_id
+    relationship_type: many_to_one
+  
+  - left_table: template_pattern_relationships
+    right_table: full_templates
+    join_on: template_pattern_relationships.template_id = full_templates.template_id
+    relationship_type: many_to_one
+
+# Verified queries: Example natural language questions that should work
+verified_queries:
+  - question: "Show me all component blocks related to data ingestion"
+    sql: |
+      SELECT block_name, block_category, complexity, description
+      FROM component_blocks
+      WHERE block_category = 'ingestion'
+      ORDER BY reuse_count DESC
+  
+  - question: "Which patterns include Kafka?"
+    sql: |
+      SELECT DISTINCT p.pattern_name, p.use_case, p.complexity
+      FROM composed_patterns p
+      JOIN pattern_block_relationships pbr ON p.pattern_id = pbr.pattern_id
+      JOIN component_blocks b ON pbr.block_id = b.block_id
+      WHERE b.block_name ILIKE '%Kafka%'
+  
+  - question: "Find all templates for real-time analytics"
+    sql: |
+      SELECT template_name, industry, times_used
+      FROM full_templates
+      WHERE use_case_category = 'realtime_analytics'
+      ORDER BY times_used DESC
+  
+  - question: "What are the most reused component blocks?"
+    sql: |
+      SELECT block_name, block_category, reuse_count
+      FROM component_blocks
+      ORDER BY reuse_count DESC
+      LIMIT 10
+  
+  - question: "Show me all patterns for data transformation"
+    sql: |
+      SELECT pattern_name, complexity, description
+      FROM composed_patterns
+      WHERE use_case ILIKE '%transformation%'
+  
+  - question: "Which templates are suitable for financial services?"
+    sql: |
+      SELECT template_name, use_case_category, description
+      FROM full_templates
+      WHERE industry ILIKE '%Financial%'
+  
+  - question: "Find simple ingestion blocks"
+    sql: |
+      SELECT block_name, description
+      FROM component_blocks
+      WHERE block_category = 'ingestion' AND complexity = 'simple'
+
+
+
+
+
+

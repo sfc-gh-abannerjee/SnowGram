@@ -1,0 +1,205 @@
+# =====================================================
+# Semantic Model: User Diagrams
+# =====================================================
+# Purpose: Semantic model for querying user-created diagrams
+# =====================================================
+
+name: user_diagrams
+description: |
+  Semantic model for user's saved diagrams. Enables natural language queries
+  like "Show me all my diagrams that use Snowpipe" or "Find diagrams I created
+  last week for the analytics project".
+
+tables:
+  - name: saved_diagrams
+    description: |
+      Catalog of all diagrams created and saved by users. Each diagram includes
+      the Mermaid code, Excalidraw state, tags, and metadata about which components
+      were used.
+    base_table: SNOWGRAM_DB.CORE.USER_DIAGRAMS
+    dimensions:
+      - name: diagram_id
+        expr: diagram_id
+        unique: true
+        data_type: varchar
+        description: Unique identifier for the diagram
+      
+      - name: diagram_name
+        expr: diagram_name
+        data_type: varchar
+        synonyms: [title, name, diagram_title]
+        description: User-provided name for the diagram
+      
+      - name: user_id
+        expr: user_id
+        data_type: varchar
+        synonyms: [owner, creator, user]
+        description: User who created the diagram
+      
+      - name: created_date
+        expr: DATE(created_timestamp)
+        data_type: date
+        synonyms: [creation_date, date_created]
+        description: Date when the diagram was created
+      
+      - name: created_timestamp
+        expr: created_timestamp
+        data_type: timestamp
+        description: Exact timestamp when the diagram was created
+      
+      - name: updated_timestamp
+        expr: updated_timestamp
+        data_type: timestamp
+        synonyms: [last_modified, modified_date]
+        description: Timestamp of last update
+      
+      - name: diagram_type
+        expr: diagram_type
+        data_type: varchar
+        synonyms: [type, state_type]
+        description: Type of diagram (current_state, future_state)
+        sample_values:
+          - "current_state"
+          - "future_state"
+      
+      - name: tags
+        expr: tags
+        data_type: array
+        synonyms: [labels, keywords]
+        description: User-defined tags for categorizing diagrams
+        sample_values:
+          - "['kafka', 'realtime', 'streaming']"
+          - "['s3', 'batch', 'etl']"
+          - "['security', 'rbac', 'compliance']"
+      
+      - name: project_name
+        expr: project_name
+        data_type: varchar
+        synonyms: [project, project_id]
+        description: Project or initiative this diagram belongs to
+      
+      - name: component_ids_used
+        expr: component_ids_used
+        data_type: array
+        description: Array of component block IDs used in this diagram
+      
+      - name: is_public
+        expr: is_public
+        data_type: boolean
+        description: Whether this diagram is shared publicly within the organization
+    
+    metrics:
+      - name: component_count
+        expr: AVG(ARRAY_SIZE(component_ids_used))
+        description: Average number of components per diagram
+        data_type: number
+      
+      - name: total_diagrams
+        expr: COUNT(DISTINCT diagram_id)
+        description: Total number of diagrams
+        data_type: number
+      
+      - name: diagrams_per_user
+        expr: COUNT(DISTINCT diagram_id) / COUNT(DISTINCT user_id)
+        description: Average diagrams per user
+        data_type: number
+
+# No direct relationships since this is a single-table model
+# Component IDs are stored as arrays for flexible querying
+
+# Verified queries for testing
+verified_queries:
+  - question: "Show me all my diagrams"
+    sql: |
+      SELECT 
+        diagram_name,
+        diagram_type,
+        tags,
+        created_timestamp,
+        project_name
+      FROM SNOWGRAM_DB.CORE.USER_DIAGRAMS
+      WHERE user_id = CURRENT_USER()
+      ORDER BY created_timestamp DESC
+  
+  - question: "Find diagrams that use Snowpipe"
+    sql: |
+      SELECT 
+        diagram_name,
+        diagram_type,
+        tags,
+        created_timestamp
+      FROM SNOWGRAM_DB.CORE.USER_DIAGRAMS
+      WHERE ARRAY_CONTAINS('SNOWPIPE_BLOCK'::VARIANT, component_ids_used)
+        OR diagram_name ILIKE '%Snowpipe%'
+        OR EXISTS (
+          SELECT 1 FROM TABLE(FLATTEN(tags)) 
+          WHERE VALUE ILIKE '%snowpipe%'
+        )
+  
+  - question: "Show me diagrams created last week"
+    sql: |
+      SELECT 
+        diagram_name,
+        diagram_type,
+        project_name,
+        created_timestamp
+      FROM SNOWGRAM_DB.CORE.USER_DIAGRAMS
+      WHERE created_timestamp >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+      ORDER BY created_timestamp DESC
+  
+  - question: "Find all future state diagrams for the analytics project"
+    sql: |
+      SELECT 
+        diagram_name,
+        tags,
+        created_timestamp,
+        updated_timestamp
+      FROM SNOWGRAM_DB.CORE.USER_DIAGRAMS
+      WHERE diagram_type = 'future_state'
+        AND project_name ILIKE '%analytics%'
+      ORDER BY created_timestamp DESC
+  
+  - question: "What are the most common tags used in diagrams?"
+    sql: |
+      SELECT 
+        tag.VALUE::STRING AS tag_name,
+        COUNT(*) AS diagram_count
+      FROM SNOWGRAM_DB.CORE.USER_DIAGRAMS,
+      LATERAL FLATTEN(input => tags) tag
+      GROUP BY tag.VALUE
+      ORDER BY diagram_count DESC
+      LIMIT 10
+  
+  - question: "Show me public diagrams related to security"
+    sql: |
+      SELECT 
+        diagram_name,
+        user_id,
+        tags,
+        created_timestamp
+      FROM SNOWGRAM_DB.CORE.USER_DIAGRAMS
+      WHERE is_public = TRUE
+        AND (
+          diagram_name ILIKE '%security%'
+          OR EXISTS (
+            SELECT 1 FROM TABLE(FLATTEN(tags)) 
+            WHERE VALUE ILIKE '%security%' OR VALUE ILIKE '%rbac%'
+          )
+        )
+      ORDER BY created_timestamp DESC
+  
+  - question: "Find diagrams with Kafka and Stream components"
+    sql: |
+      SELECT 
+        diagram_name,
+        diagram_type,
+        project_name
+      FROM SNOWGRAM_DB.CORE.USER_DIAGRAMS
+      WHERE ARRAY_CONTAINS('KAFKA_CONNECTOR_BLOCK'::VARIANT, component_ids_used)
+        AND ARRAY_CONTAINS('STREAM_BLOCK'::VARIANT, component_ids_used)
+
+
+
+
+
+

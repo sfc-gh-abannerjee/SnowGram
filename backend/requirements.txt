@@ -1,0 +1,72 @@
+# =====================================================
+# SnowGram Backend Requirements
+# =====================================================
+# Python Dependencies for FastAPI Backend
+# Python Version: 3.11+
+# =====================================================
+
+# Core Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.9
+
+# Snowflake Connectivity
+snowflake-connector-python==3.7.0
+snowflake-snowpark-python==1.12.1
+
+# WebSocket Support
+websockets==12.0
+python-socketio==5.11.1
+
+# Data Processing
+pandas==2.2.0
+numpy==1.26.4
+
+# Configuration & Environment
+python-dotenv==1.0.1
+pydantic==2.5.3
+pydantic-settings==2.1.0
+toml==0.10.2
+
+# HTTP Client (for external APIs)
+httpx==0.26.0
+requests==2.31.0
+
+# JSON & Data Serialization
+orjson==3.9.15
+python-json-logger==2.0.7
+
+# Async & Concurrency
+asyncio==3.4.3
+aiofiles==23.2.1
+
+# Logging & Monitoring
+structlog==24.1.0
+colorlog==6.8.2
+
+# Security & Authentication
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+# cryptography version auto-resolved by snowflake-connector-python
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2024.1
+uuid==1.30
+
+# Development & Testing (optional, comment out for production)
+# pytest==8.0.1
+# pytest-asyncio==0.23.5
+# pytest-cov==4.1.0
+# black==24.2.0
+# ruff==0.3.0
+# mypy==1.8.0
+
+# File Handling
+Pillow==10.2.0
+
+
+
+
+
+
