@@ -21,6 +21,7 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, data, selected, s
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isBoundary = data.componentType?.startsWith('account_boundary');
+  const labelColor = (data as any)?.labelColor || (style as any)?.color;
   const mergedStyle: React.CSSProperties = {
     ...(style || {}),
     background: data.background ?? style?.background,
@@ -121,12 +122,14 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, data, selected, s
             onBlur={handleBlur}
             onKeyDown={handleKeyDown}
             onClick={(e) => e.stopPropagation()}
+            style={{ color: labelColor || undefined }}
           />
         ) : (
           <div 
             className={styles.label}
             onDoubleClick={handleDoubleClick}
             title="Double-click to rename"
+            style={{ color: labelColor || undefined }}
           >
             {data.label}
           </div>

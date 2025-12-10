@@ -115,12 +115,13 @@ body {
   border: 2px solid #29B5E8 !important;
   border-radius: 50% !important;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
 .react-flow__resize-control.handle:hover {
   background: #29B5E8 !important;
   border-color: #0F4C75 !important;
-  transform: scale(1.15);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55);
 }
 
 /* Dark mode */
@@ -136,6 +137,7 @@ body {
 .darkMode .react-flow__resize-control.handle:hover {
   background: #60A5FA !important;
   border-color: #29B5E8 !important;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
 }
 
 /* ===== Connection Handle Positioning ===== */

@@ -65,6 +65,34 @@ const App: React.FC = () => {
   const [cornerRadius, setCornerRadius] = useState(8);
   const [isConnecting, setIsConnecting] = useState(false);
 
+  const updateEdgeMenuPosition = useCallback(() => {
+    if (!reactFlowInstance || selectedEdges.length === 0) {
+      setMenuPosition(null);
+      return;
+    }
+
+    const edge = selectedEdges[0];
+    const sourceNode = reactFlowInstance.getNode(edge.source) || nodes.find((n) => n.id === edge.source);
+    const targetNode = reactFlowInstance.getNode(edge.target) || nodes.find((n) => n.id === edge.target);
+    if (!sourceNode || !targetNode) {
+      setMenuPosition(null);
+      return;
+    }
+
+    const midX = (sourceNode.position.x + targetNode.position.x) / 2;
+    const midY = (sourceNode.position.y + targetNode.position.y) / 2;
+    const screenPos = reactFlowInstance.flowToScreenPosition({ x: midX, y: midY });
+    setMenuPosition({ x: screenPos.x, y: screenPos.y - 80 });
+  }, [reactFlowInstance, selectedEdges, nodes]);
+
+  const onMove = useCallback(() => {
+    updateEdgeMenuPosition();
+  }, [updateEdgeMenuPosition]);
+
+  React.useEffect(() => {
+    updateEdgeMenuPosition();
+  }, [updateEdgeMenuPosition, selectedEdges, nodes, reactFlowInstance]);
+
 // Helper: hex -> rgb
 const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
   const m = hex.replace('#', '');
@@ -81,6 +109,22 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
     return { r, g, b };
   }
   return null;
+};
+
+// Helpers: contrast-aware label color
+const srgbToLinear = (c: number) => {
+  const cS = c / 255;
+  return cS <= 0.04045 ? cS / 12.92 : Math.pow((cS + 0.055) / 1.055, 2.4);
+};
+
+const luminance = (r: number, g: number, b: number) =>
+  0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
+
+const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
+  const base = isDark ? { r: 15, g: 23, b: 42 } : { r: 249, g: 250, b: 251 }; // light/dark backing
+  const { r, g, b } = hexToRgb(fill) || { r: 41, g: 181, b: 232 };
+  const effLum = alpha * luminance(r, g, b) + (1 - alpha) * luminance(base.r, base.g, base.b);
+  return effLum > 0.5 ? '#0F172A' : '#E5EDF5';
 };
 
   // Helper: get current z-index for a node
@@ -357,28 +401,8 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
       // Regular click: Select only this edge
       setSelectedEdges([edge]);
     }
-    
-    // Calculate menu position based on edge center
-    if (reactFlowInstance) {
-      const sourceNode = nodes.find(n => n.id === edge.source);
-      const targetNode = nodes.find(n => n.id === edge.target);
-      
-      if (sourceNode && targetNode) {
-        // Calculate midpoint between source and target nodes
-        const midX = (sourceNode.position.x + targetNode.position.x) / 2;
-        const midY = (sourceNode.position.y + targetNode.position.y) / 2;
-        
-        // Convert to screen coordinates
-        const screenPos = reactFlowInstance.flowToScreenPosition({ x: midX, y: midY });
-        
-        // Position menu above the edge (offset by 80px to clear the line)
-        setMenuPosition({
-          x: screenPos.x,
-          y: screenPos.y - 80
-        });
-      }
-    }
-  }, [nodes, reactFlowInstance]);
+    updateEdgeMenuPosition();
+  }, [nodes, reactFlowInstance, updateEdgeMenuPosition]);
   
   // Handle canvas click to deselect edges and nodes
   const onPaneClick = useCallback(() => {
@@ -607,6 +631,8 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
     const boundaryColor = boundaryColors[component.id] || '#94A3B8';
     const boundaryFill = fillAlpha;
     const rgb = hexToRgb(boundaryColor) || { r: 41, g: 181, b: 232 };
+    const rgbFill = hexToRgb(fillColor) || { r: 41, g: 181, b: 232 };
+    const labelColor = getLabelColor(fillColor, fillAlpha, isDarkMode);
 
       const newNode: Node = {
         id: `${component.id}_${Date.now()}`,
@@ -616,17 +642,23 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
           width: isBoundary ? 360 : 180,
           height: isBoundary ? 240 : 140,
         border: isBoundary ? `2px dashed ${boundaryColor}` : `2px solid ${fillColor}`,
-          background: isBoundary ? `rgba(${rgb.r},${rgb.g},${rgb.b},${boundaryFill})` : fillAlpha ? `rgba(30,41,59,${fillAlpha})` : undefined,
+          background: isBoundary
+            ? `rgba(${rgb.r},${rgb.g},${rgb.b},${boundaryFill})`
+            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${fillAlpha})`,
           borderRadius: isBoundary ? cornerRadius : cornerRadius,
+          color: labelColor,
         },
         data: {
           label: component.name,
           icon: component.icon,
           componentType: component.id,
-          background: isBoundary ? `rgba(${rgb.r},${rgb.g},${rgb.b},${boundaryFill})` : fillAlpha ? `rgba(30,41,59,${fillAlpha})` : undefined,
+          background: isBoundary
+            ? `rgba(${rgb.r},${rgb.g},${rgb.b},${boundaryFill})`
+            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${fillAlpha})`,
           fillColor: isBoundary ? boundaryColor : fillColor,
           fillAlpha: fillAlpha,
           cornerRadius: cornerRadius,
+          labelColor,
         hideBorder: false,
         showHandles: false,
           borderRadius: cornerRadius,
@@ -649,12 +681,38 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
         data: {
           ...node.data,
           isDarkMode,
+          labelColor: (node.data as any)?.labelColor
+            || (isDarkMode ? '#E5EDF5' : '#0F172A'),
           onDelete: deleteNode,
           onRename: renameNode,
         },
       }))
     );
   }, [isDarkMode, setNodes, deleteNode, renameNode]);
+
+  // Recompute label colors on theme change to ensure contrast
+  React.useEffect(() => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        const data: any = node.data || {};
+        const fill = data.fillColor || '#29B5E8';
+        const alpha = typeof data.fillAlpha === 'number' ? data.fillAlpha : 0;
+        const labelColor = getLabelColor(fill, alpha, isDarkMode);
+        return {
+          ...node,
+          style: {
+            ...(node.style || {}),
+            color: labelColor,
+          },
+          data: {
+            ...data,
+            labelColor,
+            isDarkMode,
+          },
+        };
+      })
+    );
+  }, [isDarkMode, setNodes]);
 
   // Handle drag start from palette
   const onDragStart = (event: React.DragEvent, component: any) => {
@@ -712,29 +770,44 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
   const exportPNG = async () => {
     if (!reactFlowInstance) return;
 
-    const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
-    if (!viewport) return;
+    const svgElement = document.querySelector('.react-flow__viewport') as HTMLElement;
+    if (!svgElement) return;
 
     try {
-      // Use html2canvas or similar library - for now, use a simpler approach
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svgElement);
+
+      const bounds = svgElement.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
       const canvas = document.createElement('canvas');
+      canvas.width = bounds.width * scale;
+      canvas.height = bounds.height * scale;
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const bounds = viewport.getBoundingClientRect();
-      canvas.width = bounds.width;
-      canvas.height = bounds.height;
-
-      // Draw white background
-      ctx.fillStyle = 'white';
+      ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Note: This is simplified - in production, use html2canvas library
-      alert('PNG export requires html2canvas library. For now, use SVG export or take a screenshot.');
-      
+      const img = new Image();
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          const pngUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = pngUrl;
+          a.download = `snowgram_${Date.now()}.png`;
+          a.click();
+          URL.revokeObjectURL(pngUrl);
+        }, 'image/png');
+      };
+      img.src = url;
     } catch (error) {
       console.error('PNG export error:', error);
-      alert('PNG export failed. Please use SVG export instead.');
+      alert('PNG export failed. Please try SVG export instead.');
     }
   };
 
@@ -1145,6 +1218,8 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
           edges={edges.map(edge => {
             const isSelected = selectedEdges.some(e => e.id === edge.id);
             const isReversed = edge.data?.animationDirection === 'reverse';
+            const baseStroke = edge.style?.stroke || (isDarkMode ? '#FFFFFF' : '#29B5E8');
+            const glowColor = isDarkMode ? '255,255,255' : '41,181,232';
             return {
               ...edge,
               // Highlight selected edges with strong yellow/orange glow
@@ -1152,11 +1227,11 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
               className: isReversed ? 'edge-reversed' : '',
               style: {
                 ...edge.style,
-                stroke: isSelected ? '#EA580C' : '#29B5E8', // Darker orange for better contrast
+                stroke: isSelected ? (isDarkMode ? '#FFFFFF' : '#29B5E8') : baseStroke,
                 strokeWidth: isSelected ? 4 : 2, // Thicker for more visibility
                 filter: isSelected 
-                  ? 'drop-shadow(0 0 4px rgba(234, 88, 12, 0.8)) drop-shadow(0 0 8px rgba(234, 88, 12, 0.6)) drop-shadow(0 0 12px rgba(234, 88, 12, 0.4))' 
-                  : undefined,
+                  ? `drop-shadow(0 0 4px rgba(${glowColor},0.85)) drop-shadow(0 0 10px rgba(${glowColor},0.65)) drop-shadow(0 0 16px rgba(${glowColor},0.5))`
+                  : `drop-shadow(0 0 3px rgba(${glowColor},0.55)) drop-shadow(0 0 8px rgba(${glowColor},0.35))`,
               }
             };
           })}
@@ -1184,9 +1259,10 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
           defaultEdgeOptions={{
             type: 'smoothstep',
             animated: true,
-            style: { stroke: '#29B5E8', strokeWidth: 2 },
+        style: { stroke: isDarkMode ? '#FFFFFF' : '#29B5E8', strokeWidth: 2 },
             deletable: true,
           }}
+          onMove={onMove}
         >
           <Background 
             color={isDarkMode ? '#374151' : '#e5e7eb'} 
@@ -1224,7 +1300,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
               }}
             >
               <div className={styles.styleGroupRow}>
-                <img src="/icons/palette.svg" alt="Fill color" className={styles.iconLabelImg} />
+                <img src="/icons/format_color_fill.svg" alt="Fill color" className={styles.iconLabelImg} />
               <input
                 type="color"
                 value={fillColor}
@@ -1232,6 +1308,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                   const newColor = e.target.value;
                   setFillColor(newColor);
                   const { r, g, b } = hexToRgb(newColor) || { r: 41, g: 181, b: 232 };
+                  const labelColor = getLabelColor(newColor, fillAlpha, isDarkMode);
                   setNodes((nds) =>
                     nds.map((n) => {
                       if (n.selected) {
@@ -1255,6 +1332,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                             ...(n.style || {}),
                             background: `rgba(${r},${g},${b},${fillAlpha})`,
                             border: borderStyle,
+                            color: labelColor,
                           },
                           data: {
                             ...(n.data || {}),
@@ -1262,6 +1340,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                             fillColor: newColor,
                             fillAlpha: fillAlpha,
                             cornerRadius: cornerRadius,
+                            labelColor,
                           },
                         };
                       }
@@ -1270,11 +1349,15 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                   );
                 }}
                 className={styles.boundaryColor}
+                style={{
+                  borderColor: fillColor,
+                  boxShadow: `inset 0 1px 2px rgba(0,0,0,0.25)`
+                }}
                 aria-label="Boundary color"
               />
               </div>
               <div className={styles.styleGroupRow}>
-                <img src="/icons/opacity.svg" alt="Fill alpha" className={styles.iconLabelImg} />
+                <img src="/icons/contrast.svg" alt="Fill alpha / opacity" className={styles.iconLabelImg} />
               <input
                 type="range"
                 min={0}
@@ -1302,12 +1385,14 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                           : isBoundary
                             ? `2px dashed ${boundaryColor}`
                             : `2px solid ${(n.data as any)?.fillColor || '#29B5E8'}`;
+                        const labelColor = getLabelColor(fillColor, val, isDarkMode);
                         return {
                           ...n,
                           style: {
                             ...(n.style || {}),
                             background: `rgba(${r},${g},${b},${val})`,
                             border: borderStyle,
+                            color: labelColor,
                           },
                           data: {
                             ...(n.data || {}),
@@ -1315,6 +1400,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                             fillColor: fillColor,
                             fillAlpha: val,
                             cornerRadius: cornerRadius,
+                            labelColor,
                           },
                         };
                       }
@@ -1323,6 +1409,11 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                   );
                 }}
                 className={styles.boundarySlider}
+                style={{
+                  accentColor: fillColor,
+                  background: `linear-gradient(90deg, ${fillColor} 0%, ${fillColor} ${Math.round(fillAlpha * 100)}%, #4B5563 ${Math.round(fillAlpha * 100)}%, #4B5563 100%)`,
+                  ['--thumb-color' as any]: fillColor,
+                }}
                 aria-label="Boundary fill alpha"
               />
               </div>
@@ -1330,7 +1421,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
               {/* Border visibility toggle */}
               <div className={styles.styleGroupRow}>
                 <button
-                  className={styles.boundaryToggle}
+                  className={`${styles.boundaryToggle} ${ (nodes.find((n) => n.selected)?.data as any)?.hideBorder ? styles.boundaryToggleGreen : styles.boundaryToggleBlue}`}
                   onClick={() => {
                     setNodes((nds) =>
                       nds.map((n) => {
@@ -1365,67 +1456,68 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                       })
                     );
                   }}
-                  title="Toggle border visibility"
-                  aria-label="Toggle border visibility"
+                  title={(nodes.find((n) => n.selected)?.data as any)?.hideBorder ? 'Show border' : 'Hide border'}
+                  aria-label={(nodes.find((n) => n.selected)?.data as any)?.hideBorder ? 'Show border' : 'Hide border'}
                 >
                   {(nodes.find((n) => n.selected)?.data as any)?.hideBorder ? (
-                    <img src="/icons/show.svg" alt="Show border" className={styles.iconLabelImg} />
+                    <img src="/icons/visibility_off.svg" alt="Border hidden" className={styles.iconLabelImg} />
                   ) : (
-                    <img src="/icons/hide.svg" alt="Hide border" className={styles.iconLabelImg} />
+                    <img src="/icons/visibility.svg" alt="Border visible" className={styles.iconLabelImg} />
                   )}
                 </button>
               </div>
 
-              <button
-                className={styles.boundaryToggle}
-                onClick={() => {
-                  const nextRadius = cornerRadius === 0 ? 10 : 0;
-                  setCornerRadius(nextRadius);
-                  setNodes((nds) =>
-                    nds.map((n) => {
-                      if (n.selected) {
-                        const isBoundary = (n.data as any)?.componentType?.startsWith('account_boundary');
-                        // Rebuild border based on hideBorder flag and node type
-                        const hideBorder = (n.data as any)?.hideBorder;
-                        const boundaryColors: Record<string, string> = {
-                          account_boundary_snowflake: '#29B5E8',
-                          account_boundary_aws: '#FF9900',
-                          account_boundary_azure: '#0089D6',
-                          account_boundary_gcp: '#4285F4',
-                        };
-                        const boundaryColor = boundaryColors[(n.data as any)?.componentType] || '#94A3B8';
-                        const borderStyle = hideBorder
-                          ? 'none'
-                          : isBoundary
-                            ? `2px dashed ${boundaryColor}`
-                            : `2px solid ${(n.data as any)?.fillColor || '#29B5E8'}`;
-                        return {
-                          ...n,
-                          style: {
-                            ...(n.style || {}),
-                            borderRadius: nextRadius,
-                            border: borderStyle,
-                          },
-                          data: {
-                            ...(n.data || {}),
-                            cornerRadius: nextRadius,
-                            borderRadius: nextRadius,
-                          },
-                        };
-                      }
-                      return n;
-                    })
-                  );
-                }}
-                aria-label="Toggle corner radius"
-                title={cornerRadius === 0 ? 'Use rounded corners' : 'Use sharp corners'}
-              >
-                {cornerRadius === 0 ? (
-                  <img src="/icons/crop_square.svg" alt="Sharp corners" className={styles.iconLabelImg} />
-                ) : (
-                  <img src="/icons/radio_button_checked.svg" alt="Rounded corners" className={styles.iconLabelImg} />
-                )}
-              </button>
+              <div className={styles.styleGroupRow}>
+                <button
+                  className={`${styles.boundaryToggle} ${cornerRadius > 0 ? styles.boundaryToggleGreen : styles.boundaryToggleBlue}`}
+                  onClick={() => {
+                    const nextRadius = cornerRadius > 0 ? 0 : 10;
+                    setCornerRadius(nextRadius);
+                    setNodes((nds) =>
+                      nds.map((n) => {
+                        if (n.selected) {
+                          const isBoundary = (n.data as any)?.componentType?.startsWith('account_boundary');
+                          const hideBorder = (n.data as any)?.hideBorder;
+                          const boundaryColors: Record<string, string> = {
+                            account_boundary_snowflake: '#29B5E8',
+                            account_boundary_aws: '#FF9900',
+                            account_boundary_azure: '#0089D6',
+                            account_boundary_gcp: '#4285F4',
+                          };
+                          const boundaryColor = boundaryColors[(n.data as any)?.componentType] || '#94A3B8';
+                          const borderStyle = hideBorder
+                            ? 'none'
+                            : isBoundary
+                              ? `2px dashed ${boundaryColor}`
+                              : `2px solid ${(n.data as any)?.fillColor || '#29B5E8'}`;
+                          return {
+                            ...n,
+                            style: {
+                              ...(n.style || {}),
+                              borderRadius: nextRadius,
+                              border: borderStyle,
+                            },
+                            data: {
+                              ...(n.data || {}),
+                              cornerRadius: nextRadius,
+                              borderRadius: nextRadius,
+                            },
+                          };
+                        }
+                        return n;
+                      })
+                    );
+                  }}
+                  aria-label={cornerRadius > 0 ? 'Use sharp corners' : 'Use rounded corners'}
+                  title={cornerRadius > 0 ? 'Use sharp corners' : 'Use rounded corners'}
+                >
+                  {cornerRadius > 0 ? (
+                    <img src="/icons/trip_origin.svg" alt="Rounded corners" className={styles.iconLabelImg} />
+                  ) : (
+                    <img src="/icons/crop_square.svg" alt="Sharp corners" className={styles.iconLabelImg} />
+                  )}
+                </button>
+              </div>
 
               <div className={styles.layerInline}>
                 <button className={styles.layerIconButton} onClick={bringToFront} title="Bring to Front" aria-label="Bring to Front">
@@ -1461,14 +1553,14 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
           {selectedEdges.length > 0 && menuPosition && (
             <div 
               className={styles.edgeActionsMinimal}
-              style={{
-                position: 'absolute',
-                left: `${menuPosition.x}px`,
-                top: `${menuPosition.y}px`,
-                transform: 'translate(-50%, -50%)',
-                zIndex: 1000,
-                pointerEvents: 'auto'
-              }}
+          style={{
+            position: 'absolute',
+            left: `${menuPosition.x}px`,
+            top: `${menuPosition.y}px`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 1000,
+            pointerEvents: 'auto'
+          }}
             >
               {/* Flip Direction Button - Light Blue with Swap Icon */}
               <button 

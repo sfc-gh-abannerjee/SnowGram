@@ -1172,3 +1172,27 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 
 ***
 
+### Milestone 20: Edge Menu Restore & Styling Panel Final Polish ✅ (Completed)
+**Date**: 2025-12-10  
+**Impact**: Restored edge menu stability and finalized control glows/contrast for production polish
+
+**Deliverables**:
+- Brought edge menu back (single-edge anchoring via `getEdgeCenter`), moved direction/delete buttons closer, and strengthened edge outer glow.
+- Fixed rounded-fill clipping while keeping resize/connection handles visible (background-clip/border-box, overflow visible).
+- Contrast-aware label colors now auto-adjust in dark mode; default node border/fill set to Snowflake light blue with transparent fill; toggles use blue (show/sharp) vs green (hide/rounded) glows with white hover; slider/thumb and color picker inherit fill color with hover/active glows.
+- PNG export wired through `html2canvas`; export button gains green hover/click glow; resize handles no longer shift on hover and have a stronger white glow.
+
+**Files Updated**:
+- `frontend/src/App.tsx`
+- `frontend/src/App.module.css`
+- `frontend/src/components/CustomNode.tsx`
+- `frontend/src/components/CustomNode.module.css`
+- `frontend/styles/globals.css`
+- `frontend/public/icons/*`
+
+**Status**:
+- Edge menu visible and stable; connections and handles render cleanly with flush fills
+- Styling panel icons/glows aligned to Material/Stellar semantics; exports functional
+
+***
+

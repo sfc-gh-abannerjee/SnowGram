@@ -361,7 +361,6 @@
   width: 18px;
   height: 18px;
   object-fit: contain;
-  filter: invert(86%) sepia(7%) saturate(400%) hue-rotate(175deg) brightness(98%) contrast(92%);
 }
 
 .boundaryPanel {
@@ -394,9 +393,61 @@
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.25);
 }
 
+.boundaryColor:hover {
+  border-color: #FFFFFF;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.boundaryColor:active {
+  border-color: #10B981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35);
+}
+
 .boundarySlider {
   width: 140px;
   accent-color: #29B5E8;
+}
+
+.boundarySlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: var(--thumb-color, #29B5E8);
+  border: 2px solid #0F172A;
+  box-shadow: 0 0 0 0 rgba(0,0,0,0);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.boundarySlider:hover::-webkit-slider-thumb {
+  border-color: #FFFFFF;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.boundarySlider:active::-webkit-slider-thumb {
+  border-color: #10B981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.45);
+}
+
+.boundarySlider::-moz-range-thumb {
+  height: 16px;
+  width: 16px;
+  border-radius: 50%;
+  background: var(--thumb-color, #29B5E8);
+  border: 2px solid #0F172A;
+  box-shadow: 0 0 0 0 rgba(0,0,0,0);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.boundarySlider:hover::-moz-range-thumb {
+  border-color: #FFFFFF;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.boundarySlider:active::-moz-range-thumb {
+  border-color: #10B981;
+  box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.45);
 }
 
 .boundaryToggle {
@@ -418,9 +469,30 @@
 .boundaryToggle:hover,
 .boundaryToggle:focus-visible {
   background: #1E293B;
+  border-color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.35);
+  color: #FFFFFF;
+}
+
+.boundaryToggleActive {
+  background: #1E293B;
   border-color: #29B5E8;
-  box-shadow: 0 4px 12px rgba(41, 181, 232, 0.35);
   color: #DFF3FF;
+  box-shadow: 0 4px 12px rgba(41, 181, 232, 0.35);
+}
+
+.boundaryToggleBlue {
+  background: #1E293B;
+  border-color: #29B5E8;
+  color: #DFF3FF;
+  box-shadow: 0 4px 12px rgba(41, 181, 232, 0.35);
+}
+
+.boundaryToggleGreen {
+  background: #123327;
+  border-color: #10B981;
+  color: #D1FAE5;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.35);
 }
 
 .styleGroupRow {
@@ -442,7 +514,6 @@
   width: 18px;
   height: 18px;
   object-fit: contain;
-  filter: invert(86%) sepia(7%) saturate(400%) hue-rotate(175deg) brightness(98%) contrast(92%);
 }
 
 .layerInline {
@@ -458,6 +529,7 @@
   gap: 8px;
   animation: fadeInPop 0.2s ease;
   pointer-events: auto;
+  transform: translate(-50%, -50%) scale(1);
 }
 
 @keyframes fadeInPop {
@@ -472,8 +544,8 @@
 }
 
 .edgeIconButton {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -485,8 +557,8 @@
 }
 
 .edgeIconButton:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.15);
+  transform: scale(1.08);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2), 0 4px 6px rgba(0, 0, 0, 0.15);
 }
 
 .edgeIconButton:active {
@@ -564,9 +636,10 @@
 }
 
 .actionButton:hover {
-  border-color: #29B5E8;
-  color: #29B5E8;
-  background: #E0F2FE;
+  border-color: #10B981;
+  color: #10B981;
+  background: #e0f5ed;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
 }
 
 /* Clear Confirmation Overlay (centered, diegetic) */
@@ -1223,9 +1296,10 @@
 }
 
 .darkMode .actionButton:hover {
-  background: #1E3A4F;
-  border-color: #29B5E8;
-  color: #29B5E8;
+  background: #0F172A;
+  border-color: #10B981;
+  color: #10B981;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
 }
 
 .darkMode .emptyTitle {
