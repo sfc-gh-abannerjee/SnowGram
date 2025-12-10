@@ -176,6 +176,7 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
+  padding-top: 4px; /* Prevent hover lift from clipping headers */
   overflow: hidden;
   max-height: 1000px;
   opacity: 1;
@@ -207,7 +208,7 @@
 .componentCard:hover {
   border-color: #29B5E8;
   background: #E0F2FE;
-  transform: none; /* Avoid upward shift that clips against section headers */
+  transform: translateY(-0.5px); /* Subtle lift without clipping */
   box-shadow: 0 2px 8px rgba(41, 181, 232, 0.15);
 }
 
