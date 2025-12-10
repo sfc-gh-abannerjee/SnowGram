@@ -1328,7 +1328,10 @@
 
 .darkMode .aiButton:hover:not(:disabled) {
   background: #1E96C8;
-  box-shadow: 0 4px 16px rgba(41, 181, 232, 0.4);
+  box-shadow:
+    0 4px 16px rgba(41, 181, 232, 0.4),
+    0 0 0 4px rgba(16, 185, 129, 0.25),
+    0 0 14px rgba(16, 185, 129, 0.35);
 }
 
 .darkMode .canvas {
