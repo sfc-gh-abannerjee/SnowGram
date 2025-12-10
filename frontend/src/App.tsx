@@ -17,6 +17,8 @@ import 'reactflow/dist/style.css';
 import styles from './App.module.css';
 import { COMPONENT_CATEGORIES, SNOWFLAKE_ICONS } from './components/iconMap';
 import CustomNode from './components/CustomNode';
+import { SnowgramAgentClient } from './lib/snowgram-agent-client';
+import { convertMermaidToFlow } from './lib/mermaidToReactFlow';
 
 const nodeTypes: NodeTypes = {
   snowflakeNode: CustomNode,
@@ -870,188 +872,37 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) return;
 
+    const pat = process.env.NEXT_PUBLIC_SNOWFLAKE_PAT || process.env.REACT_APP_SNOWFLAKE_PAT;
+    if (!pat) {
+      alert('Missing Snowflake PAT. Set NEXT_PUBLIC_SNOWFLAKE_PAT or use a backend proxy.');
+      return;
+    }
+
     setIsGenerating(true);
     setShowAIModal(false);
 
     try {
-      const response = await fetch('/api/diagram/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_query: aiPrompt }),
-      });
-
-      if (!response.ok) throw new Error('Failed to generate diagram');
-
-      const data: AIResponse = await response.json();
-      
-      // Parse Mermaid and create nodes/edges
-      parseMermaidAndCreateDiagram(data.mermaid_code, data.components_used);
-      
+      const client = new SnowgramAgentClient(pat);
+      const data = await client.generateArchitecture(aiPrompt);
+      parseMermaidAndCreateDiagram(data.mermaidCode);
     } catch (error) {
       console.error('AI generation error:', error);
-      alert('Failed to generate diagram. Make sure the Cortex Agent is configured and backend is running.');
+      alert('Failed to generate diagram. Ensure PAT or backend proxy is configured.');
     } finally {
       setIsGenerating(false);
       setAiPrompt('');
     }
   };
 
-  // Enhanced Mermaid parser
-  const parseMermaidAndCreateDiagram = (mermaidCode: string, components: string[]) => {
-    const lines = mermaidCode.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    const newNodes: Node[] = [];
-    const newEdges: Edge[] = [];
-    const nodeMap = new Map<string, { label: string; position: { x: number; y: number } }>();
-
-    let xOffset = 100;
-    let yOffset = 100;
-    const xGap = 250;
-    const yGap = 150;
-    let col = 0;
-
-    // Parse node definitions
-    lines.forEach((line) => {
-      // Match: A[Label], A(Label), A{Label}, A((Label)), etc.
-      const nodeRegex = /(\w+)[\[\(\{]([^\]\)\}]+)[\]\)\}]/g;
-      let match;
-
-      while ((match = nodeRegex.exec(line)) !== null) {
-        const [, nodeId, label] = match;
-        
-        if (!nodeMap.has(nodeId)) {
-          nodeMap.set(nodeId, {
-            label: label.trim(),
-            position: {
-              x: xOffset + (col % 3) * xGap,
-              y: yOffset + Math.floor(col / 3) * yGap,
-            },
-          });
-          col++;
-        }
-      }
-    });
-
-    // Parse connections: A --> B, A -- text --> B, A -.-> B, A ==> B
-    lines.forEach((line) => {
-      // Match various arrow types
-      const connectionRegex = /(\w+)\s*(-+>?|-+\|[^|]+\|->?|=+>?|\.-+>?)\s*(\w+)/g;
-      let match;
-
-      while ((match = connectionRegex.exec(line)) !== null) {
-        const [, source, arrow, target] = match;
-        
-        if (source && target && nodeMap.has(source) && nodeMap.has(target)) {
-          // Determine edge style based on arrow type
-          let edgeStyle: any = {
-            stroke: '#29B5E8',
-            strokeWidth: 2,
-          };
-          let animated = true;
-          
-          if (arrow.includes('=')) {
-            // Thick arrow
-            edgeStyle.strokeWidth = 4;
-          } else if (arrow.includes('.')) {
-            // Dotted arrow
-            edgeStyle.strokeDasharray = '5,5';
-            animated = false;
-          }
-
-          newEdges.push({
-            id: `${source}-${target}-${Date.now()}`,
-            source,
-            target,
-            type: 'smoothstep',
-            animated,
-            style: edgeStyle,
-          });
-        }
-      }
-    });
-
-    // Create ReactFlow nodes from parsed data
-    nodeMap.forEach((data, nodeId) => {
-      const componentType = inferComponentType(data.label);
-      const icon = SNOWFLAKE_ICONS[componentType] || SNOWFLAKE_ICONS.database;
-
-      newNodes.push({
-        id: nodeId,
-        type: 'snowflakeNode',
-        position: data.position,
-        style: {
-          width: 180,
-          height: 140,
-        },
-        data: {
-          label: data.label,
-          icon,
-          componentType,
-          onDelete: (id: string) => deleteNode(id),
-          onRename: (id: string, newName: string) => renameNode(id, newName),
-          isDarkMode,
-        },
-      });
-    });
-
-    // Add to existing diagram or replace
-    if (window.confirm('Replace current diagram with AI-generated one?')) {
-      setNodes(newNodes);
-      setEdges(newEdges);
-    } else {
-      // Offset new nodes to avoid overlap
-      const offsetNodes = newNodes.map(node => ({
-        ...node,
-        position: {
-          x: node.position.x + 400,
-          y: node.position.y + 200,
-        },
-      }));
-      setNodes((nds) => [...nds, ...offsetNodes]);
-      setEdges((eds) => [...eds, ...newEdges]);
-    }
-
-    // Fit view after a short delay
-    setTimeout(() => {
-      if (reactFlowInstance) {
-        reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
-      }
-    }, 100);
-  };
-
-  // Infer component type from label
-  const inferComponentType = (label: string): string => {
-    const lower = label.toLowerCase();
-    
-    // Check keywords in order of specificity
-    if (lower.includes('warehouse') || lower.includes('wh')) return 'warehouse';
-    if (lower.includes('cortex') && lower.includes('search')) return 'cortex_search';
-    if (lower.includes('cortex') || lower.includes('analyst')) return 'cortex_analyst';
-    if (lower.includes('snowpipe') || lower.includes('pipe')) return 'snowpipe';
-    if (lower.includes('external') && lower.includes('stage')) return 'external_stage';
-    if (lower.includes('stage')) return 'external_stage';
-    if (lower.includes('dynamic') && lower.includes('table')) return 'dynamic_table';
-    if (lower.includes('external') && lower.includes('table')) return 'external_table';
-    if (lower.includes('iceberg')) return 'iceberg_table';
-    if (lower.includes('hybrid')) return 'hybrid_table';
-    if (lower.includes('table')) return 'table';
-    if (lower.includes('materialized') && lower.includes('view')) return 'materialized_view';
-    if (lower.includes('secure') && lower.includes('view')) return 'secure_view';
-    if (lower.includes('view')) return 'view';
-    if (lower.includes('stream')) return 'stream';
-    if (lower.includes('task')) return 'task';
-    if (lower.includes('database') || lower.includes('db')) return 'database';
-    if (lower.includes('schema')) return 'schema';
-    if (lower.includes('kafka')) return 'kafka';
-    if (lower.includes('s3') || lower.includes('bucket')) return 's3';
-    if (lower.includes('ml') || lower.includes('model')) return 'ml_model';
-    if (lower.includes('notebook')) return 'notebook';
-    if (lower.includes('function') || lower.includes('udf')) return 'udf';
-    if (lower.includes('procedure') || lower.includes('sproc')) return 'stored_proc';
-    if (lower.includes('api')) return 'api';
-    if (lower.includes('share')) return 'share';
-    if (lower.includes('notification') || lower.includes('alert')) return 'notification';
-    
-    return 'database'; // default
+  // Convert Mermaid to ReactFlow using shared component catalog
+  const parseMermaidAndCreateDiagram = (mermaidCode: string) => {
+    const { nodes: newNodes, edges: newEdges } = convertMermaidToFlow(
+      mermaidCode,
+      COMPONENT_CATEGORIES,
+      isDarkMode
+    );
+    setNodes(newNodes);
+    setEdges(newEdges);
   };
 
   return (
