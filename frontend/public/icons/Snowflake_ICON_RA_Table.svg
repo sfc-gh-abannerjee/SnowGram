@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Expanded_Icons" data-name="Expanded Icons" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #29b5e8;
+        fill-rule: evenodd;
+        stroke-width: 0px;
+      }
+    </style>
+  </defs>
+  <path class="cls-1" d="M15.13,10.25c-5.04,0-9.13,4.09-9.13,9.13v25.25c0,5.04,4.09,9.13,9.13,9.13h33.75c5.04,0,9.13-4.09,9.13-9.13v-25.25c0-5.04-4.09-9.13-9.13-9.13H15.13ZM9.65,19.37c0-3.02,2.45-5.48,5.48-5.48h33.75c3.02,0,5.48,2.45,5.48,5.48v2.63H9.65v-2.63ZM9.65,25.66v18.97c0,3.02,2.45,5.48,5.48,5.48h33.75c3.02,0,5.48-2.45,5.48-5.48v-18.97H9.65Z"/>
+</svg>

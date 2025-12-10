@@ -1,0 +1,181 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#__next {
+  width: 100%;
+  height: 100vh;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+/* ===== ReactFlow Edge Styling (for better interaction feedback) ===== */
+.react-flow__edge-path {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.react-flow__edge-path:hover {
+  stroke-width: 4px !important;
+  filter: drop-shadow(0 0 6px rgba(41, 181, 232, 0.5));
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #0F4C75 !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 8px rgba(15, 76, 117, 0.6));
+}
+
+.react-flow__edge .react-flow__edge-text {
+  font-size: 12px;
+  fill: #475569;
+}
+
+/* Reverse animation direction for edges with reverse flow */
+.react-flow__edge.edge-reversed .react-flow__edge-path {
+  animation-direction: reverse !important;
+}
+
+/* Connection line styling during drag */
+.react-flow__connection-path {
+  stroke: #29B5E8;
+  stroke-width: 2px;
+  stroke-dasharray: 5, 5;
+  animation: dash 0.5s linear infinite;
+}
+
+@keyframes dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+/* Dark mode edge styling */
+.darkMode .react-flow__edge .react-flow__edge-text {
+  fill: #94A3B8;
+}
+
+.darkMode .react-flow__edge-path:hover {
+  filter: drop-shadow(0 0 8px rgba(41, 181, 232, 0.6));
+}
+
+.darkMode .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #60A5FA !important;
+  filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.7));
+}
+
+.darkMode .react-flow__connection-path {
+  stroke: #29B5E8;
+}
+
+/* ReactFlow Node Resize Controls - Clean & Functional */
+/* Border lines between handles */
+.react-flow__resize-control.line {
+  border-color: #29B5E8 !important;
+  border-width: 1px !important;
+}
+
+/* All resize handles (corners + edges) */
+.react-flow__resize-control.handle {
+  width: 10px !important;
+  height: 10px !important;
+  background: white !important;
+  border: 2px solid #29B5E8 !important;
+  border-radius: 50% !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+.react-flow__resize-control.handle:hover {
+  background: #29B5E8 !important;
+  border-color: #0F4C75 !important;
+  transform: scale(1.15);
+}
+
+/* Dark mode */
+.darkMode .react-flow__resize-control.line {
+  border-color: #60A5FA !important;
+}
+
+.darkMode .react-flow__resize-control.handle {
+  background: #1E293B !important;
+  border-color: #60A5FA !important;
+}
+
+.darkMode .react-flow__resize-control.handle:hover {
+  background: #60A5FA !important;
+  border-color: #29B5E8 !important;
+}
+
+/* ===== Connection Handle Positioning ===== */
+/* Push handles OUTSIDE the node border so they sit ON the edge */
+.react-flow__handle {
+  width: 14px !important;
+  height: 14px !important;
+  background: #29B5E8 !important;
+  border: 2px solid white !important;
+  border-radius: 50% !important;
+}
+
+.react-flow__handle.react-flow__handle-top {
+  top: -7px !important;
+}
+
+.react-flow__handle.react-flow__handle-bottom {
+  bottom: -7px !important;
+}
+
+.react-flow__handle.react-flow__handle-left {
+  left: -7px !important;
+}
+
+.react-flow__handle.react-flow__handle-right {
+  right: -7px !important;
+}
+
+.react-flow__handle:hover {
+  background: #0F4C75 !important;
+  box-shadow: 0 0 12px rgba(41, 181, 232, 0.8);
+}
+
+/* Dark mode handles */
+.darkMode .react-flow__handle {
+  background: #60A5FA !important;
+  border-color: #1E293B !important;
+}
+
+.darkMode .react-flow__handle:hover {
+  background: #29B5E8 !important;
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.8);
+}
