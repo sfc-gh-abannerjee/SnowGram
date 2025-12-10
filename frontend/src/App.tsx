@@ -714,46 +714,21 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     );
   }, [isDarkMode, setNodes]);
 
-  // Drag ghost for palette items (shows green glow while dragging to canvas)
-  const dragGhostRef = useRef<HTMLDivElement | null>(null);
-
-  // Handle drag start from palette
+  // Handle drag start from palette (keep real preview; add green glow)
   const onDragStart = (event: React.DragEvent, component: any) => {
     event.dataTransfer.setData('application/reactflow', JSON.stringify(component));
     event.dataTransfer.effectAllowed = 'move';
 
-    // Create a glowing drag image to keep feedback while dragging over canvas
-    const ghost = document.createElement('div');
-    ghost.style.width = '96px';
-    ghost.style.height = '64px';
-    ghost.style.borderRadius = '10px';
-    ghost.style.background = 'rgba(15, 23, 42, 0.92)';
-    ghost.style.border = '1.5px solid #10B981';
-    ghost.style.boxShadow =
-      '0 0 0 4px rgba(16,185,129,0.35), 0 8px 18px rgba(16,185,129,0.28), 0 0 12px rgba(16,185,129,0.45)';
-    ghost.style.display = 'flex';
-    ghost.style.alignItems = 'center';
-    ghost.style.justifyContent = 'center';
-    ghost.style.color = '#E5F9EF';
-    ghost.style.fontSize = '12px';
-    ghost.style.fontWeight = '600';
-    ghost.style.pointerEvents = 'none';
-    ghost.style.position = 'absolute';
-    ghost.style.top = '-9999px';
-    ghost.style.left = '-9999px';
-    ghost.textContent = component.name || 'Node';
-
-    document.body.appendChild(ghost);
-    dragGhostRef.current = ghost;
-
-    // Center the drag image
-    event.dataTransfer.setDragImage(ghost, 48, 32);
+    const card = event.currentTarget as HTMLElement | null;
+    if (card) {
+      card.classList.add(styles.componentCardDragging);
+    }
   };
 
-  const onDragEnd = () => {
-    if (dragGhostRef.current) {
-      document.body.removeChild(dragGhostRef.current);
-      dragGhostRef.current = null;
+  const onDragEnd = (event: React.DragEvent) => {
+    const card = event.currentTarget as HTMLElement | null;
+    if (card) {
+      card.classList.remove(styles.componentCardDragging);
     }
   };
 
