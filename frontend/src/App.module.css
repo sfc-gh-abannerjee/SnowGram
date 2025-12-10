@@ -718,7 +718,29 @@
 .actionButtonClear:hover .btnIcon,
 .actionButtonClear:focus-visible .btnIcon,
 .actionButtonClear:active .btnIcon {
-  filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.8));
+  /* Recolor icon to red and add red glow */
+  filter: brightness(0) saturate(100%) invert(14%) sepia(96%) saturate(3815%) hue-rotate(356deg) brightness(94%) contrast(110%)
+    drop-shadow(0 0 6px rgba(220, 38, 38, 0.75));
+}
+
+/* Ensure dark mode uses the same red treatment */
+.darkMode .actionButtonClear:hover,
+.darkMode .actionButtonClear:focus-visible,
+.darkMode .actionButtonClear:active,
+.darkMode .actionButton.actionButtonClear:hover,
+.darkMode .actionButton.actionButtonClear:focus-visible,
+.darkMode .actionButton.actionButtonClear:active {
+  border-color: #DC2626;
+  color: #DC2626;
+  background: #3b0d0d;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.5);
+}
+
+.darkMode .actionButtonClear:hover .btnIcon,
+.darkMode .actionButtonClear:focus-visible .btnIcon,
+.darkMode .actionButtonClear:active .btnIcon {
+  filter: brightness(0) saturate(100%) invert(14%) sepia(96%) saturate(3815%) hue-rotate(356deg) brightness(94%) contrast(110%)
+    drop-shadow(0 0 6px rgba(220, 38, 38, 0.9));
 }
 
 /* Clear Confirmation Overlay (centered, diegetic) */
