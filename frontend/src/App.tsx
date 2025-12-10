@@ -64,7 +64,6 @@ const App: React.FC = () => {
   const [fillAlpha, setFillAlpha] = useState(0);
   const [cornerRadius, setCornerRadius] = useState(8);
   const [isConnecting, setIsConnecting] = useState(false);
-  const dragGhostRef = useRef<HTMLElement | null>(null);
 
   const updateEdgeMenuPosition = useCallback(() => {
     if (!reactFlowInstance || selectedEdges.length === 0) {
@@ -715,7 +714,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     );
   }, [isDarkMode, setNodes]);
 
-  // Handle drag start from palette (keep real preview; add green glow + ghost)
+  // Handle drag start from palette (keep real preview; add green glow)
   const onDragStart = (event: React.DragEvent, component: any) => {
     event.dataTransfer.setData('application/reactflow', JSON.stringify(component));
     event.dataTransfer.effectAllowed = 'move';
@@ -723,19 +722,8 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     const card = event.currentTarget as HTMLElement | null;
     if (card) {
       card.classList.add(styles.componentCardDragging);
-
-      // Clone the card as drag image so preview keeps icon/label + green glow
-      const ghost = card.cloneNode(true) as HTMLElement;
-      ghost.classList.add(styles.componentCardGhost);
-      ghost.style.position = 'absolute';
-      ghost.style.top = '-9999px';
-      ghost.style.left = '-9999px';
-      ghost.style.pointerEvents = 'none';
-      ghost.style.width = `${card.offsetWidth}px`;
-      ghost.style.height = `${card.offsetHeight}px`;
-      document.body.appendChild(ghost);
-      dragGhostRef.current = ghost;
-      event.dataTransfer.setDragImage(ghost, card.offsetWidth / 2, card.offsetHeight / 2);
+      const rect = card.getBoundingClientRect();
+      event.dataTransfer.setDragImage(card, rect.width / 2, rect.height / 2);
     }
   };
 
@@ -743,10 +731,6 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     const card = event.currentTarget as HTMLElement | null;
     if (card) {
       card.classList.remove(styles.componentCardDragging);
-    }
-    if (dragGhostRef.current) {
-      document.body.removeChild(dragGhostRef.current);
-      dragGhostRef.current = null;
     }
   };
 
