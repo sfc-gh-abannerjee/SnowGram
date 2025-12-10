@@ -164,6 +164,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
   
   // NEW: Check if all categories are collapsed
   const allCollapsed = collapsedCategories.size === Object.keys(COMPONENT_CATEGORIES).length;
+  const allExpanded = collapsedCategories.size === 0;
   
   // NEW: Filter components by search query (fuzzy match)
   const filterComponents = useCallback((components: any[], query: string) => {
@@ -1118,12 +1119,12 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           <div className={styles.collapseAllContainer}>
             <button
               className={styles.collapseAllButton}
-              onClick={allCollapsed ? expandAll : collapseAll}
-              title={allCollapsed ? 'Expand All Categories' : 'Collapse All Categories'}
-              aria-label={allCollapsed ? 'Expand All Categories' : 'Collapse All Categories'}
+              onClick={allExpanded ? collapseAll : expandAll}
+              title={allExpanded ? 'Collapse All Categories' : 'Expand All Categories'}
+              aria-label={allExpanded ? 'Collapse All Categories' : 'Expand All Categories'}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                {allCollapsed ? (
+                {!allExpanded ? (
                   // Expand icon (chevrons pointing down)
                   <>
                     <path d="M3 4L7 8L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
@@ -1137,7 +1138,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
                   </>
                 )}
               </svg>
-              <span>{allCollapsed ? 'Expand All' : 'Collapse All'}</span>
+              <span>{allExpanded ? 'Collapse All' : 'Expand All'}</span>
             </button>
           </div>
         </div>

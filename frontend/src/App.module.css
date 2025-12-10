@@ -823,6 +823,9 @@
 .clearCancel:hover,
 .clearCancel:focus-visible {
   background: #273449;
+  border-color: #FACC15;
+  color: #FEF9C3;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.35);
 }
 
 .clearOk {
