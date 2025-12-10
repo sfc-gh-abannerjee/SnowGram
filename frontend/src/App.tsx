@@ -1208,7 +1208,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
               Clear
             </button>
             <button className={styles.actionButton} onClick={() => setShowExportModal(true)}>
-              <img src="/icons/Snowflake_ICON_Copy.svg" alt="Export" className={styles.btnIcon} />
+              <img src="/icons/download.svg" alt="Export" className={styles.btnIcon} />
               Export
             </button>
           </Panel>
@@ -1224,12 +1224,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
               }}
             >
               <div className={styles.styleGroupRow}>
-                <span className={styles.iconLabel} title="Fill color" aria-label="Fill color">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M19 11c0 3.866-3 7-7 7s-7-3.134-7-7a7 7 0 0 1 14 0Z" />
-                    <path d="M12 4v4" />
-                  </svg>
-                </span>
+                <img src="/icons/palette.svg" alt="Fill color" className={styles.iconLabelImg} />
               <input
                 type="color"
                 value={fillColor}
@@ -1279,14 +1274,7 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
               />
               </div>
               <div className={styles.styleGroupRow}>
-                <span className={styles.iconLabel} title="Fill alpha" aria-label="Fill alpha">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M4 4h16" />
-                    <path d="M8 8h8" />
-                    <path d="M10 12h4" />
-                    <path d="M11 16h2" />
-                  </svg>
-                </span>
+                <img src="/icons/opacity.svg" alt="Fill alpha" className={styles.iconLabelImg} />
               <input
                 type="range"
                 min={0}
@@ -1381,13 +1369,9 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                   aria-label="Toggle border visibility"
                 >
                   {(nodes.find((n) => n.selected)?.data as any)?.hideBorder ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <circle cx="12" cy="12" r="7" />
-                    </svg>
+                    <img src="/icons/show.svg" alt="Show border" className={styles.iconLabelImg} />
                   ) : (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="5" y="5" width="14" height="14" rx="2" ry="2" />
-                    </svg>
+                    <img src="/icons/hide.svg" alt="Hide border" className={styles.iconLabelImg} />
                   )}
                 </button>
               </div>
@@ -1437,42 +1421,24 @@ const hexToRgb = (hex: string): { r: number; g: number; b: number } | null => {
                 title={cornerRadius === 0 ? 'Use rounded corners' : 'Use sharp corners'}
               >
                 {cornerRadius === 0 ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <rect x="5" y="5" width="14" height="14" rx="6" ry="6" strokeWidth="2" />
-                  </svg>
+                  <img src="/icons/crop_square.svg" alt="Sharp corners" className={styles.iconLabelImg} />
                 ) : (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <rect x="5" y="5" width="14" height="14" rx="0" ry="0" strokeWidth="2" />
-                  </svg>
+                  <img src="/icons/radio_button_checked.svg" alt="Rounded corners" className={styles.iconLabelImg} />
                 )}
               </button>
 
               <div className={styles.layerInline}>
                 <button className={styles.layerIconButton} onClick={bringToFront} title="Bring to Front" aria-label="Bring to Front">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M12 5l4 4h-3v6h-2V9H8l4-4z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <rect x="6" y="13" width="12" height="6" rx="1" strokeWidth="2" />
-                  </svg>
+                  <img src="/icons/arrow-up.svg" alt="Front" />
                 </button>
                 <button className={styles.layerIconButton} onClick={bringForward} title="Bring Forward" aria-label="Bring Forward">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M9 17h6a1 1 0 0 0 1-1v-6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M10 14h-1a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M14 10l4-4M18 9.5V6h-3.5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <img src="/icons/arrow-up-1x.svg" alt="Forward" />
                 </button>
                 <button className={styles.layerIconButton} onClick={sendBackward} title="Send Backward" aria-label="Send Backward">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M15 7H9a1 1 0 0 0-1 1v6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M14 10h1a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M10 14l-4 4M6 14.5V18h3.5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
+                  <img src="/icons/arrow-down-1x.svg" alt="Backward" />
                 </button>
                 <button className={styles.layerIconButton} onClick={sendToBack} title="Send to Back" aria-label="Send to Back">
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path d="M12 19l-4-4h3V9h2v6h3l-4 4z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    <rect x="6" y="5" width="12" height="6" rx="1" strokeWidth="2" />
-                  </svg>
+                  <img src="/icons/arrow-down.svg" alt="Back" />
                 </button>
               </div>
             </div>

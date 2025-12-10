@@ -357,6 +357,12 @@
   width: 20px;
   height: 20px;
 }
+.layerIconButton img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: invert(86%) sepia(7%) saturate(400%) hue-rotate(175deg) brightness(98%) contrast(92%);
+}
 
 .boundaryPanel {
   position: absolute;
@@ -430,6 +436,13 @@
   width: 18px;
   height: 18px;
   color: #E5EDF5;
+}
+
+.iconLabelImg {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: invert(86%) sepia(7%) saturate(400%) hue-rotate(175deg) brightness(98%) contrast(92%);
 }
 
 .layerInline {
