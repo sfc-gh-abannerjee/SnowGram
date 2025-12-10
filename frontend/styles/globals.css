@@ -181,3 +181,19 @@ body {
   background: #29B5E8 !important;
   box-shadow: 0 0 12px rgba(96, 165, 250, 0.8);
 }
+
+/* Node drag feedback: green glow while dragging/holding */
+.react-flow__node.dragging {
+  box-shadow:
+    0 0 0 3px rgba(16, 185, 129, 0.4),
+    0 8px 18px rgba(16, 185, 129, 0.25),
+    0 0 12px rgba(16, 185, 129, 0.35);
+  transition: box-shadow 0.1s ease;
+}
+
+.darkMode .react-flow__node.dragging {
+  box-shadow:
+    0 0 0 3px rgba(74, 222, 128, 0.45),
+    0 8px 18px rgba(74, 222, 128, 0.28),
+    0 0 12px rgba(74, 222, 128, 0.45);
+}
