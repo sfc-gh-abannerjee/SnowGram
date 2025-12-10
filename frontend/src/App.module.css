@@ -743,6 +743,25 @@
     drop-shadow(0 0 6px rgba(220, 38, 38, 0.9));
 }
 
+/* Export button: green icon + glow on hover (light and dark) */
+.actionButtonExport .btnIcon {
+  transition: filter 0.15s ease;
+}
+
+.actionButtonExport:hover .btnIcon,
+.actionButtonExport:focus-visible .btnIcon,
+.actionButtonExport:active .btnIcon {
+  filter: brightness(0) saturate(100%) invert(43%) sepia(73%) saturate(555%) hue-rotate(111deg) brightness(94%) contrast(95%)
+    drop-shadow(0 0 6px rgba(16, 185, 129, 0.8));
+}
+
+.darkMode .actionButtonExport:hover .btnIcon,
+.darkMode .actionButtonExport:focus-visible .btnIcon,
+.darkMode .actionButtonExport:active .btnIcon {
+  filter: brightness(0) saturate(100%) invert(43%) sepia(73%) saturate(555%) hue-rotate(111deg) brightness(94%) contrast(95%)
+    drop-shadow(0 0 6px rgba(16, 185, 129, 0.95));
+}
+
 /* Clear Confirmation Overlay (centered, diegetic) */
 .clearConfirmOverlay {
   position: absolute;

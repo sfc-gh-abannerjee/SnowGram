@@ -1299,7 +1299,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
               <img src="/icons/Snowflake_ICON_No.svg" alt="Clear" className={styles.btnIcon} />
               Clear
             </button>
-            <button className={styles.actionButton} onClick={() => setShowExportModal(true)}>
+            <button className={`${styles.actionButton} ${styles.actionButtonExport}`} onClick={() => setShowExportModal(true)}>
               <img src="/icons/download.svg" alt="Export" className={styles.btnIcon} />
               Export
             </button>
