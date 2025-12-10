@@ -64,6 +64,7 @@ const App: React.FC = () => {
   const [fillAlpha, setFillAlpha] = useState(0);
   const [cornerRadius, setCornerRadius] = useState(8);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [showQuickTips, setShowQuickTips] = useState(true);
 
   const updateEdgeMenuPosition = useCallback(() => {
     if (!reactFlowInstance || selectedEdges.length === 0) {
@@ -1294,7 +1295,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           
           {/* Top Panel with Actions */}
           <Panel position="top-right" className={styles.panelActions}>
-            <button className={styles.actionButton} onClick={handleClear}>
+            <button className={`${styles.actionButton} ${styles.actionButtonClear}`} onClick={handleClear}>
               <img src="/icons/Snowflake_ICON_No.svg" alt="Clear" className={styles.btnIcon} />
               Clear
             </button>
@@ -1605,30 +1606,35 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           
           {/* Top-Left Panel with Instructions */}
           <Panel position="top-left" className={styles.instructionsPanel}>
-            <div className={styles.instructionItem}>
-              <strong>Quick Tips:</strong>
+            <div className={styles.quickTipsHeader} onClick={() => setShowQuickTips((v) => !v)}>
+              <strong>Quick Tips</strong>
+              <span className={styles.quickTipsToggle}>{showQuickTips ? '−' : '+'}</span>
             </div>
-            <div className={styles.instructionItem}>
-              • Drag components from left sidebar
-            </div>
-            <div className={styles.instructionItem}>
-              • <span className={styles.highlight}>Double-click label to rename</span>
-            </div>
-            <div className={styles.instructionItem}>
-              • <span className={styles.highlight}>Click node → resize handles appear</span>
-            </div>
-            <div className={styles.instructionItem}>
-              • Drag from connection points to link
-            </div>
-            <div className={styles.instructionItem}>
-              • <span className={styles.highlight}>Shift+click nodes for multi-select</span>
-            </div>
-            <div className={styles.instructionItem}>
-              • <span className={styles.highlight}>Click edge → Shift+click more</span>
-            </div>
-            <div className={styles.instructionItem}>
-              • Press Delete to remove selected
-            </div>
+            {showQuickTips && (
+              <div className={styles.quickTipsBody}>
+                <div className={styles.instructionItem}>
+                  • Drag components from left sidebar
+                </div>
+                <div className={styles.instructionItem}>
+                  • <span className={styles.highlight}>Double-click label to rename</span>
+                </div>
+                <div className={styles.instructionItem}>
+                  • <span className={styles.highlight}>Click node → resize handles appear</span>
+                </div>
+                <div className={styles.instructionItem}>
+                  • Drag from connection points to link
+                </div>
+                <div className={styles.instructionItem}>
+                  • <span className={styles.highlight}>Shift+click nodes for multi-select</span>
+                </div>
+                <div className={styles.instructionItem}>
+                  • <span className={styles.highlight}>Click edge → Shift+click more</span>
+                </div>
+                <div className={styles.instructionItem}>
+                  • Press Delete to remove selected
+                </div>
+              </div>
+            )}
           </Panel>
 
           {/* Empty State */}

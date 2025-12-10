@@ -577,13 +577,13 @@
 
 /* Flip Direction Button - Snowflake Light Blue with glow */
 .edgeIconButtonFlip {
-  background: #29B5E8;
+  background: #6B5CF6; /* Snowflake-friendly purple */
   color: white;
 }
 
 .edgeIconButtonFlip:hover {
-  background: #1E96C8;
-  box-shadow: 0 6px 20px rgba(41, 181, 232, 0.4), 0 4px 8px rgba(41, 181, 232, 0.3), 0 0 16px rgba(41, 181, 232, 0.5);
+  background: #5540d6;
+  box-shadow: 0 6px 20px rgba(107, 92, 246, 0.45), 0 4px 8px rgba(85, 64, 214, 0.35), 0 0 16px rgba(85, 64, 214, 0.6);
 }
 
 /* Delete Button - Red with glow */
@@ -625,6 +625,31 @@
   margin-bottom: 6px;
 }
 
+.quickTipsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+}
+
+.quickTipsHeader:hover {
+  background: #e0f5ed;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+  color: #0F4C75;
+}
+
+.quickTipsToggle {
+  font-weight: 700;
+  color: #0F4C75;
+}
+
+.quickTipsBody {
+  margin-top: 6px;
+}
+
 .highlight {
   color: #29B5E8;
   font-weight: 600;
@@ -650,6 +675,19 @@
   color: #10B981;
   background: #e0f5ed;
   box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.actionButtonClear {
+  border-color: #E2E8F0;
+}
+
+.actionButtonClear:hover,
+.actionButtonClear:focus-visible,
+.actionButtonClear:active {
+  border-color: #DC2626;
+  color: #DC2626;
+  background: #FEE2E2;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.35);
 }
 
 /* Clear Confirmation Overlay (centered, diegetic) */
