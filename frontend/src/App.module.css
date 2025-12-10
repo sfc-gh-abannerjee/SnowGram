@@ -1,0 +1,1314 @@
+/* Snowflake Balto Design System - Direct Colors */
+/* Main Container */
+.container {
+  display: flex;
+  height: 100vh;
+  background: #F8FAFC;
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Left Sidebar - Component Palette */
+.sidebar {
+  width: 280px;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #E2E8F0;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+}
+
+.header {
+  padding: 20px;
+  border-bottom: 1px solid #E2E8F0;
+  background: white;
+}
+
+.headerContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+/* Search Container */
+.searchContainer {
+  position: relative;
+  width: 100%;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94A3B8;
+  pointer-events: none;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 10px 36px 10px 36px;
+  background: #F8FAFC;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #0F172A;
+  transition: all 0.2s ease;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: #29B5E8;
+  background: white;
+  box-shadow: 0 0 0 3px rgba(41, 181, 232, 0.1);
+}
+
+.searchInput::placeholder {
+  color: #94A3B8;
+}
+
+.searchClear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #E2E8F0;
+  border: none;
+  border-radius: 4px;
+  color: #475569;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  transition: all 0.15s ease;
+}
+
+.searchClear:hover {
+  background: #CBD5E1;
+  color: #0F172A;
+}
+
+.logoContainer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo {
+  width: 40px;
+  height: 40px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0F4C75;
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #475569;
+  margin: 2px 0 0 0;
+}
+
+/* Collapse All Button Container */
+.collapseAllContainer {
+  padding: 8px 16px;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.collapseAllButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #F8FAFC;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.collapseAllButton:hover {
+  background: #E0F2FE;
+  border-color: #29B5E8;
+  color: #0F4C75;
+}
+
+.collapseAllButton svg {
+  flex-shrink: 0;
+}
+
+/* Component Palette */
+.componentPalette {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.paletteSection {
+  margin-bottom: 20px;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 8px 0;
+  padding: 0 4px;
+}
+
+.componentGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  overflow: hidden;
+  max-height: 1000px;
+  opacity: 1;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.3s ease;
+}
+
+.componentGrid[data-collapsed="true"] {
+  max-height: 0;
+  opacity: 0;
+  transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.2s ease;
+}
+
+.componentCard {
+  background: white;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 10px 8px;
+  cursor: grab;
+  transition: all 0.15s ease;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.componentCard:hover {
+  border-color: #29B5E8;
+  background: #E0F2FE;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(41, 181, 232, 0.15);
+}
+
+.componentCard:active {
+  cursor: grabbing;
+  transform: scale(0.98);
+}
+
+.componentIcon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.componentName {
+  font-size: 11px;
+  font-weight: 500;
+  color: #0F172A;
+  line-height: 1.2;
+}
+
+/* AI Section */
+.aiSection {
+  border-top: 1px solid #E2E8F0;
+  padding: 16px;
+  background: #F8FAFC;
+}
+
+.aiButton {
+  width: 100%;
+  background: #29B5E8;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.aiButton:hover:not(:disabled) {
+  background: #0F4C75;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(41, 181, 232, 0.3);
+}
+
+.aiButton:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.aiButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.aiIcon {
+  width: 18px;
+  height: 18px;
+}
+
+/* Right Canvas */
+.canvas {
+  flex: 1;
+  position: relative;
+  background: #F8FAFC;
+}
+
+/* ReactFlow Controls Styling */
+.controls {
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.minimap {
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Panel Actions */
+.panelActions {
+  display: flex;
+  gap: 8px;
+  background: white;
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #E2E8F0;
+}
+
+/* Layer Controls (Balto-style pill) */
+.layerPanel {
+  display: flex;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.9);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  margin-top: 8px;
+}
+
+.layerFloating {
+  position: absolute;
+  z-index: 1200;
+  display: flex;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.95);
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+}
+
+.layerIconButton {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0F172A;
+  color: #E2E8F0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.layerIconButton:hover,
+.layerIconButton:focus-visible {
+  background: #1E293B;
+  border-color: #29B5E8;
+  color: #DFF3FF;
+  box-shadow: 0 4px 12px rgba(41, 181, 232, 0.35);
+}
+
+.layerIconButton svg {
+  width: 20px;
+  height: 20px;
+}
+
+.boundaryPanel {
+  position: absolute;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(15, 23, 42, 0.94);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+}
+
+.boundaryLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #E5EDF5;
+  margin-right: 4px;
+}
+
+.boundaryColor {
+  width: 30px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #0F172A;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.25);
+}
+
+.boundarySlider {
+  width: 140px;
+  accent-color: #29B5E8;
+}
+
+.boundaryToggle {
+  height: 38px;
+  width: 38px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #0F172A;
+  color: #E2E8F0;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.boundaryToggle:hover,
+.boundaryToggle:focus-visible {
+  background: #1E293B;
+  border-color: #29B5E8;
+  box-shadow: 0 4px 12px rgba(41, 181, 232, 0.35);
+  color: #DFF3FF;
+}
+
+.styleGroupRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.iconLabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: #E5EDF5;
+}
+
+.layerInline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Edge Actions Floating Menu (Contextual Menu) */
+/* Minimal Edge Actions - Icon-only buttons with shadow/glow (Balto Stellar) */
+.edgeActionsMinimal {
+  display: flex;
+  gap: 8px;
+  animation: fadeInPop 0.2s ease;
+  pointer-events: auto;
+}
+
+@keyframes fadeInPop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.edgeIconButton {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.edgeIconButton:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2), 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.edgeIconButton:active {
+  transform: scale(0.95);
+}
+
+/* Flip Direction Button - Snowflake Light Blue with glow */
+.edgeIconButtonFlip {
+  background: #29B5E8;
+  color: white;
+}
+
+.edgeIconButtonFlip:hover {
+  background: #1E96C8;
+  box-shadow: 0 6px 20px rgba(41, 181, 232, 0.4), 0 4px 8px rgba(41, 181, 232, 0.3), 0 0 16px rgba(41, 181, 232, 0.5);
+}
+
+/* Delete Button - Red with glow */
+.edgeIconButtonDelete {
+  background: #DC2626;
+  color: white;
+}
+
+.edgeIconButtonDelete:hover {
+  background: #B91C1C;
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4), 0 4px 8px rgba(220, 38, 38, 0.3), 0 0 16px rgba(220, 38, 38, 0.5);
+}
+
+/* Instructions Panel */
+.instructionsPanel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  padding: 12px 16px;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  border: 1px solid #E2E8F0;
+  font-size: 12px;
+  color: #475569;
+  max-width: 320px;
+}
+
+.instructionItem {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.instructionItem:last-child {
+  margin-bottom: 0;
+}
+
+.instructionItem strong {
+  color: #0F4C75;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.highlight {
+  color: #29B5E8;
+  font-weight: 600;
+}
+
+.actionButton {
+  background: white;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: #0F172A;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actionButton:hover {
+  border-color: #29B5E8;
+  color: #29B5E8;
+  background: #E0F2FE;
+}
+
+/* Clear Confirmation Overlay (centered, diegetic) */
+.clearConfirmOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+  pointer-events: auto; /* lock interactions to dialog */
+  z-index: 1200;
+}
+
+/* Inline Clear Confirmation (Balto-style, non-modal) */
+.clearConfirm {
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.95);
+  color: #E2E8F0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 280px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.clearConfirmText {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.clearConfirmActions {
+  display: flex;
+  gap: 8px;
+}
+
+.clearCancel,
+.clearOk {
+  flex: 1;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clearCancel {
+  background: #1E293B;
+  color: #E2E8F0;
+  border-color: #334155;
+}
+
+.clearCancel:hover,
+.clearCancel:focus-visible {
+  background: #273449;
+}
+
+.clearOk {
+  background: #1F2937; /* neutral by default */
+  color: #E2E8F0;
+  border-color: #334155;
+  box-shadow: none;
+}
+
+.clearOk:hover,
+.clearOk:focus-visible,
+.clearOk:active {
+  background: #DC2626;
+  border-color: #DC2626;
+  box-shadow: 0 6px 16px rgba(220, 38, 38, 0.45);
+}
+
+.btnIcon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Empty State */
+.emptyPanel {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  pointer-events: none;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px;
+}
+
+.emptyIcon {
+  width: 80px;
+  height: 80px;
+  opacity: 0.3;
+  margin-bottom: 16px;
+}
+
+.emptyTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #0F172A;
+  margin: 0 0 8px 0;
+}
+
+.emptyText {
+  font-size: 14px;
+  color: #475569;
+  max-width: 400px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Loading Spinner */
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Modal */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  padding: 0;
+  max-width: 540px;
+  width: 90%;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+  overflow: hidden;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 24px 16px 24px;
+  border-bottom: 1px solid #E2E8F0;
+}
+
+.modalIcon {
+  width: 32px;
+  height: 32px;
+}
+
+.modalTitle {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: #0F172A;
+}
+
+.modalInput {
+  width: 100%;
+  padding: 16px;
+  border: 1.5px solid #E2E8F0;
+  border-left: none;
+  border-right: none;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+  line-height: 1.5;
+}
+
+.modalInput:focus {
+  outline: none;
+  border-color: #29B5E8;
+  background: #E0F2FE;
+}
+
+.modalInput::placeholder {
+  color: #475569;
+}
+
+.modalActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  background: #F8FAFC;
+}
+
+.modalButtonSecondary {
+  background: white;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: #0F172A;
+}
+
+.modalButtonSecondary:hover {
+  border-color: #475569;
+  background: #F1F5F9;
+}
+
+.modalButtonPrimary {
+  background: #29B5E8;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modalButtonPrimary:hover:not(:disabled) {
+  background: #0F4C75;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(41, 181, 232, 0.3);
+}
+
+.modalButtonPrimary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.modalButtonPrimary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Export Options */
+.exportOptions {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.exportOption {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: white;
+  border: 1.5px solid #E2E8F0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
+}
+
+.exportOption:hover {
+  border-color: #29B5E8;
+  background: #E0F2FE;
+  transform: translateX(4px);
+}
+
+.exportIcon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.exportTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0F172A;
+  margin-bottom: 2px;
+}
+
+.exportDesc {
+  font-size: 12px;
+  color: #475569;
+}
+
+/* ===== NEW: Theme Toggle Button (Stellar Design) ===== */
+.themeToggle {
+  /* Stellar Design: Clean, minimal button */
+  background: #F8FAFC;
+  border: 1.5px solid #CBD5E1;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #475569;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.themeToggle:hover {
+  background: #EFF6FF;
+  border-color: #29B5E8;
+  color: #29B5E8;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(41, 181, 232, 0.15);
+}
+
+.themeToggle:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(41, 181, 232, 0.1);
+}
+
+.themeToggle svg {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.themeToggle:hover svg {
+  transform: rotate(15deg);
+}
+
+/* ===== NEW: Collapsible Categories ===== */
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+  margin-bottom: 8px;
+}
+
+.sectionHeader:hover {
+  background: #F1F5F9;
+}
+
+.collapseIcon {
+  font-size: 10px;
+  color: #475569;
+  width: 12px;
+  transition: transform 0.2s ease;
+}
+
+.componentCount {
+  display: none; /* Hidden per user request */
+}
+
+/* No Results Message */
+.noResults {
+  text-align: center;
+  padding: 40px 20px;
+  color: #64748B;
+}
+
+.noResults p {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.clearSearchBtn {
+  background: #29B5E8;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clearSearchBtn:hover {
+  background: #0F4C75;
+  transform: translateY(-1px);
+}
+
+/* Update .sectionTitle for new layout */
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+/* ===== DARK MODE STYLES (Balto Stellar) ===== */
+.darkMode {
+  /* Container */
+  background: #0F172A;
+}
+
+.darkMode .sidebar {
+  background: #1E293B;
+  border-right-color: #334155;
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.3);
+}
+
+.darkMode .header {
+  background: #1E293B;
+  border-bottom-color: #334155;
+}
+
+.darkMode .title {
+  color: #29B5E8;
+}
+
+.darkMode .subtitle {
+  color: #94A3B8;
+}
+
+/* Stellar Dark Mode Toggle Styling */
+.darkMode .themeToggle {
+  background: #0F172A;
+  border-color: #475569;
+  color: #CBD5E1;
+}
+
+.darkMode .themeToggle:hover {
+  background: #1E3A4F;
+  border-color: #29B5E8;
+  color: #29B5E8;
+  box-shadow: 0 4px 12px rgba(41, 181, 232, 0.25);
+}
+
+.darkMode .themeToggle:active {
+  background: #0F172A;
+  box-shadow: 0 2px 6px rgba(41, 181, 232, 0.2);
+}
+
+/* Dark mode search styles */
+.darkMode .searchInput {
+  background: #0F172A;
+  border-color: #475569;
+  color: #E2E8F0;
+}
+
+.darkMode .searchInput:focus {
+  background: #1E293B;
+  border-color: #29B5E8;
+  box-shadow: 0 0 0 3px rgba(41, 181, 232, 0.15);
+}
+
+.darkMode .searchInput::placeholder {
+  color: #64748B;
+}
+
+.darkMode .searchIcon {
+  color: #64748B;
+}
+
+.darkMode .searchClear {
+  background: #334155;
+  color: #CBD5E1;
+}
+
+.darkMode .searchClear:hover {
+  background: #475569;
+  color: #E2E8F0;
+}
+
+.darkMode .collapseAllContainer {
+  border-bottom-color: #334155;
+}
+
+.darkMode .collapseAllButton {
+  background: #1E293B;
+  border-color: #334155;
+  color: #94A3B8;
+}
+
+.darkMode .collapseAllButton:hover {
+  background: #334155;
+  border-color: #60A5FA;
+  color: #E2E8F0;
+}
+
+.darkMode .noResults {
+  color: #94A3B8;
+}
+
+.darkMode .clearSearchBtn {
+  background: #29B5E8;
+}
+
+.darkMode .clearSearchBtn:hover {
+  background: #1E96C8;
+}
+
+/* Dark mode edge actions floating menu */
+/* Dark Mode - Edge Icon Buttons */
+.darkMode .edgeIconButton {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.darkMode .edgeIconButton:hover {
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.darkMode .edgeIconButtonFlip {
+  background: #29B5E8;
+}
+
+.darkMode .edgeIconButtonFlip:hover {
+  background: #60A5FA;
+  box-shadow: 0 6px 24px rgba(96, 165, 250, 0.5), 0 4px 12px rgba(96, 165, 250, 0.4), 0 0 20px rgba(96, 165, 250, 0.6);
+}
+
+.darkMode .edgeIconButtonDelete {
+  background: #DC2626;
+}
+
+.darkMode .edgeIconButtonDelete:hover {
+  background: #F87171;
+  box-shadow: 0 6px 24px rgba(248, 113, 113, 0.5), 0 4px 12px rgba(248, 113, 113, 0.4), 0 0 20px rgba(248, 113, 113, 0.6);
+}
+
+.darkMode .componentPalette {
+  background: #1E293B;
+}
+
+.darkMode .sectionHeader:hover {
+  background: #334155;
+}
+
+.darkMode .sectionTitle {
+  color: #94A3B8;
+}
+
+.darkMode .collapseIcon {
+  color: #64748B;
+}
+
+.darkMode .componentCount {
+  color: #64748B;
+}
+
+.darkMode .componentCard {
+  background: #0F172A;
+  border-color: #334155;
+}
+
+.darkMode .componentCard:hover {
+  background: #1E3A4F;
+  border-color: #29B5E8;
+  box-shadow: 0 2px 12px rgba(41, 181, 232, 0.25);
+}
+
+.darkMode .componentName {
+  color: #E2E8F0;
+}
+
+.darkMode .aiSection {
+  background: #0F172A;
+  border-top-color: #334155;
+}
+
+.darkMode .aiButton {
+  background: #29B5E8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.darkMode .aiButton:hover:not(:disabled) {
+  background: #1E96C8;
+  box-shadow: 0 4px 16px rgba(41, 181, 232, 0.4);
+}
+
+.darkMode .canvas {
+  background: #0F172A;
+}
+
+.darkMode .controls {
+  background: #1E293B;
+  border-color: #334155;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.darkMode .minimap {
+  background: #1E293B;
+  border-color: #334155;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.darkMode .panelActions {
+  background: #1E293B;
+  border-color: #334155;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.darkMode .instructionsPanel {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: #334155;
+  color: #94A3B8;
+}
+
+.darkMode .instructionItem strong {
+  color: #29B5E8;
+}
+
+.darkMode .highlight {
+  color: #60A5FA;
+  font-weight: 600;
+}
+
+.darkMode .actionButton {
+  background: #0F172A;
+  border-color: #334155;
+  color: #E2E8F0;
+}
+
+.darkMode .actionButton:hover {
+  background: #1E3A4F;
+  border-color: #29B5E8;
+  color: #29B5E8;
+}
+
+.darkMode .emptyTitle {
+  color: #E2E8F0;
+}
+
+.darkMode .emptyText {
+  color: #94A3B8;
+}
+
+.darkMode .modalOverlay {
+  background: rgba(0, 0, 0, 0.75);
+}
+
+.darkMode .modal {
+  background: #1E293B;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.darkMode .modalHeader {
+  border-bottom-color: #334155;
+}
+
+.darkMode .modalTitle {
+  color: #E2E8F0;
+}
+
+.darkMode .modalInput {
+  background: #0F172A;
+  border-color: #334155;
+  color: #E2E8F0;
+}
+
+.darkMode .modalInput:focus {
+  background: #1E3A4F;
+  border-color: #29B5E8;
+}
+
+.darkMode .modalInput::placeholder {
+  color: #64748B;
+}
+
+.darkMode .modalActions {
+  background: #0F172A;
+}
+
+.darkMode .modalButtonSecondary {
+  background: #0F172A;
+  border-color: #334155;
+  color: #E2E8F0;
+}
+
+.darkMode .modalButtonSecondary:hover {
+  background: #334155;
+  border-color: #475569;
+}
+
+.darkMode .exportOption {
+  background: #0F172A;
+  border-color: #334155;
+}
+
+.darkMode .exportOption:hover {
+  background: #1E3A4F;
+  border-color: #29B5E8;
+}
+
+.darkMode .exportTitle {
+  color: #E2E8F0;
+}
+
+.darkMode .exportDesc {
+  color: #94A3B8;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 240px;
+  }
+  
+  .componentGrid {
+    grid-template-columns: 1fr;
+  }
+  
+  .header {
+    padding: 16px;
+  }
+  
+  .themeToggle {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .themeToggle svg {
+    width: 18px;
+    height: 18px;
+  }
+}

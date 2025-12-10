@@ -222,6 +222,157 @@ class SnowflakeConnector:
             return list(results[0].values())[0]
         return None
     
+    async def call_cortex_agent(
+        self,
+        agent_name: str,
+        query: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Call Cortex Agent and return structured response
+        
+        Args:
+            agent_name: Name of the Cortex Agent (e.g., 'SNOWGRAM_AGENT')
+            query: User's natural language query
+            context: Optional context dict (diagram_type, use_case, etc.)
+            
+        Returns:
+            dict with keys: mermaid_code, explanation, components_used
+        """
+        if not self.connection:
+            await self.connect()
+        
+        try:
+            # Build context string if provided
+            context_str = ""
+            if context:
+                context_items = [f"{k}: {v}" for k, v in context.items() if v]
+                if context_items:
+                    context_str = f"\n\nContext: {', '.join(context_items)}"
+            
+            # Construct full query with context
+            full_query = f"{query}{context_str}"
+            
+            # Call Cortex Agent using SNOWFLAKE.CORTEX.COMPLETE
+            sql = f"""
+                SELECT SNOWFLAKE.CORTEX.COMPLETE(
+                    '{agent_name}',
+                    %s
+                ) AS response
+            """
+            
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                self._execute_cortex_agent_sync,
+                sql,
+                full_query
+            )
+            
+            if not result or not result[0]:
+                raise ValueError("Agent returned empty response")
+            
+            agent_response = result[0]
+            
+            # Parse agent response to extract Mermaid code and explanation
+            mermaid_code = self._extract_mermaid_code(agent_response)
+            explanation = self._extract_explanation(agent_response)
+            components_used = self._extract_components(agent_response)
+            
+            return {
+                "mermaid_code": mermaid_code,
+                "explanation": explanation,
+                "components_used": components_used,
+                "raw_response": agent_response
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calling Cortex Agent: {e}")
+            raise
+    
+    def _execute_cortex_agent_sync(self, sql: str, query: str):
+        """Execute Cortex Agent call synchronously"""
+        cursor = self.connection.cursor()
+        cursor.execute(sql, (query,))
+        result = cursor.fetchone()
+        cursor.close()
+        return result
+    
+    def _extract_mermaid_code(self, response: str) -> str:
+        """Extract Mermaid code from agent response"""
+        import re
+        
+        # Look for code blocks with mermaid syntax
+        pattern = r'```(?:mermaid)?\s*(flowchart.*?)```'
+        match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
+        
+        if match:
+            return match.group(1).strip()
+        
+        # Fallback: Look for flowchart keyword
+        lines = response.split('\n')
+        mermaid_lines = []
+        in_flowchart = False
+        
+        for line in lines:
+            if 'flowchart' in line.lower():
+                in_flowchart = True
+            if in_flowchart:
+                mermaid_lines.append(line)
+                # Stop at empty line or explanation markers
+                if line.strip() == '' or 'explanation' in line.lower():
+                    break
+        
+        if mermaid_lines:
+            return '\n'.join(mermaid_lines).strip()
+        
+        # Last fallback: Return full response if it looks like Mermaid
+        if 'flowchart' in response.lower():
+            return response.strip()
+        
+        raise ValueError("Could not extract Mermaid code from agent response")
+    
+    def _extract_explanation(self, response: str) -> str:
+        """Extract explanation from agent response"""
+        import re
+        
+        # Look for explanation section
+        patterns = [
+            r'(?:explanation|description|details?):\s*(.+?)(?:\n\n|$)',
+            r'(?:explanation|description|details?)\s*[:\-]\s*(.+?)(?:\n\n|$)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+        
+        # Fallback: Extract text after code block
+        if '```' in response:
+            parts = response.split('```')
+            if len(parts) > 2:
+                explanation = parts[2].strip()
+                if explanation:
+                    return explanation[:500]  # Limit length
+        
+        return "Diagram generated successfully"
+    
+    def _extract_components(self, response: str) -> List[str]:
+        """Extract list of components used from agent response"""
+        import re
+        
+        # Look for components list
+        pattern = r'(?:components?|blocks?)(?:\s+used)?:\s*\[?([^\]]+)\]?'
+        match = re.search(pattern, response, re.IGNORECASE)
+        
+        if match:
+            components_str = match.group(1)
+            # Split by commas and clean up
+            components = [c.strip().strip('"\'') for c in components_str.split(',')]
+            return [c for c in components if c]
+        
+        return []
+    
     async def close(self) -> None:
         """Close Snowflake connection"""
         if self.connection:

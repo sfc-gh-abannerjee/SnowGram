@@ -4,9 +4,25 @@
 -- Purpose: Create Cortex Search service for RAG over Snowflake documentation
 -- =====================================================
 
+USE ROLE SYSADMIN;
 USE DATABASE SNOWGRAM_DB;
 USE SCHEMA KNOWLEDGE;
-USE ROLE SYSADMIN;
+
+-- Dedicated XS warehouse for Cortex Search indexing to avoid pinning shared compute
+CREATE WAREHOUSE IF NOT EXISTS CORTEX_REFRESH_WH
+    WAREHOUSE_SIZE = 'XSMALL'
+    AUTO_SUSPEND = 60
+    AUTO_RESUME = TRUE
+    INITIALLY_SUSPENDED = TRUE
+    COMMENT = 'Low-cost warehouse reserved for Cortex Search / dynamic table refreshes';
+
+ALTER WAREHOUSE CORTEX_REFRESH_WH SET
+    AUTO_SUSPEND = 60,
+    AUTO_RESUME = TRUE,
+    WAREHOUSE_SIZE = 'XSMALL';
+
+GRANT USAGE ON WAREHOUSE CORTEX_REFRESH_WH TO ROLE SNOWGRAM_APP_ROLE;
+GRANT USAGE ON WAREHOUSE CORTEX_REFRESH_WH TO ROLE SVC_CURSOR_ROLE;
 
 -- =====================================================
 -- 1. Create Cortex Search Service
@@ -18,7 +34,7 @@ USE ROLE SYSADMIN;
 CREATE OR REPLACE CORTEX SEARCH SERVICE SNOWFLAKE_DOCS_SEARCH
   ON chunk
   ATTRIBUTES category, document_title, source_url, doc_type
-  WAREHOUSE = COMPUTE_WH
+  WAREHOUSE = CORTEX_REFRESH_WH
   TARGET_LAG = '1 day'
   AS (
     SELECT 

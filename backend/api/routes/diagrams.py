@@ -92,25 +92,54 @@ async def generate_diagram(request: GenerateDiagramRequest):
     try:
         logger.info(f"Generating diagram for query: {request.user_query[:50]}...")
         
-        # TODO: Call Cortex Agent REST API
-        # For now, return placeholder
         start_time = datetime.now()
         
-        # Placeholder Mermaid code
-        mermaid_code = f"""flowchart LR
-    A[Start] --> B[Process]
-    B --> C[End]
+        # Get Snowflake connector from app state
+        from backend.api.main import snowflake_connector
+        
+        if not snowflake_connector:
+            raise HTTPException(status_code=500, detail="Snowflake connector not initialized")
+        
+        # Prepare context for the agent
+        context = {
+            "diagram_type": request.diagram_type,
+            "use_case": request.use_case
+        }
+        
+        # Call Cortex Agent
+        try:
+            agent_response = await snowflake_connector.call_cortex_agent(
+                agent_name="SNOWGRAM_AGENT",
+                query=request.user_query,
+                context=context
+            )
+            
+            mermaid_code = agent_response["mermaid_code"]
+            explanation = agent_response["explanation"]
+            components_used = agent_response["components_used"]
+            
+        except Exception as agent_error:
+            logger.warning(f"Cortex Agent call failed: {agent_error}. Using fallback generation.")
+            
+            # Fallback: Generate simple diagram
+            mermaid_code = f"""flowchart LR
+    A[Data Source] --> B[Snowflake]
+    B --> C[Analysis]
+    C --> D[Insights]
     
-    %% Generated from query: {request.user_query[:30]}...
+    %% Generated from: {request.user_query[:50]}...
+    %% Note: Using fallback generation (Agent unavailable)
 """
+            explanation = f"Generated diagram for: {request.user_query}. Note: This is a simplified version as the Cortex Agent is currently unavailable."
+            components_used = ["fallback_generation"]
         
         end_time = datetime.now()
         generation_time_ms = int((end_time - start_time).total_seconds() * 1000)
         
         return GenerateDiagramResponse(
             mermaid_code=mermaid_code,
-            explanation=f"Generated diagram based on query: {request.user_query}",
-            components_used=["PLACEHOLDER_BLOCK"],
+            explanation=explanation,
+            components_used=components_used,
             generation_time_ms=generation_time_ms
         )
     
