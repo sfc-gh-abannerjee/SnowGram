@@ -1,15 +1,13 @@
 """
-Icon API Routes
-===============
-Endpoints for icon management (upload, list, download).
+Icon Integration Routes for SnowGram
+
+Provides access to icon catalogs from Font Awesome and Material Icons
+for use in Mermaid diagrams.
 """
 
 import logging
-import uuid
-from typing import Optional, List
-
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel, Field
+from typing import List, Dict, Any
+from fastapi import APIRouter, HTTPException, Query
 
 logger = logging.getLogger(__name__)
 
@@ -17,230 +15,346 @@ router = APIRouter()
 
 
 # =====================================================
-# Request/Response Models
+# Icon Catalog Data
 # =====================================================
 
-class IconMetadata(BaseModel):
-    """Icon metadata model"""
-    icon_id: str
-    icon_name: str
-    file_type: str  # svg, png
-    file_size: int  # bytes
-    stage_url: str
-    uploaded_at: str
-    tags: List[str]
+# Font Awesome Free Icons (selected subset for Snowflake architectures)
+FONT_AWESOME_ICONS = {
+    "data": [
+        {"name": "database", "category": "data", "mermaid": "fa:fa-database"},
+        {"name": "table", "category": "data", "mermaid": "fa:fa-table"},
+        {"name": "server", "category": "compute", "mermaid": "fa:fa-server"},
+        {"name": "warehouse", "category": "data", "mermaid": "fa:fa-warehouse"},
+        {"name": "cloud", "category": "cloud", "mermaid": "fa:fa-cloud"},
+        {"name": "snowflake", "category": "snowflake", "mermaid": "fa:fa-snowflake"},
+    ],
+    "compute": [
+        {"name": "server", "category": "compute", "mermaid": "fa:fa-server"},
+        {"name": "microchip", "category": "compute", "mermaid": "fa:fa-microchip"},
+        {"name": "memory", "category": "compute", "mermaid": "fa:fa-memory"},
+        {"name": "network-wired", "category": "compute", "mermaid": "fa:fa-network-wired"},
+    ],
+    "integration": [
+        {"name": "plug", "category": "integration", "mermaid": "fa:fa-plug"},
+        {"name": "link", "category": "integration", "mermaid": "fa:fa-link"},
+        {"name": "arrows-alt", "category": "integration", "mermaid": "fa:fa-arrows-alt"},
+        {"name": "exchange-alt", "category": "integration", "mermaid": "fa:fa-exchange-alt"},
+        {"name": "stream", "category": "integration", "mermaid": "fa:fa-stream"},
+    ],
+    "analytics": [
+        {"name": "chart-line", "category": "analytics", "mermaid": "fa:fa-chart-line"},
+        {"name": "chart-bar", "category": "analytics", "mermaid": "fa:fa-chart-bar"},
+        {"name": "chart-pie", "category": "analytics", "mermaid": "fa:fa-chart-pie"},
+        {"name": "chart-area", "category": "analytics", "mermaid": "fa:fa-chart-area"},
+        {"name": "analytics", "category": "analytics", "mermaid": "fa:fa-analytics"},
+    ],
+    "ml_ai": [
+        {"name": "brain", "category": "ml_ai", "mermaid": "fa:fa-brain"},
+        {"name": "robot", "category": "ml_ai", "mermaid": "fa:fa-robot"},
+        {"name": "project-diagram", "category": "ml_ai", "mermaid": "fa:fa-project-diagram"},
+    ],
+    "security": [
+        {"name": "lock", "category": "security", "mermaid": "fa:fa-lock"},
+        {"name": "shield-alt", "category": "security", "mermaid": "fa:fa-shield-alt"},
+        {"name": "key", "category": "security", "mermaid": "fa:fa-key"},
+        {"name": "user-shield", "category": "security", "mermaid": "fa:fa-user-shield"},
+    ],
+    "iot": [
+        {"name": "thermometer", "category": "iot", "mermaid": "fa:fa-thermometer-half"},
+        {"name": "wifi", "category": "iot", "mermaid": "fa:fa-wifi"},
+        {"name": "mobile", "category": "iot", "mermaid": "fa:fa-mobile-alt"},
+        {"name": "satellite", "category": "iot", "mermaid": "fa:fa-satellite"},
+    ],
+    "general": [
+        {"name": "cog", "category": "general", "mermaid": "fa:fa-cog"},
+        {"name": "file", "category": "general", "mermaid": "fa:fa-file"},
+        {"name": "folder", "category": "general", "mermaid": "fa:fa-folder"},
+        {"name": "user", "category": "general", "mermaid": "fa:fa-user"},
+        {"name": "users", "category": "general", "mermaid": "fa:fa-users"},
+        {"name": "bell", "category": "general", "mermaid": "fa:fa-bell"},
+        {"name": "envelope", "category": "general", "mermaid": "fa:fa-envelope"},
+    ]
+}
+
+# Material Design Icons (selected subset)
+MATERIAL_ICONS = {
+    "data": [
+        {"name": "storage", "category": "data", "mermaid": "mi:storage"},
+        {"name": "database", "category": "data", "mermaid": "mi:database"},
+        {"name": "cloud_queue", "category": "data", "mermaid": "mi:cloud_queue"},
+        {"name": "folder_open", "category": "data", "mermaid": "mi:folder_open"},
+    ],
+    "compute": [
+        {"name": "memory", "category": "compute", "mermaid": "mi:memory"},
+        {"name": "developer_board", "category": "compute", "mermaid": "mi:developer_board"},
+        {"name": "dns", "category": "compute", "mermaid": "mi:dns"},
+    ],
+    "analytics": [
+        {"name": "analytics", "category": "analytics", "mermaid": "mi:analytics"},
+        {"name": "insights", "category": "analytics", "mermaid": "mi:insights"},
+        {"name": "bar_chart", "category": "analytics", "mermaid": "mi:bar_chart"},
+        {"name": "pie_chart", "category": "analytics", "mermaid": "mi:pie_chart"},
+    ],
+    "ml_ai": [
+        {"name": "psychology", "category": "ml_ai", "mermaid": "mi:psychology"},
+        {"name": "model_training", "category": "ml_ai", "mermaid": "mi:model_training"},
+        {"name": "smart_toy", "category": "ml_ai", "mermaid": "mi:smart_toy"},
+    ],
+    "integration": [
+        {"name": "integration_instructions", "category": "integration", "mermaid": "mi:integration_instructions"},
+        {"name": "hub", "category": "integration", "mermaid": "mi:hub"},
+        {"name": "connect_without_contact", "category": "integration", "mermaid": "mi:connect_without_contact"},
+    ],
+    "general": [
+        {"name": "settings", "category": "general", "mermaid": "mi:settings"},
+        {"name": "account_circle", "category": "general", "mermaid": "mi:account_circle"},
+        {"name": "schedule", "category": "general", "mermaid": "mi:schedule"},
+    ]
+}
+
+# Built-in Mermaid shapes (no icons, but useful for reference)
+MERMAID_SHAPES = [
+    {"name": "rectangle", "syntax": "A[Text]", "description": "Standard rectangle"},
+    {"name": "rounded", "syntax": "A(Text)", "description": "Rounded rectangle"},
+    {"name": "stadium", "syntax": "A([Text])", "description": "Stadium shape"},
+    {"name": "subroutine", "syntax": "A[[Text]]", "description": "Subroutine shape"},
+    {"name": "cylindrical", "syntax": "A[(Text)]", "description": "Database cylinder"},
+    {"name": "circle", "syntax": "A((Text))", "description": "Circle"},
+    {"name": "asymmetric", "syntax": "A>Text]", "description": "Asymmetric shape"},
+    {"name": "rhombus", "syntax": "A{Text}", "description": "Decision diamond"},
+    {"name": "hexagon", "syntax": "A{{Text}}", "description": "Hexagon"},
+    {"name": "parallelogram", "syntax": "A[/Text/]", "description": "Parallelogram"},
+    {"name": "trapezoid", "syntax": "A[\\Text\\]", "description": "Trapezoid"},
+]
 
 
-class UploadIconResponse(BaseModel):
-    """Response model for icon upload"""
-    icon_id: str
-    icon_name: str
-    stage_url: str
-    message: str
+# =====================================================
+# Response Models
+# =====================================================
+
+from pydantic import BaseModel, Field
+
+class IconItem(BaseModel):
+    """Single icon item"""
+    name: str = Field(..., description="Icon name")
+    category: str = Field(..., description="Icon category")
+    mermaid: str = Field(..., description="Mermaid syntax for this icon")
+
+
+class IconCatalogResponse(BaseModel):
+    """Response containing icon catalog"""
+    library: str = Field(..., description="Icon library name (font_awesome, material_icons, mermaid_shapes)")
+    categories: List[str] = Field(..., description="Available categories")
+    icons: List[IconItem] = Field(..., description="List of icons")
+    total_count: int = Field(..., description="Total number of icons")
+    usage_instructions: str = Field(..., description="How to use these icons in Mermaid")
+
+
+class IconSearchResponse(BaseModel):
+    """Response for icon search"""
+    query: str = Field(..., description="Search query")
+    results: List[IconItem] = Field(..., description="Matching icons")
+    count: int = Field(..., description="Number of results")
 
 
 # =====================================================
 # Endpoints
 # =====================================================
 
-@router.post("/upload", response_model=UploadIconResponse)
-async def upload_icon(
-    file: UploadFile = File(...),
-    tags: Optional[List[str]] = None
+@router.get("/catalog/font-awesome", response_model=IconCatalogResponse)
+async def get_font_awesome_catalog(
+    category: str = Query(None, description="Filter by category")
 ):
     """
-    Upload custom icon to Snowflake stage.
+    Get Font Awesome icon catalog.
     
-    Supported formats: SVG, PNG
-    Max file size: 5MB
-    
-    Uploads to: @SNOWGRAM_DB.CORE.ICONS_STAGE
+    Returns a curated list of Font Awesome icons suitable for
+    Snowflake architecture diagrams.
     """
     try:
-        # Validate file type
-        allowed_types = ["image/svg+xml", "image/png"]
-        if file.content_type not in allowed_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid file type. Allowed: SVG, PNG"
-            )
+        icons = []
+        categories = list(FONT_AWESOME_ICONS.keys())
         
-        # Validate file size (5MB max)
-        contents = await file.read()
-        file_size = len(contents)
+        if category and category in FONT_AWESOME_ICONS:
+            # Filter by specific category
+            icons = FONT_AWESOME_ICONS[category]
+            categories = [category]
+        else:
+            # Return all icons
+            for cat_icons in FONT_AWESOME_ICONS.values():
+                icons.extend(cat_icons)
         
-        if file_size > 5 * 1024 * 1024:  # 5MB
-            raise HTTPException(
-                status_code=400,
-                detail="File size exceeds 5MB limit"
-            )
-        
-        # Generate icon ID
-        icon_id = str(uuid.uuid4())
-        icon_name = file.filename
-        
-        logger.info(f"Uploading icon: {icon_name} ({file_size} bytes)")
-        
-        # TODO: Upload to Snowflake stage
-        # PUT file://<local_path> @SNOWGRAM_DB.CORE.ICONS_STAGE/icons/
-        
-        stage_url = f"@SNOWGRAM_DB.CORE.ICONS_STAGE/icons/{icon_id}/{icon_name}"
-        
-        return UploadIconResponse(
-            icon_id=icon_id,
-            icon_name=icon_name,
-            stage_url=stage_url,
-            message=f"Icon '{icon_name}' uploaded successfully"
+        return IconCatalogResponse(
+            library="font_awesome",
+            categories=categories,
+            icons=icons,
+            total_count=len(icons),
+            usage_instructions="Use in Mermaid: A[fa:fa-database Database]. CDN: https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
         )
-    
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error uploading icon: {e}")
+        logger.error(f"Error fetching Font Awesome catalog: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/list", response_model=List[IconMetadata])
-async def list_icons(
-    tag: Optional[str] = None,
-    limit: int = 100
+@router.get("/catalog/material-icons", response_model=IconCatalogResponse)
+async def get_material_icons_catalog(
+    category: str = Query(None, description="Filter by category")
 ):
     """
-    List available icons from stage.
+    Get Material Design Icons catalog.
     
-    Query parameters:
-        - tag: Filter by tag
-        - limit: Maximum number of results
-    
-    Returns icons from:
-        - Default Snowflake icon pack
-        - User-uploaded custom icons
+    Returns a curated list of Material Icons suitable for
+    Snowflake architecture diagrams.
     """
     try:
-        logger.info(f"Listing icons (limit={limit}, tag={tag})")
+        icons = []
+        categories = list(MATERIAL_ICONS.keys())
         
-        # TODO: Query Snowflake stage for icon files
-        # LIST @SNOWGRAM_DB.CORE.ICONS_STAGE/icons/
+        if category and category in MATERIAL_ICONS:
+            # Filter by specific category
+            icons = MATERIAL_ICONS[category]
+            categories = [category]
+        else:
+            # Return all icons
+            for cat_icons in MATERIAL_ICONS.values():
+                icons.extend(cat_icons)
         
-        # Return default icons for now
-        default_icons = [
-            IconMetadata(
-                icon_id="default-warehouse",
-                icon_name="warehouse.svg",
-                file_type="svg",
-                file_size=2048,
-                stage_url="@SNOWGRAM_DB.CORE.ICONS_STAGE/default/warehouse.svg",
-                uploaded_at="2025-01-01T00:00:00Z",
-                tags=["compute", "default"]
-            ),
-            IconMetadata(
-                icon_id="default-database",
-                icon_name="database.svg",
-                file_type="svg",
-                file_size=1850,
-                stage_url="@SNOWGRAM_DB.CORE.ICONS_STAGE/default/database.svg",
-                uploaded_at="2025-01-01T00:00:00Z",
-                tags=["storage", "default"]
-            ),
-            IconMetadata(
-                icon_id="default-table",
-                icon_name="table.svg",
-                file_type="svg",
-                file_size=1920,
-                stage_url="@SNOWGRAM_DB.CORE.ICONS_STAGE/default/table.svg",
-                uploaded_at="2025-01-01T00:00:00Z",
-                tags=["storage", "default"]
-            )
-        ]
-        
-        # Filter by tag if provided
-        if tag:
-            default_icons = [icon for icon in default_icons if tag in icon.tags]
-        
-        return default_icons[:limit]
-    
+        return IconCatalogResponse(
+            library="material_icons",
+            categories=categories,
+            icons=icons,
+            total_count=len(icons),
+            usage_instructions="Use in Mermaid: A[mi:storage Storage]. CDN: https://fonts.googleapis.com/icon?family=Material+Icons"
+        )
     except Exception as e:
-        logger.error(f"Error listing icons: {e}")
+        logger.error(f"Error fetching Material Icons catalog: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/download/{icon_id}")
-async def download_icon(icon_id: str):
+@router.get("/catalog/mermaid-shapes")
+async def get_mermaid_shapes():
     """
-    Download icon file from stage.
+    Get built-in Mermaid shape reference.
     
-    Returns a pre-signed URL or file stream.
-    """
-    try:
-        logger.info(f"Downloading icon: {icon_id}")
-        
-        # TODO: Generate pre-signed URL for stage file
-        # GET @SNOWGRAM_DB.CORE.ICONS_STAGE/icons/{icon_id}/*
-        
-        return {
-            "icon_id": icon_id,
-            "download_url": f"@SNOWGRAM_DB.CORE.ICONS_STAGE/icons/{icon_id}",
-            "expires_in": 3600  # 1 hour
-        }
-    
-    except Exception as e:
-        logger.error(f"Error downloading icon: {e}")
-        raise HTTPException(status_code=404, detail=f"Icon {icon_id} not found")
-
-
-@router.delete("/delete/{icon_id}")
-async def delete_icon(icon_id: str):
-    """
-    Delete custom icon from stage.
-    
-    Note: Cannot delete default icons.
+    Returns a list of built-in Mermaid shapes that don't require icons.
     """
     try:
-        logger.info(f"Deleting icon: {icon_id}")
-        
-        # Check if it's a default icon
-        if icon_id.startswith("default-"):
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot delete default icons"
-            )
-        
-        # TODO: Remove from Snowflake stage
-        # REMOVE @SNOWGRAM_DB.CORE.ICONS_STAGE/icons/{icon_id}/*
-        
         return {
-            "icon_id": icon_id,
-            "message": "Icon deleted successfully"
+            "library": "mermaid_shapes",
+            "shapes": MERMAID_SHAPES,
+            "total_count": len(MERMAID_SHAPES),
+            "usage_instructions": "Use the syntax directly in your Mermaid diagram. Example: A[Database] or B((AI Model))"
         }
-    
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error deleting icon: {e}")
+        logger.error(f"Error fetching Mermaid shapes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/search", response_model=IconSearchResponse)
+async def search_icons(
+    query: str = Query(..., description="Search query (icon name or category)"),
+    library: str = Query("all", description="Icon library (font_awesome, material_icons, all)")
+):
+    """
+    Search icons across libraries.
+    
+    Searches icon names and categories for matching terms.
+    """
+    try:
+        results = []
+        query_lower = query.lower()
+        
+        # Search Font Awesome
+        if library in ("all", "font_awesome"):
+            for cat_icons in FONT_AWESOME_ICONS.values():
+                for icon in cat_icons:
+                    if (query_lower in icon["name"].lower() or 
+                        query_lower in icon["category"].lower()):
+                        results.append(icon)
+        
+        # Search Material Icons
+        if library in ("all", "material_icons"):
+            for cat_icons in MATERIAL_ICONS.values():
+                for icon in cat_icons:
+                    if (query_lower in icon["name"].lower() or 
+                        query_lower in icon["category"].lower()):
+                        results.append(icon)
+        
+        return IconSearchResponse(
+            query=query,
+            results=results,
+            count=len(results)
+        )
+    except Exception as e:
+        logger.error(f"Error searching icons: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/categories")
-async def list_icon_categories():
+async def list_categories():
     """
-    List available icon categories/tags.
+    List all icon categories across libraries.
     
-    Useful for organizing and filtering icons in the UI.
+    Returns unique categories from Font Awesome and Material Icons.
     """
+    try:
+        categories = set()
+        
+        # Collect categories from Font Awesome
+        for category in FONT_AWESOME_ICONS.keys():
+            categories.add(category)
+        
+        # Collect categories from Material Icons
+        for category in MATERIAL_ICONS.keys():
+            categories.add(category)
+        
+        return {
+            "categories": sorted(list(categories)),
+            "total_count": len(categories),
+            "description": "Available icon categories across all libraries"
+        }
+    except Exception as e:
+        logger.error(f"Error listing categories: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/examples")
+async def get_icon_examples():
+    """
+    Get example Mermaid diagrams with icons.
+    
+    Returns sample diagrams demonstrating icon usage.
+    """
+    examples = [
+        {
+            "name": "Simple Data Pipeline",
+            "description": "Basic pipeline with icons",
+            "mermaid": """flowchart LR
+    A[fa:fa-database Source DB] --> B[fa:fa-stream Snowpipe]
+    B --> C[fa:fa-snowflake Snowflake]
+    C --> D[fa:fa-chart-bar Analytics]"""
+        },
+        {
+            "name": "IoT Architecture",
+            "description": "IoT sensors to analytics",
+            "mermaid": """flowchart TD
+    A[fa:fa-thermometer Sensor] --> B[fa:fa-wifi Gateway]
+    B --> C[fa:fa-cloud Cloud Storage]
+    C --> D[mi:storage Data Lake]
+    D --> E[fa:fa-brain ML Model]"""
+        },
+        {
+            "name": "Security Model",
+            "description": "Security and access control",
+            "mermaid": """flowchart LR
+    A[fa:fa-user User] --> B[fa:fa-shield-alt Auth]
+    B --> C[fa:fa-key API Gateway]
+    C --> D[fa:fa-database Secure DB]"""
+        }
+    ]
+    
     return {
-        "categories": [
-            {"name": "compute", "count": 5, "description": "Compute resources (warehouses)"},
-            {"name": "storage", "count": 8, "description": "Storage objects (databases, schemas, tables)"},
-            {"name": "ingestion", "count": 6, "description": "Data ingestion (Snowpipe, stages)"},
-            {"name": "transformation", "count": 7, "description": "Data transformation (streams, tasks)"},
-            {"name": "security", "count": 4, "description": "Security (roles, grants)"},
-            {"name": "external", "count": 10, "description": "External systems (S3, Kafka, BI tools)"},
-            {"name": "custom", "count": 0, "description": "User-uploaded custom icons"}
-        ]
+        "examples": examples,
+        "count": len(examples),
+        "usage_note": "Copy the mermaid code and modify for your use case"
     }
-
-
-
-
-
-

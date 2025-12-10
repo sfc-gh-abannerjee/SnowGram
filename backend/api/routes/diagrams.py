@@ -94,11 +94,8 @@ async def generate_diagram(request: GenerateDiagramRequest):
         
         start_time = datetime.now()
         
-        # Get Snowflake connector from app state
-        from backend.api.main import snowflake_connector
-        
-        if not snowflake_connector:
-            raise HTTPException(status_code=500, detail="Snowflake connector not initialized")
+        # Get Cortex Agent client from app state
+        from backend.api.main import cortex_agent_client
         
         # Prepare context for the agent
         context = {
@@ -106,31 +103,55 @@ async def generate_diagram(request: GenerateDiagramRequest):
             "use_case": request.use_case
         }
         
-        # Call Cortex Agent
-        try:
-            agent_response = await snowflake_connector.call_cortex_agent(
-                agent_name="SNOWGRAM_AGENT",
-                query=request.user_query,
-                context=context
-            )
+        # Call Cortex Agent (if available)
+        if cortex_agent_client:
+            try:
+                logger.info("Calling Cortex Agent for diagram generation...")
+                agent_response = await cortex_agent_client.query_agent(
+                    query=request.user_query,
+                    context=context
+                )
+                
+                mermaid_code = agent_response["mermaid_code"]
+                explanation = agent_response["explanation"]
+                components_used = agent_response["components_used"]
+                
+                logger.info(f"✅ Agent response received ({agent_response['generation_time_ms']}ms)")
+                
+            except Exception as agent_error:
+                logger.warning(f"⚠️  Cortex Agent call failed: {agent_error}")
+                logger.warning("⚠️  Using fallback diagram generation")
+                
+                # Fallback: Generate simple diagram
+                mermaid_code = f"""flowchart LR
+    A[Data Source] --> B[Snowflake]
+    B --> C[Analysis]
+    C --> D[Insights]
+    
+    %% Generated from: {request.user_query[:50]}...
+    %% Note: Using fallback generation (Agent error)
+    
+    classDef snowflakeBlue fill:#29B5E8,stroke:#1A78B8,stroke-width:2px,color:#fff
+    class A,B,C,D snowflakeBlue
+"""
+                explanation = f"**Note**: Generated simplified diagram. Cortex Agent is temporarily unavailable.\n\n**Your Query**: {request.user_query}\n\nPlease try again or contact support if the issue persists."
+                components_used = ["fallback_generation"]
+        else:
+            # Agent not initialized - use fallback
+            logger.warning("⚠️  Cortex Agent not initialized, using fallback generation")
             
-            mermaid_code = agent_response["mermaid_code"]
-            explanation = agent_response["explanation"]
-            components_used = agent_response["components_used"]
-            
-        except Exception as agent_error:
-            logger.warning(f"Cortex Agent call failed: {agent_error}. Using fallback generation.")
-            
-            # Fallback: Generate simple diagram
             mermaid_code = f"""flowchart LR
     A[Data Source] --> B[Snowflake]
     B --> C[Analysis]
     C --> D[Insights]
     
     %% Generated from: {request.user_query[:50]}...
-    %% Note: Using fallback generation (Agent unavailable)
+    %% Note: Using fallback generation (Agent not configured)
+    
+    classDef snowflakeBlue fill:#29B5E8,stroke:#1A78B8,stroke-width:2px,color:#fff
+    class A,B,C,D snowflakeBlue
 """
-            explanation = f"Generated diagram for: {request.user_query}. Note: This is a simplified version as the Cortex Agent is currently unavailable."
+            explanation = f"**Note**: Generated simplified diagram. Cortex Agent is not configured.\n\n**Your Query**: {request.user_query}\n\nTo enable AI-powered diagram generation, please set the `CORTEX_AGENT_NAME` environment variable and ensure the agent is created in Snowflake."
             components_used = ["fallback_generation"]
         
         end_time = datetime.now()

@@ -253,10 +253,10 @@ class SnowflakeConnector:
             # Construct full query with context
             full_query = f"{query}{context_str}"
             
-            # Call Cortex Agent using SNOWFLAKE.CORTEX.COMPLETE
+            # Call Cortex Agent using the proper agent invocation
+            # Agent is at SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT
             sql = f"""
-                SELECT SNOWFLAKE.CORTEX.COMPLETE(
-                    '{agent_name}',
+                SELECT {self.database}.AGENTS.{agent_name}!MESSAGE(
                     %s
                 ) AS response
             """

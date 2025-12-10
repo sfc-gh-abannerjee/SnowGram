@@ -29,7 +29,7 @@ class ReadinessCheck(BaseModel):
     environment_configured: bool
 
 
-@router.get("/health", response_model=HealthResponse)
+@router.get("/", response_model=HealthResponse)
 async def health_check():
     """
     Basic health check endpoint for liveness probe.
@@ -47,7 +47,7 @@ async def health_check():
     )
 
 
-@router.get("/health/ready", response_model=HealthResponse)
+@router.get("/ready", response_model=HealthResponse)
 async def readiness_check(response: Response):
     """
     Readiness check endpoint with dependency validation.
@@ -82,7 +82,7 @@ async def readiness_check(response: Response):
     )
 
 
-@router.get("/health/live")
+@router.get("/live")
 async def liveness_check():
     """
     Liveness check endpoint for SPCS.

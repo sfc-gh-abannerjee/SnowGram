@@ -134,11 +134,39 @@ class SnowGramAPI {
   }
 
   /**
-   * Get list of available icons
+   * Get Font Awesome icon catalog
    */
-  async listIcons(category?: string): Promise<any[]> {
-    const response = await this.client.get('/icons/list', {
-      params: { category },
+  async getFontAwesomeIcons(category?: string): Promise<any> {
+    const response = await this.client.get('/icons/catalog/font-awesome', {
+      params: category ? { category } : undefined,
+    });
+    return response.data;
+  }
+
+  /**
+   * Get Material Design icon catalog
+   */
+  async getMaterialIcons(category?: string): Promise<any> {
+    const response = await this.client.get('/icons/catalog/material-icons', {
+      params: category ? { category } : undefined,
+    });
+    return response.data;
+  }
+
+  /**
+   * Get Mermaid shapes reference
+   */
+  async getMermaidShapes(): Promise<any> {
+    const response = await this.client.get('/icons/catalog/mermaid-shapes');
+    return response.data;
+  }
+
+  /**
+   * Search icons across libraries
+   */
+  async searchIcons(query: string, library: string = 'all'): Promise<any> {
+    const response = await this.client.get('/icons/search', {
+      params: { query, library },
     });
     return response.data;
   }
@@ -146,8 +174,16 @@ class SnowGramAPI {
   /**
    * Get icon categories
    */
-  async getIconCategories(): Promise<string[]> {
-    const response = await this.client.get<string[]>('/icons/categories');
+  async getIconCategories(): Promise<any> {
+    const response = await this.client.get('/icons/categories');
+    return response.data;
+  }
+
+  /**
+   * Get icon usage examples
+   */
+  async getIconExamples(): Promise<any> {
+    const response = await this.client.get('/icons/examples');
     return response.data;
   }
 }

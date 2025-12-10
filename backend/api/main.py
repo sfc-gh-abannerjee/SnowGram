@@ -24,8 +24,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
-# Import database connector
+# Import database connector and Cortex Agent client
 from backend.db.connector import SnowflakeConnector
+from backend.agent.cortex_agent_client import CortexAgentClient
 
 # Setup logging
 logging.basicConfig(
@@ -36,32 +37,61 @@ logger = logging.getLogger(__name__)
 
 # Global Snowflake connector instance
 snowflake_connector: Optional[SnowflakeConnector] = None
+# Global Cortex Agent client instance
+cortex_agent_client: Optional[CortexAgentClient] = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler for startup and shutdown"""
-    global snowflake_connector
+    global snowflake_connector, cortex_agent_client
     
     # Startup
     logger.info("🚀 Starting SnowGram application...")
     
-    # Initialize Snowflake connector
+    # Initialize Snowflake connector (optional for testing)
     try:
-        snowflake_connector = SnowflakeConnector(
-            account=os.getenv("SNOWFLAKE_ACCOUNT"),
-            user=os.getenv("SNOWFLAKE_USER"),
-            password=os.getenv("SNOWFLAKE_PASSWORD"),
-            role=os.getenv("SNOWFLAKE_ROLE", "SNOWGRAM_APP_ROLE"),
-            warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "SNOWGRAM_WH"),
-            database=os.getenv("SNOWFLAKE_DATABASE", "SNOWGRAM_DB"),
-            schema=os.getenv("SNOWFLAKE_SCHEMA", "CORE")
-        )
-        await snowflake_connector.connect()
-        logger.info("✅ Snowflake connection established")
+        account = os.getenv("SNOWFLAKE_ACCOUNT")
+        if account:
+            snowflake_connector = SnowflakeConnector(
+                account=account,
+                user=os.getenv("SNOWFLAKE_USER"),
+                password=os.getenv("SNOWFLAKE_PASSWORD"),
+                role=os.getenv("SNOWFLAKE_ROLE", "SNOWGRAM_APP_ROLE"),
+                warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "SNOWGRAM_WH"),
+                database=os.getenv("SNOWFLAKE_DATABASE", "SNOWGRAM_DB"),
+                schema=os.getenv("SNOWFLAKE_SCHEMA", "CORE")
+            )
+            await snowflake_connector.connect()
+            logger.info("✅ Snowflake connection established")
+        else:
+            logger.warning("⚠️  SNOWFLAKE_ACCOUNT not set, running in test mode (icon/health endpoints only)")
+            snowflake_connector = None
     except Exception as e:
         logger.error(f"❌ Failed to connect to Snowflake: {e}")
-        raise
+        logger.warning("⚠️  Running in degraded mode (some endpoints may not work)")
+        snowflake_connector = None
+    
+    # Initialize Cortex Agent client
+    agent_name = os.getenv("CORTEX_AGENT_NAME", "SNOWGRAM_AGENT")
+    if agent_name:
+        try:
+            cortex_agent_client = CortexAgentClient(
+                account=os.getenv("SNOWFLAKE_ACCOUNT"),
+                user=os.getenv("SNOWFLAKE_USER"),
+                password=os.getenv("SNOWFLAKE_PASSWORD"),
+                agent_name=agent_name,
+                database=os.getenv("SNOWFLAKE_DATABASE", "SNOWGRAM_DB"),
+                schema=os.getenv("SNOWFLAKE_SCHEMA", "CORE")
+            )
+            logger.info(f"✅ Cortex Agent client initialized: {agent_name}")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to initialize Cortex Agent client: {e}")
+            logger.warning("⚠️  Diagram generation will use fallback mode")
+            cortex_agent_client = None
+    else:
+        logger.warning("⚠️  CORTEX_AGENT_NAME not set, diagram generation will use fallback mode")
+        cortex_agent_client = None
     
     yield
     
@@ -70,6 +100,9 @@ async def lifespan(app: FastAPI):
     if snowflake_connector:
         await snowflake_connector.close()
         logger.info("✅ Snowflake connection closed")
+    if cortex_agent_client:
+        await cortex_agent_client.close()
+        logger.info("✅ Cortex Agent client closed")
 
 
 # Create FastAPI application
@@ -180,8 +213,10 @@ async def websocket_chat(websocket: WebSocket):
 # =====================================================
 
 from backend.api.routes import diagrams, icons
+from backend.api import health
 
 # Include routers
+app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(diagrams.router, prefix="/api/diagram", tags=["diagrams"])
 app.include_router(icons.router, prefix="/api/icons", tags=["icons"])
 

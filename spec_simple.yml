@@ -15,13 +15,17 @@ spec:
     image: /snowgram_db/core/snowgram_image_repo/snowgram:latest
     
     # Environment configuration (update SNOWFLAKE_ACCOUNT for your deployment)
+    # NOTE: These credentials are for the SERVICE to access Snowflake resources
+    #       (not for restricting which users can access the service endpoint)
+    #       User access is controlled via OAuth and RBAC on the service object
     env:
       SNOWFLAKE_ACCOUNT: SFSENORTHAMERICA-ABANNERJEE_AWS1  # Replace with your account
-      SNOWFLAKE_USER: SVC_CURSOR
-      SNOWFLAKE_ROLE: SVC_CURSOR_ROLE
+      SNOWFLAKE_USER: SVC_CURSOR  # Service account (not end user)
+      SNOWFLAKE_ROLE: SVC_CURSOR_ROLE  # Service role for backend operations
       SNOWFLAKE_WAREHOUSE: COMPUTE_WH
       SNOWFLAKE_DATABASE: SNOWGRAM_DB
       SNOWFLAKE_SCHEMA: CORE
+      CORTEX_AGENT_NAME: SNOWGRAM_AGENT
       LOG_LEVEL: INFO
       ENVIRONMENT: production
       # Password provided via Snowflake secret (secure)
@@ -57,9 +61,11 @@ spec:
       successThreshold: 1
       failureThreshold: 3
   
-  # Public endpoint (OAuth-protected by Snowflake)
+  # Public endpoint - OAuth-protected by Snowflake
+  # All authenticated Snowflake users with USAGE privilege on the service can access
+  # Access control: GRANT USAGE ON SERVICE SNOWGRAM_SERVICE TO ROLE <role_name>
   endpoints:
   - name: web
     port: 80
-    public: true
+    public: true  # Enables OAuth authentication (not anonymous public access)
 
