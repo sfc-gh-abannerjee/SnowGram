@@ -702,7 +702,10 @@
 
 .actionButtonClear:hover,
 .actionButtonClear:focus-visible,
-.actionButtonClear:active {
+.actionButtonClear:active,
+.actionButton.actionButtonClear:hover,
+.actionButton.actionButtonClear:focus-visible,
+.actionButton.actionButtonClear:active {
   border-color: #DC2626;
   color: #DC2626;
   background: #FEE2E2;
