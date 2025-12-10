@@ -1148,5 +1148,27 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 - Border toggle works per shape; boundary dashed style is preserved when visible
 - Controls use concise iconography with tighter spacing
 
+### Milestone 19: Static Assets & Icon Restore ✅ (Completed)
+**Date**: 2025-12-10  
+**Impact**: Restored full Snowflake icon set and Next static wiring; cleaned repo for push
+
+**Deliverables**:
+- Restored all Snowflake SVG assets to `frontend/public/icons/` and ensured `iconMap.ts` paths resolve.
+- Added Next static setup (`_app.tsx`, `_document.tsx`, `globals.css`) with icon support.
+- Cleaned repo and pushed changes to remote; ignored local-only reference/agent helper files.
+
+**Files Updated**:
+- `frontend/public/icons/*` (complete Snowflake SVG set)
+- `frontend/src/components/iconMap.ts`
+- `frontend/pages/_app.tsx`
+- `frontend/pages/_document.tsx`
+- `frontend/styles/globals.css`
+- `.gitignore` (exclude local reference/agent helper docs, tests, setup helper)
+
+**Status**:
+- Icons load correctly in UI (no 404s)
+- Repo clean; changes pushed to origin/main
+- Local reference/helper files retained but ignored from Git
+
 ***
 
