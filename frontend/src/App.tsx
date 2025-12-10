@@ -872,19 +872,28 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) return;
 
-    const pat = process.env.NEXT_PUBLIC_SNOWFLAKE_PAT || process.env.REACT_APP_SNOWFLAKE_PAT;
-    if (!pat) {
-      alert('Missing Snowflake PAT. Set NEXT_PUBLIC_SNOWFLAKE_PAT or use a backend proxy.');
-      return;
-    }
-
     setIsGenerating(true);
     setShowAIModal(false);
 
     try {
-      const client = new SnowgramAgentClient(pat);
-      const data = await client.generateArchitecture(aiPrompt);
-      parseMermaidAndCreateDiagram(data.mermaidCode);
+      const pat = process.env.NEXT_PUBLIC_SNOWFLAKE_PAT || process.env.REACT_APP_SNOWFLAKE_PAT;
+
+      if (pat) {
+        // Direct call with PAT (dev)
+        const client = new SnowgramAgentClient(pat);
+        const data = await client.generateArchitecture(aiPrompt);
+        parseMermaidAndCreateDiagram(data.mermaidCode);
+      } else {
+        // Preferred: backend proxy (no PAT in browser)
+        const resp = await fetch('/api/diagram/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_query: aiPrompt }),
+        });
+        if (!resp.ok) throw new Error('Backend agent proxy failed');
+        const data: { mermaid_code: string } = await resp.json();
+        parseMermaidAndCreateDiagram(data.mermaid_code);
+      }
     } catch (error) {
       console.error('AI generation error:', error);
       alert('Failed to generate diagram. Ensure PAT or backend proxy is configured.');
