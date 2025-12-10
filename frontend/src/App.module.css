@@ -608,6 +608,13 @@
   font-size: 12px;
   color: #475569;
   max-width: 320px;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+
+.instructionsPanel:hover {
+  border-color: #10B981;
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.25), 0 0 0 3px rgba(16, 185, 129, 0.2);
 }
 
 .instructionItem {
@@ -628,7 +635,7 @@
 .quickTipsHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 6px;
@@ -641,13 +648,25 @@
   color: #0F4C75;
 }
 
-.quickTipsToggle {
-  font-weight: 700;
-  color: #0F4C75;
-}
-
 .quickTipsBody {
   margin-top: 6px;
+  max-height: 400px;
+  opacity: 1;
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+
+.quickTipsBody[data-open="false"] {
+  max-height: 0;
+  opacity: 0;
+}
+
+.quickTipsOpen {
+  transform: translateZ(0);
+}
+
+.quickTipsClosed {
+  transform: translateZ(0);
 }
 
 .highlight {

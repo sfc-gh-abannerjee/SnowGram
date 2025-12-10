@@ -1605,36 +1605,40 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           )}
           
           {/* Top-Left Panel with Instructions */}
-          <Panel position="top-left" className={styles.instructionsPanel}>
-            <div className={styles.quickTipsHeader} onClick={() => setShowQuickTips((v) => !v)}>
+          <Panel
+            position="top-left"
+            className={`${styles.instructionsPanel} ${showQuickTips ? styles.quickTipsOpen : styles.quickTipsClosed}`}
+            onClick={() => setShowQuickTips((v) => !v)}
+          >
+            <div className={styles.quickTipsHeader}>
               <strong>Quick Tips</strong>
-              <span className={styles.quickTipsToggle}>{showQuickTips ? '−' : '+'}</span>
             </div>
-            {showQuickTips && (
-              <div className={styles.quickTipsBody}>
-                <div className={styles.instructionItem}>
-                  • Drag components from left sidebar
-                </div>
-                <div className={styles.instructionItem}>
-                  • <span className={styles.highlight}>Double-click label to rename</span>
-                </div>
-                <div className={styles.instructionItem}>
-                  • <span className={styles.highlight}>Click node → resize handles appear</span>
-                </div>
-                <div className={styles.instructionItem}>
-                  • Drag from connection points to link
-                </div>
-                <div className={styles.instructionItem}>
-                  • <span className={styles.highlight}>Shift+click nodes for multi-select</span>
-                </div>
-                <div className={styles.instructionItem}>
-                  • <span className={styles.highlight}>Click edge → Shift+click more</span>
-                </div>
-                <div className={styles.instructionItem}>
-                  • Press Delete to remove selected
-                </div>
+            <div
+              className={styles.quickTipsBody}
+              data-open={showQuickTips ? 'true' : 'false'}
+            >
+              <div className={styles.instructionItem}>
+                • Drag components from left sidebar
               </div>
-            )}
+              <div className={styles.instructionItem}>
+                • <span className={styles.highlight}>Double-click label to rename</span>
+              </div>
+              <div className={styles.instructionItem}>
+                • <span className={styles.highlight}>Click node → resize handles appear</span>
+              </div>
+              <div className={styles.instructionItem}>
+                • Drag from connection points to link
+              </div>
+              <div className={styles.instructionItem}>
+                • <span className={styles.highlight}>Shift+click nodes for multi-select</span>
+              </div>
+              <div className={styles.instructionItem}>
+                • <span className={styles.highlight}>Click edge → Shift+click more</span>
+              </div>
+              <div className={styles.instructionItem}>
+                • Press Delete to remove selected
+              </div>
+            </div>
           </Panel>
 
           {/* Empty State */}
