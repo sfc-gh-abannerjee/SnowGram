@@ -876,24 +876,27 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     setShowAIModal(false);
 
     try {
-      const pat = process.env.NEXT_PUBLIC_SNOWFLAKE_PAT || process.env.REACT_APP_SNOWFLAKE_PAT;
-
-      if (pat) {
-        // Direct call with PAT (dev)
-        const client = new SnowgramAgentClient(pat);
-        const data = await client.generateArchitecture(aiPrompt);
-        parseMermaidAndCreateDiagram(data.mermaidCode);
-      } else {
-        // Preferred: backend proxy (no PAT in browser)
-        const resp = await fetch('/api/diagram/generate', {
+      // Preferred: backend proxy (no PAT in browser)
+      try {
+        const resp = await fetch('/api/agent/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ user_query: aiPrompt }),
+          body: JSON.stringify({ query: aiPrompt }),
         });
         if (!resp.ok) throw new Error('Backend agent proxy failed');
-        const data: { mermaid_code: string } = await resp.json();
-        parseMermaidAndCreateDiagram(data.mermaid_code);
+        const data: { mermaidCode: string } = await resp.json();
+        parseMermaidAndCreateDiagram(data.mermaidCode);
+        return;
+      } catch (proxyErr) {
+        console.warn('Backend proxy failed, attempting direct PAT flow', proxyErr);
       }
+
+      // Fallback: direct PAT (dev only)
+      const pat = process.env.NEXT_PUBLIC_SNOWFLAKE_PAT || process.env.REACT_APP_SNOWFLAKE_PAT;
+      if (!pat) throw new Error('Missing PAT and backend proxy failed.');
+      const client = new SnowgramAgentClient(pat);
+      const data = await client.generateArchitecture(aiPrompt);
+      parseMermaidAndCreateDiagram(data.mermaidCode);
     } catch (error) {
       console.error('AI generation error:', error);
       alert('Failed to generate diagram. Ensure PAT or backend proxy is configured.');
@@ -910,8 +913,8 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
       COMPONENT_CATEGORIES,
       isDarkMode
     );
-    setNodes(newNodes);
-    setEdges(newEdges);
+      setNodes(newNodes);
+      setEdges(newEdges);
   };
 
   return (
@@ -1345,55 +1348,55 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
               </div>
 
               <div className={styles.styleGroupRow}>
-                <button
+              <button
                   className={`${styles.boundaryToggle} ${cornerRadius > 0 ? styles.boundaryToggleGreen : styles.boundaryToggleBlue}`}
-                  onClick={() => {
+                onClick={() => {
                     const nextRadius = cornerRadius > 0 ? 0 : 10;
-                    setCornerRadius(nextRadius);
-                    setNodes((nds) =>
-                      nds.map((n) => {
-                        if (n.selected) {
-                          const isBoundary = (n.data as any)?.componentType?.startsWith('account_boundary');
-                          const hideBorder = (n.data as any)?.hideBorder;
-                          const boundaryColors: Record<string, string> = {
-                            account_boundary_snowflake: '#29B5E8',
-                            account_boundary_aws: '#FF9900',
-                            account_boundary_azure: '#0089D6',
-                            account_boundary_gcp: '#4285F4',
-                          };
-                          const boundaryColor = boundaryColors[(n.data as any)?.componentType] || '#94A3B8';
-                          const borderStyle = hideBorder
-                            ? 'none'
-                            : isBoundary
-                              ? `2px dashed ${boundaryColor}`
-                              : `2px solid ${(n.data as any)?.fillColor || '#29B5E8'}`;
-                          return {
-                            ...n,
-                            style: {
-                              ...(n.style || {}),
-                              borderRadius: nextRadius,
-                              border: borderStyle,
-                            },
-                            data: {
-                              ...(n.data || {}),
-                              cornerRadius: nextRadius,
-                              borderRadius: nextRadius,
-                            },
-                          };
-                        }
-                        return n;
-                      })
-                    );
-                  }}
+                  setCornerRadius(nextRadius);
+                  setNodes((nds) =>
+                    nds.map((n) => {
+                      if (n.selected) {
+                        const isBoundary = (n.data as any)?.componentType?.startsWith('account_boundary');
+                        const hideBorder = (n.data as any)?.hideBorder;
+                        const boundaryColors: Record<string, string> = {
+                          account_boundary_snowflake: '#29B5E8',
+                          account_boundary_aws: '#FF9900',
+                          account_boundary_azure: '#0089D6',
+                          account_boundary_gcp: '#4285F4',
+                        };
+                        const boundaryColor = boundaryColors[(n.data as any)?.componentType] || '#94A3B8';
+                        const borderStyle = hideBorder
+                          ? 'none'
+                          : isBoundary
+                            ? `2px dashed ${boundaryColor}`
+                            : `2px solid ${(n.data as any)?.fillColor || '#29B5E8'}`;
+                        return {
+                          ...n,
+                          style: {
+                            ...(n.style || {}),
+                            borderRadius: nextRadius,
+                            border: borderStyle,
+                          },
+                          data: {
+                            ...(n.data || {}),
+                            cornerRadius: nextRadius,
+                            borderRadius: nextRadius,
+                          },
+                        };
+                      }
+                      return n;
+                    })
+                  );
+                }}
                   aria-label={cornerRadius > 0 ? 'Use sharp corners' : 'Use rounded corners'}
                   title={cornerRadius > 0 ? 'Use sharp corners' : 'Use rounded corners'}
-                >
+              >
                   {cornerRadius > 0 ? (
                     <img src="/icons/trip_origin.svg" alt="Rounded corners" className={styles.iconLabelImg} />
-                  ) : (
+                ) : (
                     <img src="/icons/crop_square.svg" alt="Sharp corners" className={styles.iconLabelImg} />
-                  )}
-                </button>
+                )}
+              </button>
               </div>
 
               <div className={styles.layerInline}>
@@ -1430,14 +1433,14 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           {selectedEdges.length > 0 && menuPosition && (
             <div 
               className={styles.edgeActionsMinimal}
-          style={{
-            position: 'absolute',
-            left: `${menuPosition.x}px`,
-            top: `${menuPosition.y}px`,
-            transform: 'translate(-50%, -50%)',
-            zIndex: 1000,
-            pointerEvents: 'auto'
-          }}
+              style={{
+                position: 'absolute',
+                left: `${menuPosition.x}px`,
+                top: `${menuPosition.y}px`,
+                transform: 'translate(-50%, -50%)',
+                zIndex: 1000,
+                pointerEvents: 'auto'
+              }}
             >
               {/* Flip Direction Button - Light Blue with Swap Icon */}
               <button 
@@ -1478,26 +1481,26 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
               className={styles.quickTipsBody}
               data-open={showQuickTips ? 'true' : 'false'}
             >
-              <div className={styles.instructionItem}>
-                • Drag components from left sidebar
-              </div>
-              <div className={styles.instructionItem}>
-                • <span className={styles.highlight}>Double-click label to rename</span>
-              </div>
-              <div className={styles.instructionItem}>
-                • <span className={styles.highlight}>Click node → resize handles appear</span>
-              </div>
-              <div className={styles.instructionItem}>
-                • Drag from connection points to link
-              </div>
-              <div className={styles.instructionItem}>
-                • <span className={styles.highlight}>Shift+click nodes for multi-select</span>
-              </div>
-              <div className={styles.instructionItem}>
-                • <span className={styles.highlight}>Click edge → Shift+click more</span>
-              </div>
-              <div className={styles.instructionItem}>
-                • Press Delete to remove selected
+            <div className={styles.instructionItem}>
+              • Drag components from left sidebar
+            </div>
+            <div className={styles.instructionItem}>
+              • <span className={styles.highlight}>Double-click label to rename</span>
+            </div>
+            <div className={styles.instructionItem}>
+              • <span className={styles.highlight}>Click node → resize handles appear</span>
+            </div>
+            <div className={styles.instructionItem}>
+              • Drag from connection points to link
+            </div>
+            <div className={styles.instructionItem}>
+              • <span className={styles.highlight}>Shift+click nodes for multi-select</span>
+            </div>
+            <div className={styles.instructionItem}>
+              • <span className={styles.highlight}>Click edge → Shift+click more</span>
+            </div>
+            <div className={styles.instructionItem}>
+              • Press Delete to remove selected
               </div>
             </div>
           </Panel>
