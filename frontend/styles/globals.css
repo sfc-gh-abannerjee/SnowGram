@@ -197,3 +197,14 @@ body {
     0 8px 18px rgba(74, 222, 128, 0.28),
     0 0 12px rgba(74, 222, 128, 0.45);
 }
+
+/* Minimap selection: green fill for selected nodes */
+.react-flow__minimap-node.selected {
+  fill: #10B981 !important;
+  stroke: #10B981 !important;
+}
+
+.darkMode .react-flow__minimap-node.selected {
+  fill: #4ADE80 !important;
+  stroke: #4ADE80 !important;
+}
