@@ -20,7 +20,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const client = new SnowgramAgentClient(pat);
     const result = await client.generateArchitecture(query);
 
-    res.status(200).json({ mermaidCode: result.mermaidCode });
+    res.status(200).json({
+      mermaidCode: result.mermaidCode,
+      spec: result.spec,
+      overview: result.overview,
+      bestPractices: result.bestPractices,
+      antiPatterns: result.antiPatterns,
+      components: result.components,
+      rawResponse: result.rawResponse,
+    });
   } catch (error) {
     console.error('Agent proxy error:', error);
     res.status(500).json({ error: 'Agent proxy failed' });

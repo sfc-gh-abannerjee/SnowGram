@@ -1,9 +1,11 @@
-import React, { useState, useCallback, useRef } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element, react-hooks/exhaustive-deps */
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import ReactFlow, {
   Node,
   Edge,
   addEdge,
   Connection,
+  ConnectionMode,
   useNodesState,
   useEdgesState,
   Controls,
@@ -20,9 +22,839 @@ import CustomNode from './components/CustomNode';
 import { SnowgramAgentClient } from './lib/snowgram-agent-client';
 import { convertMermaidToFlow } from './lib/mermaidToReactFlow';
 
+type AgentResult = {
+  mermaidCode: string;
+  spec?: { nodes: any[]; edges: any[] };
+  overview?: string;
+  bestPractices?: string[];
+  antiPatterns?: string[];
+  components?: Array<{ name: string; purpose: string; configuration: string; bestPractice: string; source?: string }>;
+  rawResponse?: string;
+};
+
 const nodeTypes: NodeTypes = {
   snowflakeNode: CustomNode,
 };
+
+// Flattened catalog for quick icon lookup
+const ALL_COMPONENTS = Object.values(COMPONENT_CATEGORIES).flat() as Array<{
+  id: string;
+  name: string;
+  icon: string;
+}>;
+
+// Map a component type/name to the best icon available
+const getIconForComponentType = (componentType?: string) => {
+  const key = (componentType || '').toLowerCase();
+  // NEVER return icons for account boundaries
+  if (key.startsWith('account_boundary')) return undefined;
+  const directMap: Record<string, string> = {
+    database: SNOWFLAKE_ICONS.database,
+    schema: SNOWFLAKE_ICONS.schema,
+    table: SNOWFLAKE_ICONS.table,
+    view: SNOWFLAKE_ICONS.view,
+    analytics_views: SNOWFLAKE_ICONS.view,
+    analytics: SNOWFLAKE_ICONS.view,
+    warehouse: SNOWFLAKE_ICONS.warehouse,
+    'data wh': SNOWFLAKE_ICONS.warehouse_data,
+    datawh: SNOWFLAKE_ICONS.warehouse_data,
+    'virtual wh': SNOWFLAKE_ICONS.warehouse,
+    virtualwh: SNOWFLAKE_ICONS.warehouse,
+    'snowpark wh': SNOWFLAKE_ICONS.warehouse_snowpark,
+    'adaptive wh': SNOWFLAKE_ICONS.warehouse_adaptive,
+    stream: SNOWFLAKE_ICONS.stream,
+    stream_bronze_silver: SNOWFLAKE_ICONS.stream,
+    stream_silver_gold: SNOWFLAKE_ICONS.stream,
+    snowpipe: SNOWFLAKE_ICONS.snowpipe,
+    task: SNOWFLAKE_ICONS.task,
+    bronze_db: SNOWFLAKE_ICONS.database,
+    silver_db: SNOWFLAKE_ICONS.database,
+    gold_db: SNOWFLAKE_ICONS.database,
+    bronze_schema: SNOWFLAKE_ICONS.schema,
+    silver_schema: SNOWFLAKE_ICONS.schema,
+    gold_schema: SNOWFLAKE_ICONS.schema,
+    bronze_tables: SNOWFLAKE_ICONS.table,
+    silver_tables: SNOWFLAKE_ICONS.table,
+    gold_tables: SNOWFLAKE_ICONS.table,
+    bronze: SNOWFLAKE_ICONS.database,
+    silver: SNOWFLAKE_ICONS.database,
+    gold: SNOWFLAKE_ICONS.database,
+  };
+
+  if (directMap[key]) return directMap[key];
+
+  const exact = ALL_COMPONENTS.find(
+    (c) => c.id.toLowerCase() === key || c.name.toLowerCase() === key
+  );
+  if (exact) return exact.icon;
+
+  const contains = ALL_COMPONENTS.find(
+    (c) => key.includes(c.id.toLowerCase()) || key.includes(c.name.toLowerCase())
+  );
+  return contains?.icon || SNOWFLAKE_ICONS.table;
+};
+
+// Safe no-op callbacks for nodes that should not expose edit/delete (e.g., boundaries)
+const boundaryCallbacks = {
+  onRename: (_id: string, _newName: string) => {},
+  onDelete: (_id: string) => {},
+  onCopy: (_id: string) => {},
+};
+
+const normalizeBoundaryType = (raw?: string, label?: string, id?: string) => {
+  const rawLower = (raw || '').toLowerCase();
+  const idLower = (id || '').toLowerCase();
+  
+  // Check if this is explicitly a boundary node (by ID or componentType)
+  const isBoundaryNode = idLower.startsWith('account_boundary_') || 
+                         rawLower.includes('boundary') || 
+                         rawLower.startsWith('account_');
+  
+  if (!isBoundaryNode) {
+    return raw; // Regular component, don't convert
+  }
+  
+  // Normalize to canonical boundary type
+  const text = `${rawLower} ${(label || '').toLowerCase()} ${idLower}`;
+  if (text.includes('snowflake')) return 'account_boundary_snowflake';
+  if (text.includes('aws') || text.includes('amazon')) return 'account_boundary_aws';
+  if (text.includes('azure')) return 'account_boundary_azure';
+  if (text.includes('gcp') || text.includes('google')) return 'account_boundary_gcp';
+  
+  return raw;
+};
+
+// Enforce single boundary per provider; remap edges to canonical boundary ids; restyle boundaries
+const enforceAccountBoundaries = (nodes: Node[], edges: Edge[], isDark: boolean) => {
+  const providerId = (ct?: string) => {
+    const t = (ct || '').toLowerCase();
+    if (t.includes('account_boundary_snowflake')) return 'account_boundary_snowflake';
+    if (t.includes('account_boundary_aws')) return 'account_boundary_aws';
+    if (t.includes('account_boundary_azure')) return 'account_boundary_azure';
+    if (t.includes('account_boundary_gcp')) return 'account_boundary_gcp';
+    return null;
+  };
+
+  const keepers = new Map<string, Node>();
+  const idRemap = new Map<string, string>();
+
+  nodes.forEach((n) => {
+    const rawType = ((n.data as any)?.componentType || n.id || '').toString();
+    const normalizedType = normalizeBoundaryType(rawType, (n.data as any)?.label, n.id) || rawType;
+    const pid = providerId(normalizedType);
+    if (!pid) return;
+    // assign canonical id/type
+    const canonicalId = pid;
+    idRemap.set(n.id, canonicalId);
+    if (!keepers.has(pid)) {
+      keepers.set(
+        pid,
+        ensureBoundaryStyle(
+          {
+            ...n,
+            id: canonicalId,
+            data: {
+              ...(n.data as any),
+              componentType: canonicalId,
+              icon: undefined,
+              showHandles: false,
+            },
+          },
+          isDark
+        )
+      );
+    }
+  });
+
+  const filteredNodes = [
+    ...keepers.values(),
+    ...nodes.filter((n) => !providerId(((n.data as any)?.componentType || '').toString())),
+  ];
+
+  const remappedEdges = edges.map((e) => {
+    const src = idRemap.get(e.source) || e.source;
+    const tgt = idRemap.get(e.target) || e.target;
+    return { ...e, source: src, target: tgt };
+  });
+
+  return { nodes: filteredNodes, edges: remappedEdges };
+};
+
+// Ensure boundary nodes (account_boundary_*) have consistent styling and no icons
+const ensureBoundaryStyle = (node: Node, isDark: boolean): Node => {
+  const compType = ((node.data as any)?.componentType || '').toString().toLowerCase();
+  if (!compType.startsWith('account_boundary')) return node;
+
+  const brandColors: Record<string, string> = {
+    account_boundary_snowflake: '#29B5E8',
+    account_boundary_aws: '#FF9900',
+    account_boundary_azure: '#0089D6',
+    account_boundary_gcp: '#4285F4',
+  };
+
+  const brandFill = brandColors[compType] || '#29B5E8';
+  const toRgb = (hex: string) => {
+    const m = hex.replace('#', '');
+    if (m.length === 3) {
+      return {
+        r: parseInt(m[0] + m[0], 16),
+        g: parseInt(m[1] + m[1], 16),
+        b: parseInt(m[2] + m[2], 16),
+      };
+    }
+    if (m.length === 6) {
+      return {
+        r: parseInt(m.substring(0, 2), 16),
+        g: parseInt(m.substring(2, 4), 16),
+        b: parseInt(m.substring(4, 6), 16),
+      };
+    }
+    return { r: 41, g: 181, b: 232 };
+  };
+
+  const fillColor = ((node.data as any)?.fillColor as string) || brandFill;
+  const alpha =
+    typeof (node.data as any)?.fillAlpha === 'number'
+      ? (node.data as any)?.fillAlpha
+      : isDark
+        ? 0.15
+        : 0.08;
+  const { r, g, b } = toRgb(fillColor);
+  const background = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+
+  return {
+    ...node,
+    style: {
+      ...(node.style || {}),
+      width: (node.style as any)?.width ?? 360,
+      height: (node.style as any)?.height ?? 220,
+      border: `2px dashed ${brandFill}`,
+      background,
+      borderRadius: 16,
+      color: isDark ? '#e5f2ff' : '#1a1a1a',
+      zIndex: (node.style as any)?.zIndex ?? -20,
+    },
+    data: {
+      ...(node.data as any),
+      icon: undefined, // never show icon on boundary
+      labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
+      isDarkMode: isDark,
+      showHandles: false,
+      fillColor,
+      fillAlpha: alpha,
+      cornerRadius: 16,
+      hideBorder: false,
+      ...boundaryCallbacks,
+    },
+  };
+};
+
+// Create cloud/account boundary nodes (AWS/Azure/GCP/Snowflake) and push to back
+const addAccountBoundaries = (nodes: Node[]): Node[] => {
+  console.log(`[addAccountBoundaries] Called with ${nodes.length} nodes`);
+  const lowered = (s?: string) => (s || '').toLowerCase();
+  const hasKeyword = (n: Node, keywords: string[]) =>
+    keywords.some((k) => lowered((n.data as any)?.label).includes(k) || lowered((n.data as any)?.componentType).includes(k));
+
+  const isBoundary = (n: Node) => lowered((n.data as any)?.componentType).startsWith('account_boundary');
+
+  const cloudSets = {
+    aws: ['s3', 'lake', 'aws'],
+    azure: ['azure', 'adls', 'blob'],
+    gcp: ['gcp', 'gcs', 'google', 'bigquery', 'bq'],
+  };
+
+  const existingBoundary = (nodes || []).reduce<Record<string, boolean>>((acc, n) => {
+    const ct = lowered((n.data as any)?.componentType);
+    if (ct.startsWith('account_boundary')) {
+      acc[ct] = true;
+      console.log(`[addAccountBoundaries] Detected existing boundary: ${ct} (id: ${n.id})`);
+    }
+    return acc;
+  }, {});
+  
+  console.log(`[addAccountBoundaries] Existing boundaries:`, Object.keys(existingBoundary));
+
+  // Partition nodes by cloud vs snowflake (exclude boundaries from the working set)
+  const nonBoundaryNodes = nodes.filter((n) => !isBoundary(n));
+  const awsNodes = nonBoundaryNodes.filter((n) => hasKeyword(n, cloudSets.aws));
+  const azureNodes = nonBoundaryNodes.filter((n) => hasKeyword(n, cloudSets.azure));
+  const gcpNodes = nonBoundaryNodes.filter((n) => hasKeyword(n, cloudSets.gcp));
+
+  // Snowflake nodes = everything else that's not a cloud node or boundary
+  const cloudNodeIds = new Set([...awsNodes, ...azureNodes, ...gcpNodes].map((n) => n.id));
+  const snowflakeNodes = nonBoundaryNodes.filter((n) => !cloudNodeIds.has(n.id));
+  
+  console.log(`[addAccountBoundaries] AWS nodes: ${awsNodes.length}, Snowflake nodes: ${snowflakeNodes.length}, Azure: ${azureNodes.length}, GCP: ${gcpNodes.length}`);
+
+  const bbox = (list: Node[]) => {
+    if (!list.length) return null;
+    const xs = list.map((n) => n.position.x);
+    const ys = list.map((n) => n.position.y);
+    const widths = list.map((n) => ((n.style as any)?.width as number) || 180);
+    const heights = list.map((n) => ((n.style as any)?.height as number) || 140);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...list.map((n, i) => xs[i] + widths[i]));
+    const maxY = Math.max(...list.map((n, i) => ys[i] + heights[i]));
+    return { minX, minY, maxX, maxY };
+  };
+
+  const padX = 16;
+  const padY = 24;
+
+  const makeBoundary = (canonicalType: string, label: string, color: string, box: { minX: number; minY: number; maxX: number; maxY: number }, isDark: boolean = false) => {
+    // Convert hex to RGB for proper alpha blending
+    const hexToRgbBoundary = (hex: string) => {
+      const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+      return result ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16)
+      } : { r: 41, g: 181, b: 232 };
+    };
+    const rgb = hexToRgbBoundary(color);
+    // Use higher alpha in dark mode for visibility, lower in light mode to avoid overwhelming
+    const alpha = isDark ? 0.15 : 0.08;
+    const bgColor = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`;
+    
+    return {
+      id: `${canonicalType}_${Date.now()}`, // Timestamped ID for uniqueness
+      type: 'snowflakeNode',
+      position: { x: box.minX - padX, y: box.minY - padY },
+      style: {
+        width: (box.maxX - box.minX) + padX * 2,
+        height: (box.maxY - box.minY) + padY * 2,
+        border: `2px dashed ${color}`,
+        background: bgColor,
+        borderRadius: 16,
+        color: isDark ? '#e5f2ff' : '#1a1a1a',
+        zIndex: -20,
+      },
+      data: {
+        label,
+        componentType: canonicalType, // Use canonical type, not timestamped ID
+        icon: undefined, // Boundaries should NEVER have icons
+        labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
+        isDarkMode: isDark,
+        showHandles: false,
+        fillColor: color,
+        fillAlpha: alpha,
+        cornerRadius: 16,
+        hideBorder: false,
+        ...boundaryCallbacks,
+      },
+    } as Node;
+  };
+
+  const boundaries: Node[] = [];
+  const isDark = nodes[0]?.data?.isDarkMode ?? false;
+
+  // Debug: log sample nodes
+  if (snowflakeNodes.length > 0) {
+    const sample = snowflakeNodes.slice(0, 3).map(n => ({
+      id: n.id,
+      label: (n.data as any)?.label,
+      pos: n.position,
+      style: n.style
+    }));
+    console.log(`[addAccountBoundaries] Sample Snowflake nodes:`, sample);
+  }
+  
+  const snowBox = bbox(snowflakeNodes);
+  console.log(`[addAccountBoundaries] Snowflake box:`, snowBox, `existing:`, existingBoundary['account_boundary_snowflake']);
+  if (snowBox && !existingBoundary['account_boundary_snowflake']) {
+    console.log(`[addAccountBoundaries] ✅ Creating Snowflake boundary (not provided by agent)`);
+    boundaries.push(makeBoundary('account_boundary_snowflake', 'Snowflake Account', '#29B5E8', snowBox, isDark));
+  } else if (existingBoundary['account_boundary_snowflake']) {
+    console.log(`[addAccountBoundaries] ⏭️  Skipping Snowflake boundary (already exists from agent)`);
+  }
+
+  const awsBoxRaw = bbox(awsNodes);
+  console.log(`[addAccountBoundaries] AWS box:`, awsBoxRaw, `existing:`, existingBoundary['account_boundary_aws']);
+  if (awsBoxRaw && !existingBoundary['account_boundary_aws']) {
+    console.log(`[addAccountBoundaries] ✅ Creating AWS boundary (not provided by agent)`);
+    // Position AWS box to the left of Snowflake box when both exist to avoid overlap
+    const width = (awsBoxRaw.maxX - awsBoxRaw.minX) + padX * 2;
+    const height = (awsBoxRaw.maxY - awsBoxRaw.minY) + padY * 2;
+    const leftX = snowBox ? snowBox.minX - width - 40 : awsBoxRaw.minX - padX;
+    const box = snowBox
+      ? { minX: leftX, minY: awsBoxRaw.minY - padY, maxX: leftX + width, maxY: awsBoxRaw.maxY + padY }
+      : awsBoxRaw;
+    boundaries.push(makeBoundary('account_boundary_aws', 'AWS Account', '#FF9900', box, isDark));
+  } else if (existingBoundary['account_boundary_aws']) {
+    console.log(`[addAccountBoundaries] ⏭️  Skipping AWS boundary (already exists from agent)`);
+  }
+
+  const azureBox = bbox(azureNodes);
+  if (azureBox && !existingBoundary['account_boundary_azure']) {
+    console.log(`[addAccountBoundaries] ✅ Creating Azure boundary (not provided by agent)`);
+    boundaries.push(makeBoundary('account_boundary_azure', 'Azure Account', '#0089D6', azureBox, isDark));
+  } else if (existingBoundary['account_boundary_azure']) {
+    console.log(`[addAccountBoundaries] ⏭️  Skipping Azure boundary (already exists from agent)`);
+  }
+
+  const gcpBox = bbox(gcpNodes);
+  if (gcpBox && !existingBoundary['account_boundary_gcp']) {
+    console.log(`[addAccountBoundaries] ✅ Creating GCP boundary (not provided by agent)`);
+    boundaries.push(makeBoundary('account_boundary_gcp', 'GCP Account', '#4285F4', gcpBox, isDark));
+  } else if (existingBoundary['account_boundary_gcp']) {
+    console.log(`[addAccountBoundaries] ⏭️  Skipping GCP boundary (already exists from agent)`);
+  }
+
+  // Collect existing boundaries from input
+  const existingBoundaryNodes = nodes.filter((n) => isBoundary(n));
+  
+  console.log(`[addAccountBoundaries] Created ${boundaries.length} new boundaries, found ${existingBoundaryNodes.length} existing boundaries`);
+  
+  // Calculate bounding boxes for recalculation
+  const snowBoxCalc = bbox(snowflakeNodes);
+  const awsBoxCalc = bbox(awsNodes);
+  const azureBoxCalc = bbox(azureNodes);
+  const gcpBoxCalc = bbox(gcpNodes);
+  
+  // Recalculate positions for agent-provided boundaries based on actual node positions
+  const recalculatedBoundaries = existingBoundaryNodes.map(boundary => {
+    const compType = lowered((boundary.data as any)?.componentType);
+    
+    // Find nodes that should be inside this boundary
+    let containedNodes: Node[] = [];
+    let rawBox: ReturnType<typeof bbox> = null;
+    
+    if (compType === 'account_boundary_snowflake') {
+      containedNodes = snowflakeNodes;
+      rawBox = snowBoxCalc;
+    } else if (compType === 'account_boundary_aws') {
+      containedNodes = awsNodes;
+      rawBox = awsBoxCalc;
+    } else if (compType === 'account_boundary_azure') {
+      containedNodes = azureNodes;
+      rawBox = azureBoxCalc;
+    } else if (compType === 'account_boundary_gcp') {
+      containedNodes = gcpNodes;
+      rawBox = gcpBoxCalc;
+    }
+    
+    if (!rawBox) {
+      console.log(`[addAccountBoundaries] No box for ${compType}, keeping original dimensions`);
+      return boundary;
+    }
+    
+    console.log(`[addAccountBoundaries] Recalculating ${compType} boundary from ${containedNodes.length} nodes`);
+    
+    // Apply spacing logic: AWS should be positioned to the left of Snowflake with 40px gap
+    let finalPosition = { x: rawBox.minX - padX, y: rawBox.minY - padY };
+    const finalSize = {
+      width: (rawBox.maxX - rawBox.minX) + padX * 2,
+      height: (rawBox.maxY - rawBox.minY) + padY * 2
+    };
+    
+    if (compType === 'account_boundary_aws' && snowBoxCalc) {
+      // Calculate the width of the AWS boundary
+      const awsWidth = (rawBox.maxX - rawBox.minX) + padX * 2;
+      // Calculate Snowflake boundary left edge (node minX - padding)
+      const snowflakeBoundaryLeft = snowBoxCalc.minX - padX;
+      // Position AWS to the left of Snowflake boundary with 40px gap
+      const leftX = snowflakeBoundaryLeft - awsWidth - 40;
+      finalPosition = { x: leftX, y: rawBox.minY - padY };
+      console.log(`[addAccountBoundaries] Repositioning AWS: snowflake nodes minX=${snowBoxCalc.minX}, snowflake boundary left=${snowflakeBoundaryLeft}, awsWidth=${awsWidth}, final leftX=${leftX}`);
+    }
+    
+    // Update boundary position and size
+    return {
+      ...boundary,
+      position: finalPosition,
+      style: {
+        ...(boundary.style || {}),
+        width: finalSize.width,
+        height: finalSize.height,
+      },
+    };
+  });
+  
+  // Combine: newly created boundaries + recalculated existing boundaries + non-boundary nodes
+  const allBoundaries = [...boundaries, ...recalculatedBoundaries];
+  
+  console.log(`[addAccountBoundaries] Total boundaries: ${allBoundaries.length} (${boundaries.length} new + ${recalculatedBoundaries.length} recalculated)`);
+  
+  // Push boundaries behind everything else
+  return [...allBoundaries, ...nonBoundaryNodes];
+};
+
+// Compact DAG layout: layers by dependency, wrapped columns to avoid extreme width/height
+const layoutNodes = (nodes: Node[], edges: Edge[]) => {
+  const nodeMap = new Map<string, Node>();
+  const indegree = new Map<string, number>();
+  const children = new Map<string, string[]>();
+
+  nodes.forEach((n) => {
+    nodeMap.set(n.id, n);
+    indegree.set(n.id, 0);
+  });
+
+  edges.forEach((e) => {
+    if (!nodeMap.has(e.source) || !nodeMap.has(e.target)) return;
+    indegree.set(e.target, (indegree.get(e.target) || 0) + 1);
+    if (!children.has(e.source)) children.set(e.source, []);
+    children.get(e.source)!.push(e.target);
+  });
+
+  const queue: string[] = [];
+  indegree.forEach((v, k) => {
+    if (v === 0) queue.push(k);
+  });
+  // Fallback if cycle: start with all nodes
+  if (queue.length === 0) queue.push(...nodes.map((n) => n.id));
+
+  const level = new Map<string, number>();
+  queue.forEach((id) => level.set(id, 0));
+
+  while (queue.length) {
+    const cur = queue.shift()!;
+    const curLevel = level.get(cur) ?? 0;
+    const kids = children.get(cur) || [];
+    kids.forEach((kid) => {
+      const next = indegree.get(kid) || 0;
+      indegree.set(kid, next - 1);
+      if (next - 1 === 0) {
+        queue.push(kid);
+        level.set(kid, Math.max(level.get(kid) ?? 0, curLevel + 1));
+      } else {
+        // For cycles, still try to increase depth
+        level.set(kid, Math.max(level.get(kid) ?? 0, curLevel + 1));
+      }
+    });
+  }
+
+  // Group by level
+  const grouped = new Map<number, string[]>();
+  nodes.forEach((n) => {
+    const l = level.get(n.id) ?? 0;
+    if (!grouped.has(l)) grouped.set(l, []);
+    grouped.get(l)!.push(n.id);
+  });
+
+  const X_SPACING = 200;
+  const Y_SPACING = 150;
+  const MAX_COLS = 4;
+  const ROW_HEIGHT = Y_SPACING * 6; // allows up to ~6 rows per block before overlap
+
+  const laidOut = nodes.map((n) => {
+    const l = level.get(n.id) ?? 0;
+    const siblings = grouped.get(l) || [];
+    const idx = siblings.indexOf(n.id);
+    const col = l % MAX_COLS;
+    const blockRow = Math.floor(l / MAX_COLS);
+    return {
+      ...n,
+      position: {
+        x: col * X_SPACING,
+        y: blockRow * ROW_HEIGHT + idx * Y_SPACING,
+      },
+    };
+  });
+
+  return laidOut;
+};
+
+// Heuristic grid layout + edge pruning for medallion flows
+const layoutMedallion = (nodes: Node[], edges: Edge[]) => {
+  const isBoundary = (n: Node) => (((n.data as any)?.componentType || '') as string).toLowerCase().startsWith('account_boundary');
+  const nonBoundary = nodes.filter((n) => !isBoundary(n));
+
+  // helper to score and pick best match
+  const pick = (keywords: string[]): Node | null => {
+    const score = (n: Node) => {
+      const s = `${((n.data as any)?.label || '')} ${((n.data as any)?.componentType || '')}`.toLowerCase();
+      return keywords.reduce((acc, k) => (s.includes(k) ? acc + 1 : acc), 0);
+    };
+    return nonBoundary.reduce<{ best: Node | null; sc: number }>(
+      (acc, n) => {
+        const sc = score(n);
+        if (sc > acc.sc) return { best: n, sc };
+        return acc;
+      },
+      { best: null, sc: 0 }
+    ).best;
+  };
+
+  const cloud = pick(['s3', 'lake', 'aws']);
+  const snowpipe = pick(['snowpipe', 'ingest']);
+  const bronzeDb = pick(['bronze db', 'bronze database', 'bronze']);
+  const bronzeSchema = pick(['raw schema', 'bronze schema', 'raw']);
+  const bronzeTables = pick(['raw table', 'bronze table', 'raw tables']);
+  const bronzeStream = pick(['bronze to silver', 'bronze stream']);
+  const silverDb = pick(['silver db', 'silver database', 'silver']);
+  const silverSchema = pick(['cleansed schema', 'silver schema', 'clean schema', 'cleansed']);
+  const silverTables = pick(['cleansed table', 'silver table', 'cleansed tables']);
+  const silverStream = pick(['silver to gold', 'silver stream']);
+  const goldDb = pick(['gold db', 'gold database', 'gold']);
+  const goldSchema = pick(['curated schema', 'refined schema', 'gold schema']);
+  const goldTables = pick(['curated tables', 'refined tables', 'gold tables']);
+  const analytics = pick(['analytics', 'view']);
+  const warehouse = pick(['warehouse', 'compute']);
+
+  const X = (c: number) => 200 + c * 190;
+  const Y = (r: number) => 80 + r * 120;
+  const place = (n: Node | null, c: number, r: number) =>
+    n
+      ? {
+          ...n,
+          position: { x: X(c), y: Y(r) },
+        }
+      : null;
+
+  const positioned: Node[] = [
+    place(cloud, 0, 0),
+    place(snowpipe, 1, 0),
+    place(bronzeDb, 2, 0),
+    place(silverDb, 3, 0),
+    place(goldDb, 4, 0),
+    place(analytics, 5, 2),
+    place(warehouse, 6, 0),
+
+    place(bronzeSchema, 2, 1),
+    place(silverSchema, 3, 1),
+    place(goldSchema, 4, 1),
+
+    place(bronzeTables, 2, 2),
+    place(silverTables, 3, 2),
+    place(goldTables, 4, 2),
+
+    place(bronzeStream, 2, 3),
+    place(silverStream, 3, 3),
+  ].filter(Boolean) as Node[];
+
+  const placedIds = new Set(positioned.map((n) => n.id));
+  // extras to the right
+  let extrasCol = 7;
+  nonBoundary
+    .filter((n) => !placedIds.has(n.id))
+    .forEach((n, idx) => {
+      positioned.push({
+        ...n,
+        position: { x: X(extrasCol), y: Y(idx) },
+      });
+      if (idx % 4 === 3) extrasCol += 1;
+    });
+
+  // rebuild edges to reduce clutter
+  const makeEdge = (a: Node | null, b: Node | null, idx: number) =>
+    a && b
+      ? ({
+          id: `m-${a.id}-${b.id}-${idx}`,
+          source: a.id,
+          target: b.id,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: '#29B5E8', strokeWidth: 2 },
+          deletable: true,
+        } as Edge)
+      : null;
+
+  const newEdges: Edge[] = [
+    makeEdge(cloud, snowpipe, 0),
+    makeEdge(snowpipe, bronzeDb, 1),
+    makeEdge(bronzeDb, silverDb, 2),
+    makeEdge(silverDb, goldDb, 3),
+    makeEdge(goldDb, analytics, 4),
+    makeEdge(analytics, warehouse, 5),
+
+    makeEdge(bronzeDb, bronzeSchema, 6),
+    makeEdge(bronzeSchema, bronzeTables, 7),
+    makeEdge(bronzeTables, bronzeStream, 8),
+    makeEdge(bronzeStream, silverDb, 9),
+
+    makeEdge(silverDb, silverSchema, 10),
+    makeEdge(silverSchema, silverTables, 11),
+    makeEdge(silverTables, silverStream, 12),
+    makeEdge(silverStream, goldDb, 13),
+
+    makeEdge(goldDb, goldSchema, 14),
+    makeEdge(goldSchema, goldTables, 15),
+    makeEdge(goldTables, analytics, 16),
+  ].filter(Boolean) as Edge[];
+
+  // Don't carry forward boundaries - let addAccountBoundaries create them fresh
+  console.log(`[layoutMedallion] Returning ${positioned.length} positioned nodes`);
+  return { nodes: positioned, edges: newEdges.length ? newEdges : edges };
+};
+
+// Deterministic medallion layout: fixed slots + minimal edges + non-overlapping boundaries
+const layoutMedallionDeterministic = (nodes: Node[]) => {
+  const isBoundary = (n: Node) => (((n.data as any)?.componentType || '') as string).toLowerCase().startsWith('account_boundary');
+  const nonBoundary = nodes.filter((n) => !isBoundary(n));
+  const boundaries = nodes.filter((n) => isBoundary(n));
+
+  const pick = (keywords: string[]): Node | null => {
+    const score = (n: Node) => {
+      const s = `${((n.data as any)?.label || '')} ${((n.data as any)?.componentType || '')}`.toLowerCase();
+      return keywords.reduce((acc, k) => (s.includes(k) ? acc + 1 : acc), 0);
+    };
+    return nonBoundary.reduce<{ best: Node | null; sc: number }>(
+      (acc, n) => {
+        const sc = score(n);
+        if (sc > acc.sc) return { best: n, sc };
+        return acc;
+      },
+      { best: null, sc: 0 }
+    ).best;
+  };
+
+  const cloud = pick(['s3', 'lake', 'aws']);
+  const snowpipe = pick(['snowpipe', 'ingest']);
+  const bronzeDb = pick(['bronze db', 'bronze database', 'bronze']);
+  const bronzeSchema = pick(['raw schema', 'bronze schema', 'raw']);
+  const bronzeTables = pick(['raw table', 'bronze table', 'raw tables']);
+  const bronzeStream = pick(['bronze to silver', 'bronze stream']);
+  const silverDb = pick(['silver db', 'silver database', 'silver']);
+  const silverSchema = pick(['cleansed schema', 'silver schema', 'clean schema', 'cleansed']);
+  const silverTables = pick(['cleansed table', 'silver table', 'cleansed tables']);
+  const silverStream = pick(['silver to gold', 'silver stream']);
+  const goldDb = pick(['gold db', 'gold database', 'gold']);
+  const goldSchema = pick(['curated schema', 'refined schema', 'gold schema']);
+  const goldTables = pick(['curated tables', 'refined tables', 'gold tables']);
+  const analytics = pick(['analytics', 'view']);
+  const warehouse = pick(['warehouse', 'compute']);
+  const analyticsWh = pick(['analytics wh', 'analytics warehouse', 'analytics_wh', 'analyticswh']);
+  const businessSchema = pick(['business schema', 'biz schema', 'business']);
+  const businessTables = pick(['business table', 'biz table', 'business tables']);
+  const businessDb = pick(['business db', 'biz db']);
+  const cleanedSchema = pick(['cleaned schema', 'clean schema']);
+  const cleanedTables = pick(['cleaned tables', 'clean tables']);
+
+  // Fixed grid slots (tighter spacing) + gap to AWS
+  const baseX = 360;
+  const baseY = 200;
+  const GAP_X = 60; // gap between AWS and Snowflake
+  const X = (c: number) => baseX + c * 200;
+  const Y = (r: number) => baseY + r * 140;
+  const place = (n: Node | null, c: number, r: number) =>
+    n
+      ? {
+          ...n,
+          position: { x: X(c), y: Y(r) },
+        }
+      : null;
+  const placeAt = (n: Node | null, x: number, y: number) =>
+    n
+      ? {
+          ...n,
+          position: { x, y },
+        }
+      : null;
+
+  const positioned: Node[] = [
+    placeAt(cloud, 80, baseY + 20),
+    placeAt(snowpipe, 180, baseY + 20),
+    place(bronzeDb, 0, 0),
+    place(silverDb, 1, 0),
+    place(goldDb, 2, 0),
+    place(analytics, 4, 0),
+    place(analyticsWh, 5, 0),
+    place(warehouse, 6, 0),
+    place(businessDb, 4, 1),
+    place(cleanedSchema, 3, 1),
+
+    place(bronzeSchema, 0, 1),
+    place(silverSchema, 1, 1),
+    place(goldSchema, 2, 1),
+    place(businessSchema, 4, 2),
+
+    place(bronzeTables, 0, 2),
+    place(silverTables, 1, 2),
+    place(goldTables, 2, 2),
+    place(cleanedTables, 3, 2),
+    place(businessTables, 4, 3),
+
+    place(bronzeStream, 0, 3),
+    place(silverStream, 1, 3),
+  ].filter(Boolean) as Node[];
+
+  // Deduplicate positioned array (in case of any duplicates in the manual placement list)
+  const seenIds = new Set<string>();
+  const dedupedPositioned = positioned.filter(n => {
+    if (seenIds.has(n.id)) {
+      console.warn(`[layoutMedallionDeterministic] Skipping duplicate node: ${n.id}`);
+      return false;
+    }
+    seenIds.add(n.id);
+    return true;
+  });
+  positioned.length = 0;
+  positioned.push(...dedupedPositioned);
+
+  // Extras to the right
+  const placedIds = new Set(positioned.map((n) => n.id));
+  let extrasCol = 7;
+  const extras: Node[] = [];
+  nonBoundary
+    .filter((n) => !placedIds.has(n.id))
+    .forEach((n, idx) => {
+      const extraNode = {
+        ...n,
+        position: { x: X(extrasCol), y: Y(idx) },
+      };
+      positioned.push(extraNode);
+      extras.push(extraNode);
+      if (idx % 4 === 3) extrasCol += 1;
+    });
+
+  // Minimal edges
+  const makeEdge = (a: Node | null, b: Node | null, idx: number) =>
+    a && b
+      ? ({
+          id: `d-${a.id}-${b.id}-${idx}`,
+          source: a.id,
+          target: b.id,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: '#29B5E8', strokeWidth: 2 },
+          deletable: true,
+        } as Edge)
+      : null;
+
+  const newEdges: Edge[] = [
+    makeEdge(cloud, snowpipe, 0),
+    makeEdge(snowpipe, bronzeDb, 1),
+    makeEdge(bronzeDb, bronzeSchema, 2),
+    makeEdge(bronzeSchema, bronzeTables, 3),
+    makeEdge(bronzeTables, bronzeStream, 4),
+    makeEdge(bronzeStream, silverDb, 5),
+
+    makeEdge(silverDb, silverSchema, 6),
+    makeEdge(silverSchema, silverTables, 7),
+    makeEdge(silverTables, silverStream, 8),
+    makeEdge(silverStream, goldDb, 9),
+
+    makeEdge(goldDb, goldSchema, 10),
+    makeEdge(goldSchema, goldTables, 11),
+    makeEdge(goldTables, analytics, 12),
+    makeEdge(analytics, warehouse, 13),
+    makeEdge(goldDb, goldSchema, 14),
+    makeEdge(goldSchema, goldTables, 15),
+    makeEdge(goldTables, analytics, 16),
+    makeEdge(goldDb, cleanedSchema, 17),
+    makeEdge(cleanedSchema, cleanedTables, 18),
+    makeEdge(cleanedTables, analyticsWh, 19),
+    makeEdge(goldDb, analyticsWh, 20),
+    makeEdge(goldTables, analyticsWh, 21),
+    makeEdge(goldDb, businessSchema, 22),
+    makeEdge(businessDb, businessSchema, 23),
+    makeEdge(businessSchema, businessTables, 24),
+  ].filter(Boolean) as Edge[];
+
+  // Don't create boundaries here - let addAccountBoundaries handle it after layout
+  console.log(`[layoutMedallionDeterministic] Returning ${positioned.length} positioned nodes`);
+  return { nodes: positioned, edges: newEdges };
+};
+
+const isMedallion = (nodes: Node[]) =>
+  nodes.some((n) => {
+    const lbl = ((n.data as any)?.label || '').toLowerCase();
+    const ct = ((n.data as any)?.componentType || '').toLowerCase();
+    return ['bronze', 'silver', 'gold'].some((k) => lbl.includes(k) || ct.includes(k));
+  });
 
 interface AIResponse {
   mermaid_code: string;
@@ -30,10 +862,30 @@ interface AIResponse {
   components_used: string[];
 }
 
+// Generate Mermaid code from current diagram
+function generateMermaidFromDiagram(currentNodes: Node[], currentEdges: Edge[]): string {
+  let mermaid = 'flowchart LR\n';
+
+  // Add node definitions
+  currentNodes.forEach((node) => {
+    const label = node.data.label || node.id;
+    const sanitizedLabel = label.replace(/[[\]()]/g, '');
+    mermaid += `    ${node.id}[${sanitizedLabel}]\n`;
+  });
+
+  mermaid += '\n';
+
+  // Add connections
+  currentEdges.forEach((edge) => {
+    mermaid += `    ${edge.source} --> ${edge.target}\n`;
+  });
+
+  return mermaid;
+}
+
 const App: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-  const [showAIModal, setShowAIModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -56,6 +908,7 @@ const App: React.FC = () => {
   
   // NEW: Menu position state
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [nodeMenu, setNodeMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
 
   // NEW: Clear confirmation state (inline)
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -65,8 +918,133 @@ const App: React.FC = () => {
   const [fillColor, setFillColor] = useState('#29B5E8');
   const [fillAlpha, setFillAlpha] = useState(0);
   const [cornerRadius, setCornerRadius] = useState(8);
+  const [hideBorder, setHideBorder] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [showQuickTips, setShowQuickTips] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([
+    { role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.' },
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatSending, setChatSending] = useState(false);
+  const [chatPos, setChatPos] = useState<{ x: number; y: number }>({ x: 120, y: 520 });
+  const [chatDragging, setChatDragging] = useState(false);
+  const [clearSpin, setClearSpin] = useState(false);
+  const [showDebug, setShowDebug] = useState(false);
+  const chatDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  // History for multi-step undo
+  const historyRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
+  const historyIndexRef = useRef(-1);
+  const skipHistoryRef = useRef(false);
+  const historyLimit = 50;
+  const lastSnapshotRef = useRef<string | null>(null);
+
+  // Undo handler
+  const undo = useCallback(() => {
+    const hist = historyRef.current;
+    if (!hist.length) return;
+    if (historyIndexRef.current <= 0) return;
+    historyIndexRef.current -= 1;
+    const snap = hist[historyIndexRef.current];
+    skipHistoryRef.current = true;
+    lastSnapshotRef.current = JSON.stringify(snap);
+    setNodes(snap.nodes);
+    setEdges(snap.edges);
+  }, [setEdges, setNodes]);
+  const clampChatPos = useCallback(
+    (pos: { x: number; y: number }) => {
+      if (typeof window === 'undefined') return pos;
+      const margin = 16;
+      const maxX = Math.max(margin, window.innerWidth - 80);
+      const maxY = Math.max(margin, window.innerHeight - 80);
+      return {
+        x: Math.min(Math.max(pos.x, margin), maxX),
+        y: Math.min(Math.max(pos.y, margin), maxY),
+      };
+    },
+    []
+  );
+
+  // Persist chat state
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('snowgram.chat');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed.messages) setChatMessages(parsed.messages);
+        if (typeof parsed.open === 'boolean') setChatOpen(parsed.open);
+        if (parsed.input) setChatInput(parsed.input);
+        if (parsed.pos && typeof parsed.pos.x === 'number' && typeof parsed.pos.y === 'number') {
+          setChatPos(clampChatPos(parsed.pos));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load chat from storage', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => setChatPos((pos) => clampChatPos(pos));
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [clampChatPos]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        'snowgram.chat',
+        JSON.stringify({ messages: chatMessages, open: chatOpen, input: chatInput, pos: chatPos })
+      );
+    } catch (e) {
+      console.warn('Failed to persist chat to storage', e);
+    }
+  }, [chatMessages, chatOpen, chatInput, chatPos]);
+
+  const currentMermaid = React.useMemo(() => generateMermaidFromDiagram(nodes, edges), [nodes, edges]);
+
+  // History tracking for undo
+  useEffect(() => {
+    if (skipHistoryRef.current) {
+      skipHistoryRef.current = false;
+      return;
+    }
+    const snapshot = JSON.stringify({ nodes, edges });
+    if (lastSnapshotRef.current === snapshot) return;
+
+    const hist = historyRef.current;
+    if (historyIndexRef.current < hist.length - 1) {
+      hist.splice(historyIndexRef.current + 1);
+    }
+    hist.push(JSON.parse(snapshot));
+    if (hist.length > historyLimit) {
+      hist.shift();
+    }
+    historyIndexRef.current = hist.length - 1;
+    lastSnapshotRef.current = snapshot;
+  }, [nodes, edges]);
+
+  // Global undo hotkey (Cmd/Ctrl + Z)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      const isTextField =
+        tag === 'input' ||
+        tag === 'textarea' ||
+        (target && target.getAttribute && target.getAttribute('contenteditable') === 'true');
+      if (isTextField) return;
+
+      const isUndo = (e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'z';
+      if (isUndo) {
+        e.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [undo]);
 
   const updateEdgeMenuPosition = useCallback(() => {
     if (!reactFlowInstance || selectedEdges.length === 0) {
@@ -124,10 +1102,13 @@ const luminance = (r: number, g: number, b: number) =>
   0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
 
 const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
-  const base = isDark ? { r: 15, g: 23, b: 42 } : { r: 249, g: 250, b: 251 }; // light/dark backing
+  // In dark mode, always use light text for better contrast
+  if (isDark) return '#e5f2ff';
+  // In light mode, calculate based on luminance
+  const base = { r: 247, g: 251, b: 255 }; // light mode background
   const { r, g, b } = hexToRgb(fill) || { r: 41, g: 181, b: 232 };
   const effLum = alpha * luminance(r, g, b) + (1 - alpha) * luminance(base.r, base.g, base.b);
-  return effLum > 0.5 ? '#0F172A' : '#E5EDF5';
+  return effLum > 0.5 ? '#0F172A' : '#1a1a1a';
 };
 
   // Helper: get current z-index for a node
@@ -253,7 +1234,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
   }, [getNodeSize]);
 
   // Snap node position on drag stop (conditional snap, not global)
-  const onNodeDragStop = useCallback((_event, node: Node) => {
+  const onNodeDragStop = useCallback((_event: React.MouseEvent | React.TouchEvent, node: Node) => {
     // First, snap to grid if close (axis-specific thresholds)
     let nextPos = {
       x: snapValueX(node.position.x),
@@ -367,18 +1348,27 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
   const onConnect = useCallback(
     (params: Connection) => {
       console.log('🔌 Connection attempt:', params);
+
+      // Guard against incomplete connections
+      if (!params.source || !params.target) {
+        console.warn('❌ Missing source/target on connect, skipping edge', params);
+        return;
+      }
       
       const newEdge: Edge = {
-        ...params,
         id: `${params.source}-${params.target}-${Date.now()}`,
+        source: params.source,
+        target: params.target,
+        sourceHandle: params.sourceHandle ?? undefined,
+        targetHandle: params.targetHandle ?? undefined,
         type: 'smoothstep',
         animated: true,
         style: { stroke: '#29B5E8', strokeWidth: 2 },
         deletable: true,
         data: {
           // Track animation direction: 'forward' = source -> target, 'reverse' = target -> source
-          animationDirection: 'forward'
-        }
+          animationDirection: 'forward',
+        },
       };
       
       console.log('✅ Adding edge:', newEdge);
@@ -406,12 +1396,14 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
       setSelectedEdges([edge]);
     }
     updateEdgeMenuPosition();
+    setNodeMenu(null);
   }, [nodes, reactFlowInstance, updateEdgeMenuPosition]);
   
   // Handle canvas click to deselect edges and nodes
   const onPaneClick = useCallback(() => {
     setSelectedEdges([]);
     setMenuPosition(null);
+    setNodeMenu(null);
     // Deselect all nodes
     setNodes((nds) => nds.map((n) => ({ ...n, selected: false, data: { ...(n.data || {}), showHandles: false } })));
   }, [setNodes]);
@@ -453,7 +1445,6 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
 
   const onNodeMouseEnter = useCallback(
     (_event: any, node: Node) => {
-      if (!isConnecting) return;
       setNodes((nds) =>
         nds.map((n) =>
           n.id === node.id
@@ -461,19 +1452,20 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
                 ...n,
                 data: {
                   ...(n.data || {}),
-                  showHandles: true,
+                  showHandles: (n.data as any)?.componentType?.toString().toLowerCase().startsWith('account_boundary')
+                    ? false
+                    : true,
                 },
               }
             : n
         )
       );
     },
-    [isConnecting]
+    [setNodes]
   );
 
   const onNodeMouseLeave = useCallback(
     (_event: any, node: Node) => {
-      if (!isConnecting) return;
       setNodes((nds) =>
         nds.map((n) =>
           n.id === node.id
@@ -481,14 +1473,43 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
                 ...n,
                 data: {
                   ...(n.data || {}),
-                  showHandles: !!n.selected,
+                  showHandles: (n.data as any)?.componentType?.toString().toLowerCase().startsWith('account_boundary')
+                    ? false
+                    : !!n.selected,
                 },
               }
             : n
         )
       );
     },
-    [isConnecting]
+    [setNodes]
+  );
+
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelectedEdges([]);
+      setMenuPosition(null);
+      setNodeMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === node.id
+            ? {
+                ...n,
+                selected: true,
+                data: {
+                  ...(n.data || {}),
+                  showHandles: (n.data as any)?.componentType?.toString().toLowerCase().startsWith('account_boundary')
+                    ? false
+                    : true,
+                },
+              }
+            : { ...n, selected: false, data: { ...(n.data || {}), showHandles: false } }
+        )
+      );
+    },
+    [setNodes]
   );
   
   // Flip animation direction of selected edges
@@ -604,6 +1625,32 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
             : node
         )
       );
+    },
+    [setNodes]
+  );
+
+  // Copy/duplicate a node with slight offset
+  const copyNode = useCallback(
+    (nodeId: string) => {
+      setNodes((nds) => {
+        const original = nds.find((n) => n.id === nodeId);
+        if (!original) return nds;
+        const offset = 32;
+        const newId = `${nodeId}_copy_${Date.now()}`;
+        const newNode: Node = {
+          ...original,
+          id: newId,
+          position: {
+            x: (original.position?.x ?? 0) + offset,
+            y: (original.position?.y ?? 0) + offset,
+          },
+          data: {
+            ...(original.data as any),
+            label: `${(original.data as any)?.label || 'Copy'}`,
+          },
+        };
+        return [...nds, newNode];
+      });
     },
     [setNodes]
   );
@@ -847,56 +1894,587 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     URL.revokeObjectURL(url);
   };
 
-  // Generate Mermaid code from current diagram
-  const generateMermaidFromDiagram = (currentNodes: Node[], currentEdges: Edge[]): string => {
-    let mermaid = 'flowchart LR\n';
-    
-    // Add node definitions
-    currentNodes.forEach((node) => {
-      const label = node.data.label || node.id;
-      const sanitizedLabel = label.replace(/[[\]()]/g, '');
-      mermaid += `    ${node.id}[${sanitizedLabel}]\n`;
-    });
-    
-    mermaid += '\n';
-    
-    // Add connections
-    currentEdges.forEach((edge) => {
-      mermaid += `    ${edge.source} --> ${edge.target}\n`;
-    });
-    
-    return mermaid;
+  const callAgent = async (query: string): Promise<AgentResult> => {
+    // Preferred: backend proxy (no PAT in browser)
+    try {
+      const resp = await fetch('/api/agent/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      if (!resp.ok) throw new Error('Backend agent proxy failed');
+      const data: AgentResult = await resp.json();
+      return data;
+    } catch (proxyErr) {
+      console.warn('Backend proxy failed, attempting direct PAT flow', proxyErr);
+    }
+
+    // Fallback: direct PAT (dev only)
+    const pat = process.env.NEXT_PUBLIC_SNOWFLAKE_PAT || process.env.REACT_APP_SNOWFLAKE_PAT;
+    if (!pat) throw new Error('Missing PAT and backend proxy failed.');
+    const client = new SnowgramAgentClient(pat);
+    const data = await client.generateArchitecture(query);
+    return data;
   };
 
-  // Handle AI generation
+  const formatAgentReply = (data?: AgentResult) => {
+    if (!data) return 'Updated the diagram. Ask for refinements or more changes.';
+    const stripCode = (text: string) =>
+      text
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/`/g, '')
+        .replace(/[*_#>-]/g, ' ')
+        .replace(/\s+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .replace(/\[DONE\]/gi, '')
+        .trim();
+    
+    // Deduplicate text by splitting into sentences and removing consecutive duplicates
+    const dedupe = (text: string) => {
+      const sentences = text.split(/(?<=[.!?])\s+/);
+      const seen = new Set<string>();
+      return sentences.filter(s => {
+        const norm = s.trim().toLowerCase().substring(0, 100);
+        if (seen.has(norm)) return false;
+        seen.add(norm);
+        return true;
+      }).join(' ');
+    };
+    
+    const parts: string[] = [];
+    if (data.overview) {
+      parts.push(dedupe(stripCode(data.overview)));
+    }
+    const best = (data.bestPractices || []).filter(Boolean).slice(0, 3);
+    if (best.length) {
+      parts.push(`Best practices:\n${best.map((b, i) => `${i + 1}. ${b}`).join('\n')}`);
+    }
+    const anti = (data.antiPatterns || []).filter(Boolean).slice(0, 2);
+    if (anti.length) {
+      parts.push(`Watch-outs:\n${anti.map((a, i) => `${i + 1}. ${a}`).join('\n')}`);
+    }
+    const comps = (data.components || []).filter(Boolean).slice(0, 3);
+    if (comps.length) {
+      parts.push(
+        `Key components:\n${comps
+          .map((c, i) => {
+            const detail = c.purpose || c.configuration || c.bestPractice || '';
+            return `${i + 1}. ${c.name}${detail ? ` — ${detail}` : ''}`;
+          })
+          .join('\n')}`
+      );
+    }
+    const cites = (data as any)?.citations || [];
+    if (Array.isArray(cites) && cites.length) {
+      parts.push(
+        `Sources:\n${cites
+          .slice(0, 2)
+          .map((c: any, i: number) => `${i + 1}. ${c.title || c.url || 'link'}`)
+          .join('\n')}`
+      );
+    }
+    // Fallback: if no structured parts, show a simple success message (don't use rawResponse - it may duplicate)
+    if (!parts.length) {
+      return 'Diagram updated successfully. Review the canvas for the complete architecture.';
+    }
+    return parts.join('\n\n');
+  };
+
+// Normalize nodes/edges: dedupe nodes by componentType/label, drop orphan/duplicate edges, keep single boundaries
+const normalizeGraph = (nodes: Node[], edges: Edge[]) => {
+  // Canonical medallion IDs that should NEVER be collapsed
+  const canonicalMedallionIds = new Set([
+    's3', 'pipe1', 'bronze_db', 'bronze_schema', 'bronze_tables',
+    'stream_bronze_silver', 'silver_db', 'silver_schema', 'silver_tables',
+    'stream_silver_gold', 'gold_db', 'gold_schema', 'gold_tables', 'analytics_views',
+    'transform_task', 'compute_wh', 'bronze_stream', 'secure_views'
+  ]);
+  
+  const keyForNode = (n: Node) => {
+    const d: any = n.data || {};
+    const rawComp = (d.componentType || '').toString().toLowerCase().trim();
+    const label = (d.label || '').toString().toLowerCase().trim();
+    const nodeId = n.id.toLowerCase();
+    
+    // ALWAYS preserve canonical medallion IDs by their exact ID
+    if (canonicalMedallionIds.has(n.id)) {
+      return n.id;
+    }
+    
+    if (rawComp.startsWith('account_boundary')) {
+      // Normalize boundary key to provider (aws|azure|gcp|snowflake|other)
+      const provider =
+        rawComp.includes('aws') ? 'aws' :
+        rawComp.includes('azure') ? 'azure' :
+        rawComp.includes('gcp') ? 'gcp' :
+        rawComp.includes('snowflake') ? 'snowflake' :
+        rawComp.replace(/account_boundary[_-]?/, '') || label || 'boundary';
+      return `account_boundary_${provider}`;
+    }
+    // Preserve medallion-specific components (don't collapse bronze/silver/gold)
+    if (rawComp.match(/^(bronze|silver|gold)_(db|schema|tables?)$/)) {
+      return rawComp;
+    }
+    if (rawComp === 'stream_bronze_silver' || rawComp === 'stream_silver_gold') {
+      return rawComp;
+    }
+    if (rawComp === 'analytics_views') {
+      return rawComp;
+    }
+    const comp = rawComp.replace(/_[0-9]+$/, ''); // strip timestamp suffixes
+    return comp || label || n.id;
+  };
+
+  const dedupedNodes: Node[] = [];
+  const seenKeys = new Set<string>();
+  const keyToNode = new Map<string, Node>();
+  const duplicates: string[] = [];
+  
+  // First pass: collect all nodes by key
+  nodes.forEach((n) => {
+    const k = keyForNode(n);
+    const existing = keyToNode.get(k);
+    
+    // Prioritize canonical medallion IDs over agent-generated custom IDs
+    if (!existing || canonicalMedallionIds.has(n.id)) {
+      keyToNode.set(k, n);
+      if (existing) {
+        duplicates.push(`${existing.id}(${k}) replaced by ${n.id}`);
+      }
+    } else {
+      duplicates.push(`${n.id}(${k}) replaced by ${existing.id}`);
+    }
+  });
+  
+  // Second pass: add unique nodes
+  keyToNode.forEach((n, k) => {
+    // normalize componentType for icons
+    const d: any = n.data || {};
+    const canonical = canonicalizeComponentType(d.componentType);
+    dedupedNodes.push({
+      ...n,
+      data: { ...d, componentType: canonical },
+    });
+  });
+  if (duplicates.length > 0) {
+    console.warn('🗑️ [Normalize] Removed duplicates:', duplicates);
+    duplicates.forEach(d => console.log('   - ' + d));
+  }
+
+  const nodeIds = new Set(dedupedNodes.map((n) => n.id));
+  const edgeKey = (e: Edge) => `${e.source}->${e.target}`;
+  const seenEdges = new Set<string>();
+  const dedupedEdges: Edge[] = [];
+  const orphanedEdges: string[] = [];
+  edges.forEach((e) => {
+    if (!e.source || !e.target) return;
+    if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) {
+      orphanedEdges.push(`${e.source}->${e.target}`);
+      return;
+    }
+    if (e.source === e.target) return;
+    const k = edgeKey(e);
+    if (seenEdges.has(k)) return;
+    seenEdges.add(k);
+    dedupedEdges.push(e);
+  });
+  
+  if (orphanedEdges.length > 0) {
+    console.log('[Normalize] Removed orphaned edges:', orphanedEdges);
+  }
+  console.log('[Normalize] Result:', { nodeCount: dedupedNodes.length, edgeCount: dedupedEdges.length });
+
+  return { nodes: dedupedNodes, edges: dedupedEdges };
+};
+
+// Canonicalize component types for icons/layout (reuse core Snowflake icons)
+const canonicalizeComponentType = (comp?: string) => {
+  const c = (comp || '').toLowerCase();
+  
+  // ALWAYS preserve boundary types unchanged
+  if (c.startsWith('account_boundary')) {
+    return comp; // Return original casing
+  }
+  
+  // Preserve medallion-specific types
+  if (c === 'bronze_db' || c === 'silver_db' || c === 'gold_db') return 'database';
+  if (c === 'bronze_schema' || c === 'silver_schema' || c === 'gold_schema') return 'schema';
+  if (c === 'bronze_tables' || c === 'silver_tables' || c === 'gold_tables') return 'table';
+  if (c === 'analytics_views') return 'view';
+  // Generic matching
+  if (c.includes('stream')) return 'stream';
+  if (c.includes('snowpipe') || c.includes('pipe')) return 'snowpipe';
+  if (c.includes('task')) return 'task';
+  if (c.includes('schema')) return 'schema';
+  if (c.includes('table')) return 'table';
+  if (c.includes('view') || c.includes('analytic')) return 'view';
+  if (c.includes('warehouse') || c.includes('wh')) return 'warehouse';
+  if (c.includes('db') || c.includes('database')) return 'database';
+  if (c.includes('s3') || c.includes('lake')) return 'database';
+  return comp || 'table';
+};
+
+// Ensure CSP resources stay inside their provider boundary
+const fitCspNodesIntoBoundaries = (nodes: Node[]) => {
+  const result = [...nodes];
+  const boundaries: Record<string, Node> = {};
+  result.forEach((n) => {
+    const comp = ((n.data as any)?.componentType || '').toString().toLowerCase();
+    if (comp.startsWith('account_boundary')) {
+      const key =
+        comp.includes('aws') ? 'aws' :
+        comp.includes('azure') ? 'azure' :
+        comp.includes('gcp') ? 'gcp' :
+        comp.includes('snowflake') ? 'snowflake' : comp;
+      boundaries[key] = n;
+    }
+  });
+
+  const keywords: Record<string, string[]> = {
+    aws: ['aws', 's3', 'lake', 'snowpipe'],
+    azure: ['azure', 'adls', 'blob'],
+    gcp: ['gcp', 'gcs', 'bigquery', 'bq'],
+  };
+
+  Object.entries(keywords).forEach(([provider, keys]) => {
+    const boundary = boundaries[provider];
+    if (!boundary) return;
+    const padding = 32;
+    const rowHeight = 160; // 140px node height + 20px spacing
+    const bx = boundary.position.x + padding;
+    const by = boundary.position.y + padding;
+
+    let index = 0;
+    let maxX = bx;
+    let maxY = by;
+    result.forEach((n) => {
+      const d: any = n.data || {};
+      const text = `${(d.label || '').toString().toLowerCase()} ${(d.componentType || '').toString().toLowerCase()}`;
+      const matches = keys.some((k) => text.includes(k));
+      if (matches && !((d.componentType || '').toString().toLowerCase().startsWith('account_boundary'))) {
+        // Use single-column layout (vertical stack) for cloud provider boundaries
+        const newPos = { x: bx, y: by + index * rowHeight };
+        const nodeWidth = ((n.style as any)?.width as number) || 180;
+        const nodeHeight = ((n.style as any)?.height as number) || 140;
+        result[result.findIndex((x) => x.id === n.id)] = {
+          ...n,
+          position: newPos,
+        };
+        console.log(`[fitCspNodes] Repositioning ${provider} node ${n.id} (${nodeWidth}x${nodeHeight}) to (${newPos.x}, ${newPos.y}) - single column layout`);
+        maxX = Math.max(maxX, newPos.x + nodeWidth);
+        maxY = Math.max(maxY, newPos.y + nodeHeight);
+        index += 1;
+      }
+    });
+    // resize boundary to fit children
+    const existingWidth = boundary.style?.width ? Number(boundary.style.width) : 0;
+    const existingHeight = boundary.style?.height ? Number(boundary.style.height) : 0;
+    const width = Math.max(existingWidth, maxX - boundary.position.x + padding);
+    const height = Math.max(existingHeight, maxY - boundary.position.y + padding);
+    const idx = result.findIndex((b) => b.id === boundary.id);
+    if (idx >= 0) {
+      result[idx] = {
+        ...boundary,
+        style: { ...(boundary.style || {}), width, height },
+      };
+    }
+  });
+
+  return result;
+};
+
+// Ensure core medallion nodes and edges exist (Bronze/Silver/Gold + streams + Analytics)
+const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
+  const normalizeLabel = (s: string) => 
+    s.toLowerCase()
+      .replace(/[→\-\s]+/g, '') // Remove arrows, dashes, spaces
+      .replace(/to/g, '') // Remove "to" (e.g., "Bronze to Silver")
+      .replace(/[^a-z0-9]/g, '');
+  
+  // If agent's output is severely incomplete, force complete rebuild
+  const isSeverelyIncomplete = nodes.length < 12 || edges.length < 8;
+  
+  // Detect dark mode from existing nodes
+  const isDark = nodes.length > 0 && (nodes[0].data as any)?.isDarkMode === true;
+  
+  const addNode = (id: string, label: string, componentType: string, force = false) => {
+    // If force mode or severely incomplete, add without checking
+    if (force || isSeverelyIncomplete) {
+      const existing = nodes.find((n) => n.id === id);
+      if (existing) {
+        // Update existing node to ensure correct type
+        (existing.data as any).label = label;
+        (existing.data as any).componentType = componentType;
+        return;
+      }
+      nodes.push({
+        id,
+        type: 'snowflakeNode',
+        position: { x: 0, y: 0 },
+        data: {
+          label,
+          componentType,
+          showHandles: true,
+          isDarkMode: isDark,
+          labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
+          background: isDark ? '#1e3a4a' : '#ffffff',
+          onRename: renameNode,
+          onDelete: deleteNode,
+          onCopy: copyNode,
+        },
+        style: {
+          background: isDark ? '#1e3a4a' : '#ffffff',
+          color: isDark ? '#e5f2ff' : '#1a1a1a',
+        },
+      });
+      return;
+    }
+    
+    // Check for semantic equivalence (same label or same componentType)
+    const normLabel = normalizeLabel(label);
+    const exists = nodes.some((n) => {
+      if (n.id === id) return true;
+      const nLabel = normalizeLabel((n.data as any)?.label || '');
+      const nComp = ((n.data as any)?.componentType || '').toString().toLowerCase();
+      // Match by label similarity or exact componentType (for medallion-specific types)
+      if (nLabel === normLabel) return true;
+      if (componentType === nComp) return true;
+      return false;
+    });
+    if (exists) return;
+    nodes.push({
+      id,
+      type: 'snowflakeNode',
+      position: { x: 0, y: 0 },
+      data: {
+        label,
+        componentType,
+        showHandles: true,
+        isDarkMode: isDark,
+        labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
+        background: isDark ? '#1e3a4a' : '#ffffff',
+        onRename: renameNode,
+        onDelete: deleteNode,
+        onCopy: copyNode,
+      },
+      style: {
+        background: isDark ? '#1e3a4a' : '#ffffff',
+        color: isDark ? '#e5f2ff' : '#1a1a1a',
+      },
+    });
+  };
+  console.log('[Completeness] Input:', { nodeCount: nodes.length, edgeCount: edges.length, isSeverelyIncomplete });
+  
+  // FIRST, remap any agent-generated node IDs to canonical medallion IDs
+  // (e.g., agent might use "stream1", "bronze_raw_tables", "silver_clean_tables" instead of canonical IDs)
+  // This must run BEFORE addNode so addNode can properly detect existing nodes
+  const idMap: Record<string, string> = {};
+  const findNodeByLabelOrId = (targetLabel: string, idPatterns: string[]): Node | undefined => {
+    const normTarget = normalizeLabel(targetLabel);
+    // First try label match
+    let found = nodes.find((n) => normalizeLabel((n.data as any)?.label || '') === normTarget);
+    // If not found, try ID pattern match
+    if (!found) {
+      for (const pattern of idPatterns) {
+        found = nodes.find((n) => n.id.toLowerCase().includes(pattern));
+        if (found) break;
+      }
+    }
+    return found;
+  };
+  const remapId = (canonicalId: string, targetLabel: string, idPatterns: string[] = []) => {
+    const existing = findNodeByLabelOrId(targetLabel, idPatterns);
+    if (existing && existing.id !== canonicalId) {
+      console.log(`[Completeness] Remapping ${existing.id} → ${canonicalId}`);
+      idMap[existing.id] = canonicalId;
+      existing.id = canonicalId;
+      // Also update componentType to canonical medallion type if needed
+      const d: any = existing.data || {};
+      if (canonicalId === 'bronze_db') d.componentType = 'bronze_db';
+      else if (canonicalId === 'bronze_schema') d.componentType = 'bronze_schema';
+      else if (canonicalId === 'bronze_tables') d.componentType = 'bronze_tables';
+      else if (canonicalId === 'silver_db') d.componentType = 'silver_db';
+      else if (canonicalId === 'silver_schema') d.componentType = 'silver_schema';
+      else if (canonicalId === 'silver_tables') d.componentType = 'silver_tables';
+      else if (canonicalId === 'gold_db') d.componentType = 'gold_db';
+      else if (canonicalId === 'gold_schema') d.componentType = 'gold_schema';
+      else if (canonicalId === 'gold_tables') d.componentType = 'gold_tables';
+      else if (canonicalId === 'stream_bronze_silver' || canonicalId === 'stream_silver_gold') d.componentType = 'stream';
+      else if (canonicalId === 'analytics_views') d.componentType = 'analytics_views';
+    }
+  };
+  
+  remapId('s3', 'S3 Data Lake', ['s3', 'data_lake']);
+  remapId('pipe1', 'Snowpipe', ['pipe', 'snowpipe']);
+  remapId('bronze_db', 'Bronze DB', ['bronze_db']);
+  remapId('bronze_schema', 'Bronze Schema', ['bronze_schema']);
+  remapId('bronze_tables', 'Bronze Tables', ['bronze_raw', 'bronze_table']);
+  remapId('stream_bronze_silver', 'Bronze→Silver Stream', ['stream_bronze', 'bronze_silver']);
+  remapId('silver_db', 'Silver DB', ['silver_db']);
+  remapId('silver_schema', 'Silver Schema', ['silver_schema']);
+  remapId('silver_tables', 'Silver Tables', ['silver_clean', 'silver_table']);
+  remapId('stream_silver_gold', 'Silver→Gold Stream', ['stream_silver', 'silver_gold']);
+  remapId('gold_db', 'Gold DB', ['gold_db']);
+  remapId('gold_schema', 'Gold Schema', ['gold_schema']);
+  remapId('gold_tables', 'Gold Tables', ['gold_curated', 'gold_table']);
+  remapId('analytics_views', 'Analytics Views', ['analytics']);
+  remapId('transform_task', 'Data Transform Task', ['transform_task', 'data transform', 'etl task']);
+  remapId('compute_wh', 'Compute Warehouse', ['compute', 'warehouse']);
+  remapId('bronze_stream', 'Bronze Stream', ['bronze_stream', 'bronze stream']);
+  remapId('secure_views', 'Secure Reporting Views', ['secure', 'secure reporting']);
+
+  // Update all edge references to use canonical IDs
+  edges.forEach((e) => {
+    if (idMap[e.source]) e.source = idMap[e.source];
+    if (idMap[e.target]) e.target = idMap[e.target];
+  });
+  
+  console.log('[Completeness] After remapping:', { nodeCount: nodes.length });
+
+  // SECOND, add all required medallion nodes (skip if they now exist after remapping)
+  addNode('s3', 'S3 Data Lake', 's3', true);
+  addNode('pipe1', 'Snowpipe', 'snowpipe', true);
+  addNode('bronze_db', 'Bronze DB', 'bronze_db', true);
+  addNode('bronze_schema', 'Bronze Schema', 'bronze_schema', true);
+  addNode('bronze_tables', 'Bronze Tables', 'bronze_tables', true);
+  addNode('stream_bronze_silver', 'Bronze→Silver Stream', 'stream', true);
+  addNode('silver_db', 'Silver DB', 'silver_db', true);
+  addNode('silver_schema', 'Silver Schema', 'silver_schema', true);
+  addNode('silver_tables', 'Silver Tables', 'silver_tables', true);
+  addNode('stream_silver_gold', 'Silver→Gold Stream', 'stream', true);
+  addNode('gold_db', 'Gold DB', 'gold_db', true);
+  addNode('gold_schema', 'Gold Schema', 'gold_schema', true);
+  addNode('gold_tables', 'Gold Tables', 'gold_tables', true);
+  addNode('analytics_views', 'Analytics Views', 'analytics_views', true);
+  addNode('transform_task', 'Data Transform Task', 'transform_task', true);
+  addNode('compute_wh', 'Compute Warehouse', 'compute_wh', true);
+  addNode('bronze_stream', 'Bronze Stream', 'bronze_stream', true);
+  addNode('secure_views', 'Secure Reporting Views', 'secure_views', true);
+  
+  console.log('[Completeness] After addNode:', { nodeCount: nodes.length });
+
+  console.log('[Completeness] Input edges:', edges.map(e => `${e.source}->${e.target}`));
+  
+  // CLEAN UP: Remove backwards/invalid edges that violate medallion logic
+  const validEdges = [
+    's3->pipe1', 'pipe1->bronze_db', 'bronze_db->bronze_schema', 'bronze_schema->bronze_tables',
+    'bronze_tables->stream_bronze_silver', 'stream_bronze_silver->silver_db',
+    'silver_db->silver_schema', 'silver_schema->silver_tables', 'silver_tables->stream_silver_gold',
+    'stream_silver_gold->gold_db', 'gold_db->gold_schema', 'gold_schema->gold_tables',
+    'gold_tables->analytics_views', 'analytics_views->compute_wh',
+    'silver_tables->transform_task', 'transform_task->gold_tables',
+    'bronze_tables->bronze_stream', 'bronze_stream->silver_db',
+    'gold_tables->secure_views'
+  ];
+  const validSet = new Set(validEdges);
+  const medallionNodes = new Set([
+    's3', 'pipe1', 'bronze_db', 'bronze_schema', 'bronze_tables', 'stream_bronze_silver',
+    'silver_db', 'silver_schema', 'silver_tables', 'stream_silver_gold',
+    'gold_db', 'gold_schema', 'gold_tables', 'analytics_views'
+  ]);
+  
+  // Add common invalid patterns to explicitly block (catch any casing/whitespace variations)
+  const normalizeEdgeId = (id: string) => id.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const invalidPatterns = [
+    'silvertablesstreambronzesilver', // Stream feeds INTO silver, not from it
+    'goldtablesstreamsilver', // Stream feeds INTO gold, not from it  
+    'goldtablesstreamsilvergold', // Stream feeds INTO gold, not from it
+    'bronzedbs3', // No backwards flow to S3
+    'silverdbbronzedb', // No backwards flow between layers
+    'golddbsilverdb', // No backwards flow between layers
+    'analyticsgold', // No backwards flow from analytics
+    'viewsgold', // No backwards flow from views
+    'warehousegold', // Warehouse doesn't feed back
+  ];
+  const invalidSet = new Set(invalidPatterns.map(normalizeEdgeId));
+  
+  // Remove edges that:
+  // 1. Go backwards in the medallion flow
+  // 2. Connect medallion nodes in invalid ways
+  const cleanedEdges = edges.filter((e) => {
+    const key = `${e.source}->${e.target}`;
+    const normalizedKey = normalizeEdgeId(key);
+    
+    // Explicitly reject known invalid patterns (normalized for robustness)
+    if (invalidSet.has(normalizedKey)) {
+      console.warn(`🚫 [Completeness] Blocked invalid edge: ${key} (normalized: ${normalizedKey})`);
+      return false;
+    }
+    
+    const sourceIsMedallion = medallionNodes.has(e.source);
+    const targetIsMedallion = medallionNodes.has(e.target);
+    
+    // If both nodes are medallion nodes, only keep valid edges
+    if (sourceIsMedallion && targetIsMedallion) {
+      const isValid = validSet.has(key);
+      if (!isValid) {
+        console.warn(`🚫 [Completeness] Blocked invalid medallion edge: ${key}`);
+      }
+      return isValid;
+    }
+    
+    // Allow edges from/to non-medallion nodes (warehouses, etc.)
+    return true;
+  });
+  
+  // Replace edges array with cleaned version
+  const beforeCount = edges.length;
+  edges.length = 0;
+  edges.push(...cleanedEdges);
+  console.log('[Completeness] Cleaned edges:', { before: beforeCount, after: cleanedEdges.length, removed: beforeCount - cleanedEdges.length });
+  console.log('[Completeness] Cleaned edges list:', cleanedEdges.map(e => `${e.source}->${e.target}`));
+
+  // Now, ensure all required edges exist (using canonical IDs)
+  const edgeMap = new Set(edges.map((e) => `${e.source}->${e.target}`));
+  const ensureEdge = (source: string, target: string) => {
+    const key = `${source}->${target}`;
+    if (edgeMap.has(key)) return;
+    edgeMap.add(key);
+    const edge: Edge = {
+      id: key,
+      source,
+      target,
+      type: 'smoothstep',
+      animated: true,
+      sourceHandle: 'right-source',
+      targetHandle: 'left-target',
+      style: { stroke: '#60A5FA', strokeWidth: 2 },
+    };
+    edges.push(edge);
+  };
+  
+  ensureEdge('s3', 'pipe1');
+  ensureEdge('pipe1', 'bronze_db');
+  ensureEdge('bronze_db', 'bronze_schema');
+  ensureEdge('bronze_schema', 'bronze_tables');
+  ensureEdge('bronze_tables', 'stream_bronze_silver');
+  ensureEdge('stream_bronze_silver', 'silver_db');
+  ensureEdge('silver_db', 'silver_schema');
+  ensureEdge('silver_schema', 'silver_tables');
+  ensureEdge('silver_tables', 'stream_silver_gold');
+  ensureEdge('stream_silver_gold', 'gold_db');
+  ensureEdge('gold_db', 'gold_schema');
+  ensureEdge('gold_schema', 'gold_tables');
+  ensureEdge('gold_tables', 'analytics_views');
+  ensureEdge('analytics_views', 'compute_wh');
+  ensureEdge('silver_tables', 'transform_task');
+  ensureEdge('transform_task', 'gold_tables');
+  ensureEdge('bronze_tables', 'bronze_stream');
+  ensureEdge('bronze_stream', 'silver_db');
+  ensureEdge('gold_tables', 'secure_views');
+
+  console.log('[Completeness] Output:', { nodeCount: nodes.length, edgeCount: edges.length, nodeIds: nodes.map(n => n.id) });
+  
+  return { nodes, edges };
+};
+
+  // Handle AI generation (single shot)
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) return;
-
     setIsGenerating(true);
-    setShowAIModal(false);
-
     try {
-      // Preferred: backend proxy (no PAT in browser)
-      try {
-        const resp = await fetch('/api/agent/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: aiPrompt }),
-        });
-        if (!resp.ok) throw new Error('Backend agent proxy failed');
-        const data: { mermaidCode: string } = await resp.json();
-        parseMermaidAndCreateDiagram(data.mermaidCode);
-        return;
-      } catch (proxyErr) {
-        console.warn('Backend proxy failed, attempting direct PAT flow', proxyErr);
-      }
-
-      // Fallback: direct PAT (dev only)
-      const pat = process.env.NEXT_PUBLIC_SNOWFLAKE_PAT || process.env.REACT_APP_SNOWFLAKE_PAT;
-      if (!pat) throw new Error('Missing PAT and backend proxy failed.');
-      const client = new SnowgramAgentClient(pat);
-      const data = await client.generateArchitecture(aiPrompt);
-      parseMermaidAndCreateDiagram(data.mermaidCode);
+      const data = await callAgent(aiPrompt);
+      if (data) parseMermaidAndCreateDiagram(data.mermaidCode, data.spec);
     } catch (error) {
       console.error('AI generation error:', error);
       alert('Failed to generate diagram. Ensure PAT or backend proxy is configured.');
@@ -906,15 +2484,360 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     }
   };
 
+  // Chat send handler (multi-turn)
+  const handleSendChat = async () => {
+    if (!chatInput.trim() || chatSending) return;
+    const userMessage = chatInput.trim();
+    setChatSending(true);
+    const history = [...chatMessages, { role: 'user' as const, text: userMessage }];
+    setChatMessages(history);
+    setChatInput('');
+
+    const transcript = history
+      .map((m) => `${m.role === 'user' ? 'User' : 'Agent'}: ${m.text}`)
+      .join('\n');
+
+    // Provide current canvas state (mermaid) to the agent before the prompt
+    const enrichedPrompt = `You are the SnowGram Cortex Agent. First review the existing canvas before making changes. Here is the current diagram in Mermaid (derived from the live canvas):\n\n${currentMermaid}\n\nThen continue the conversation below and apply updates based on the user's new request. If needed, adjust or refine the existing layout rather than recreating from scratch.\n\nConversation:\n${transcript}\nAgent:`;
+
+    try {
+      const data = await callAgent(enrichedPrompt);
+      if (data) {
+        parseMermaidAndCreateDiagram(data.mermaidCode, data.spec);
+        const reply = formatAgentReply(data);
+        setChatMessages((msgs) => [...msgs, { role: 'assistant', text: reply }]);
+      } else {
+        setChatMessages((msgs) => [
+          ...msgs,
+          { role: 'assistant', text: 'I could not generate a response. Try again.' },
+        ]);
+      }
+    } catch (err: any) {
+      console.error('Chat generation error:', err);
+      setChatMessages((msgs) => [
+        ...msgs,
+        { role: 'assistant', text: 'Error generating diagram. Please try again.' },
+      ]);
+    } finally {
+      setChatSending(false);
+    }
+  };
+
+  const handleClearChat = () => {
+    const seed = [{ role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.' }] as typeof chatMessages;
+    setChatMessages(seed);
+    setChatInput('');
+  };
+
+  // Chat drag
+  const onChatDragStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    chatDragOffset.current = { x: e.clientX - chatPos.x, y: e.clientY - chatPos.y };
+    setChatDragging(true);
+  };
+
+  useEffect(() => {
+    if (!chatDragging) return;
+    const onMove = (e: MouseEvent) => {
+      setChatPos({ x: e.clientX - chatDragOffset.current.x, y: e.clientY - chatDragOffset.current.y });
+    };
+    const onUp = () => setChatDragging(false);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [chatDragging, setChatPos]);
+
   // Convert Mermaid to ReactFlow using shared component catalog
-  const parseMermaidAndCreateDiagram = (mermaidCode: string) => {
+  const parseMermaidAndCreateDiagram = (mermaidCode: string, spec?: { nodes: any[]; edges: any[] }) => {
+    if (spec?.nodes?.length) {
+      // Build from spec
+      let specNodes: Node[] = spec.nodes.map((n: any, idx: number) => {
+        const rawType = n.componentType || n.label || 'Table';
+        const nodeId = n.id || `node-${idx}`;
+        const compType = normalizeBoundaryType(rawType, n.label, nodeId) || rawType;
+        const isBoundary = compType.toLowerCase().startsWith('account_boundary');
+        
+        // Debug boundary nodes from agent
+        if (isBoundary) {
+          console.log(`[Pipeline] Agent sent boundary node:`, {
+            id: nodeId,
+            rawType,
+            compType,
+            label: n.label,
+            agentIcon: n.icon,
+            isBoundary
+          });
+        }
+        
+        return {
+          id: n.id || `node-${idx}`,
+          type: 'snowflakeNode',
+          data: {
+            label: n.label || n.componentType || n.id,
+            componentType: compType,
+            icon: isBoundary ? undefined : getIconForComponentType(compType),
+            labelColor: getLabelColor(fillColor, fillAlpha, isDarkMode),
+            isDarkMode,
+            showHandles: !isBoundary,
+            fillColor,
+            fillAlpha,
+            cornerRadius,
+            hideBorder,
+            background: isDarkMode ? '#1e3a4a' : '#ffffff',
+            onRename: renameNode,
+            onDelete: deleteNode,
+            onCopy: copyNode,
+          },
+          position: { x: (idx % 4) * 260, y: Math.floor(idx / 4) * 200 },
+          style: {
+            border: `2px solid ${isDarkMode ? '#4a9eff' : '#0F4C75'}`,
+            borderRadius: cornerRadius,
+            background: isDarkMode ? '#1e3a4a' : '#ffffff',
+            color: isDarkMode ? '#e5f2ff' : '#0F172A',
+          },
+        };
+      });
+
+      // Preserve agent-provided boundaries with proper IDs, strip malformed ones
+      const isProperBoundary = (n: Node) => {
+        const id = n.id.toLowerCase();
+        const compType = ((n.data as any)?.componentType || '').toString().toLowerCase();
+        // Keep boundaries with proper IDs (account_boundary_*)
+        return id.startsWith('account_boundary_') && compType.startsWith('account_boundary_');
+      };
+      
+      const beforeStripCount = specNodes.length;
+      const properBoundaries = specNodes.filter(isProperBoundary);
+      const nonBoundaries = specNodes.filter(n => !isProperBoundary(n) && 
+        !(((n.data as any)?.componentType || '').toString().toLowerCase().startsWith('account_boundary'))
+      );
+      specNodes = [...properBoundaries, ...nonBoundaries];
+      const strippedCount = beforeStripCount - specNodes.length;
+      if (strippedCount > 0) {
+        console.log(`[Pipeline] Stripped ${strippedCount} malformed boundary node(s) from spec`);
+      }
+      if (properBoundaries.length > 0) {
+        console.log(`[Pipeline] Preserved ${properBoundaries.length} agent-provided boundary node(s):`, 
+          properBoundaries.map(b => b.id));
+      }
+
+      const specEdges: Edge[] = (spec.edges || []).map((e: any, i: number) => ({
+        id: `${e.source || 's'}-${e.target || 't'}-${i}`,
+        source: e.source,
+        target: e.target,
+        type: 'smoothstep',
+        animated: true,
+        sourceHandle: e.sourceHandle || 'right-source',
+        targetHandle: e.targetHandle || 'left-target',
+        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+        deletable: true,
+      }));
+
+      // Ensure medallion completeness FIRST (before normalization to preserve edges)
+      const completed = ensureMedallionCompleteness(specNodes, specEdges);
+      specNodes = completed.nodes;
+      const cleanedSpecEdges = completed.edges.map((e) => ({
+        ...e,
+        sourceHandle: e.sourceHandle || 'right-source',
+        targetHandle: e.targetHandle || 'left-target',
+        type: e.type || 'smoothstep',
+      }));
+
+      // Add icons to ALL nodes AFTER completeness (including newly created medallion nodes)
+      // BUT skip icons for boundary nodes
+      specNodes = specNodes.map((n) => {
+        const rawType = ((n.data as any)?.componentType || '').toString();
+        const normalizedType = normalizeBoundaryType(rawType, (n.data as any)?.label, n.id) || rawType;
+        const isBoundary = normalizedType.toLowerCase().startsWith('account_boundary');
+        const base = {
+          ...n,
+          data: {
+            ...(n.data as any),
+            componentType: normalizedType,
+            icon: isBoundary ? undefined : getIconForComponentType(normalizedType || (n.data as any)?.label),
+            showHandles: isBoundary ? false : (n.data as any)?.showHandles,
+            onRename: renameNode,
+            onDelete: deleteNode,
+            onCopy: copyNode,
+          },
+        };
+        return isBoundary ? ensureBoundaryStyle(base, isDarkMode) : base;
+      });
+
+      // Separate boundaries from regular nodes before layout
+      // Boundaries stay as-is from agent, regular nodes go through layout
+      const boundariesForLater = specNodes.filter((n) => {
+        const compType = ((n.data as any)?.componentType || '').toString().toLowerCase();
+        return compType.startsWith('account_boundary_');
+      });
+      // Double-check boundaries have proper styling with no icons
+      const properlyStyledBoundaries = boundariesForLater.map(b => {
+        const styled = ensureBoundaryStyle(b, isDarkMode);
+        console.log(`[Pipeline] Boundary ${b.id} icon:`, (styled.data as any)?.icon, 'showHandles:', (styled.data as any)?.showHandles);
+        return styled;
+      });
+      specNodes = specNodes.filter((n) => {
+        const compType = ((n.data as any)?.componentType || '').toString().toLowerCase();
+        return !compType.startsWith('account_boundary_');
+      });
+      console.log(`[Pipeline] Separated ${properlyStyledBoundaries.length} boundaries for preservation, ${specNodes.length} nodes for layout`);
+
+      const laidOut = isMedallion(specNodes)
+        ? layoutMedallionDeterministic(specNodes)
+        : { nodes: layoutNodes(specNodes, cleanedSpecEdges), edges: cleanedSpecEdges };
+      // Add back agent-provided boundaries (properly styled) before addAccountBoundaries
+      const nodesWithAgentBoundaries = [...properlyStyledBoundaries, ...laidOut.nodes];
+      console.log(`[Pipeline] After layout + agent boundaries: ${nodesWithAgentBoundaries.length} nodes (${properlyStyledBoundaries.length} from agent)`);
+      const withBoundaries = addAccountBoundaries(nodesWithAgentBoundaries);
+      console.log(`[Pipeline] After boundaries (spec): ${withBoundaries.length} nodes`);
+      const fitted = fitCspNodesIntoBoundaries(withBoundaries);
+      console.log(`[Pipeline] After fitting (spec): ${fitted.length} nodes`);
+      const normalizedFinal = normalizeGraph(fitted, laidOut.edges);
+      const enforcedBoundaries = enforceAccountBoundaries(normalizedFinal.nodes, normalizedFinal.edges, isDarkMode);
+      const finalNodesWithStyle = normalizedFinal.nodes.map((n) =>
+        ensureBoundaryStyle(
+          n,
+          (n.data as any)?.isDarkMode ?? isDarkMode
+        )
+      );
+      const finalEdges = enforcedBoundaries.edges.map((e) => ({
+        ...e,
+        sourceHandle: e.sourceHandle || 'right-source',
+        targetHandle: e.targetHandle || 'left-target',
+        type: e.type || 'smoothstep',
+        animated: true,
+        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+      }));
+      const finalNodes = enforcedBoundaries.nodes.map((n) =>
+        ensureBoundaryStyle(
+          n,
+          (n.data as any)?.isDarkMode ?? isDarkMode
+        )
+      );
+      
+      // Debug final nodes before rendering
+      const boundaries = finalNodes.filter(n => 
+        ((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary')
+      );
+      const snowflakeLabeled = finalNodes.filter(n =>
+        ((n.data as any)?.label || '').toLowerCase().includes('snowflake account')
+      );
+      console.log(`[Pipeline] Final nodes to render: ${finalNodes.length} total, ${boundaries.length} boundaries, ${snowflakeLabeled.length} with 'Snowflake Account' label`);
+      boundaries.forEach(b => {
+        console.log(`[Pipeline] Final boundary ${b.id}:`, {
+          componentType: (b.data as any)?.componentType,
+          icon: (b.data as any)?.icon,
+          label: (b.data as any)?.label,
+          showHandles: (b.data as any)?.showHandles
+        });
+      });
+      if (snowflakeLabeled.length > 1) {
+        console.warn(`[Pipeline] ⚠️ Multiple nodes with 'Snowflake Account' label detected:`);
+        snowflakeLabeled.forEach(n => {
+          console.log(`  - ${n.id}: componentType="${(n.data as any)?.componentType}", icon=${(n.data as any)?.icon ? 'YES' : 'NO'}`);
+        });
+      }
+      
+      setNodes(finalNodes);
+      setEdges(finalEdges);
+      return;
+    }
+
     const { nodes: newNodes, edges: newEdges } = convertMermaidToFlow(
       mermaidCode,
       COMPONENT_CATEGORIES,
       isDarkMode
     );
-      setNodes(newNodes);
-      setEdges(newEdges);
+    console.log(`[Pipeline] After mermaid parse: ${newNodes.length} nodes, ${newEdges.length} edges`);
+    // Ensure medallion completeness FIRST (before normalization to preserve edges)
+    const nonBoundaryNodes = newNodes.filter(
+      (n) => !(((n.data as any)?.componentType || '').toString().toLowerCase().startsWith('account_boundary'))
+    );
+    const completed = ensureMedallionCompleteness(nonBoundaryNodes, newEdges);
+    console.log(`[Pipeline] After completeness: ${completed.nodes.length} nodes, ${completed.edges.length} edges`);
+    const completedEdges = completed.edges.map((e) => ({
+      ...e,
+      sourceHandle: e.sourceHandle || 'right-source',
+      targetHandle: e.targetHandle || 'left-target',
+      type: e.type || 'smoothstep',
+      animated: true,
+      style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+    }));
+    // Add icons to ALL nodes AFTER completeness (including newly created medallion nodes)
+    const nodesWithIcons = completed.nodes.map((n) => {
+      const rawType = ((n.data as any)?.componentType || '').toString();
+      const normalizedType = normalizeBoundaryType(rawType, (n.data as any)?.label, n.id) || rawType;
+      const isBoundary = normalizedType.toLowerCase().startsWith('account_boundary');
+      const base = {
+        ...n,
+        data: {
+          ...(n.data as any),
+          componentType: normalizedType,
+          icon: isBoundary ? undefined : getIconForComponentType(normalizedType || (n.data as any)?.label),
+          showHandles: isBoundary ? false : (n.data as any)?.showHandles,
+          onRename: renameNode,
+          onDelete: deleteNode,
+          onCopy: copyNode,
+        },
+      };
+      return isBoundary ? ensureBoundaryStyle(base, isDarkMode) : base;
+    });
+    // Separate boundaries from regular nodes before layout
+    const mermaidBoundariesRaw = nodesWithIcons.filter((n) => {
+      const id = n.id.toLowerCase();
+      const compType = ((n.data as any)?.componentType || '').toString().toLowerCase();
+      return id.startsWith('account_boundary_') && compType.startsWith('account_boundary_');
+    });
+    // Ensure boundaries are properly styled with no icons
+    const mermaidBoundaries = mermaidBoundariesRaw.map(b => {
+      const styled = ensureBoundaryStyle(b, isDarkMode);
+      console.log(`[Pipeline] Mermaid boundary ${b.id} icon:`, (styled.data as any)?.icon, 'showHandles:', (styled.data as any)?.showHandles);
+      return styled;
+    });
+    const finalNodes = nodesWithIcons.filter((n) => {
+      const id = n.id.toLowerCase();
+      const compType = ((n.data as any)?.componentType || '').toString().toLowerCase();
+      return !(id.startsWith('account_boundary_') && compType.startsWith('account_boundary_'));
+    });
+    if (mermaidBoundaries.length > 0) {
+      console.log(`[Pipeline] Preserved ${mermaidBoundaries.length} agent boundaries from mermaid:`, 
+        mermaidBoundaries.map(b => b.id));
+    }
+    console.log(`[Pipeline] After separating boundaries (mermaid): ${finalNodes.length} nodes for layout`);
+
+    const laidOut = isMedallion(finalNodes)
+      ? layoutMedallionDeterministic(finalNodes)
+      : { nodes: layoutNodes(finalNodes, completedEdges), edges: completedEdges };
+    console.log(`[Pipeline] After layout: ${laidOut.nodes.length} nodes`);
+    // Add back agent-provided boundaries before addAccountBoundaries
+    const nodesWithMermaidBoundaries = [...mermaidBoundaries, ...laidOut.nodes];
+    console.log(`[Pipeline] After layout + mermaid boundaries: ${nodesWithMermaidBoundaries.length} nodes (${mermaidBoundaries.length} from agent)`);
+    const withBoundaries = addAccountBoundaries(nodesWithMermaidBoundaries);
+    console.log(`[Pipeline] After boundaries: ${withBoundaries.length} nodes`);
+    const fitted = fitCspNodesIntoBoundaries(withBoundaries);
+    console.log(`[Pipeline] After fitting: ${fitted.length} nodes`);
+    const normalizedFinal = normalizeGraph(fitted, laidOut.edges);
+    console.log(`[Pipeline] After normalize (FINAL): ${normalizedFinal.nodes.length} nodes, ${normalizedFinal.edges.length} edges`);
+    const enforcedBoundaries = enforceAccountBoundaries(normalizedFinal.nodes, normalizedFinal.edges, isDarkMode);
+    const finalNodesWithStyle = enforcedBoundaries.nodes.map((n) =>
+      ensureBoundaryStyle(
+        n,
+        (n.data as any)?.isDarkMode ?? isDarkMode
+      )
+    );
+    const finalEdges = enforcedBoundaries.edges.map((e) => ({
+      ...e,
+      sourceHandle: e.sourceHandle || 'right-source',
+      targetHandle: e.targetHandle || 'left-target',
+      type: e.type || 'smoothstep',
+      animated: true,
+      style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+    }));
+    setNodes(finalNodesWithStyle);
+    setEdges(finalEdges);
   };
 
   return (
@@ -955,53 +2878,48 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
             </button>
           </div>
           
-          {/* NEW: Search Box */}
-          <div className={styles.searchContainer}>
-            <svg className={styles.searchIcon} width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M7 13A6 6 0 1 0 7 1a6 6 0 0 0 0 12zM15 15l-3.35-3.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <input
-              type="text"
-              className={styles.searchInput}
-              placeholder="Search components..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button
-                className={styles.searchClear}
-                onClick={() => setSearchQuery('')}
-                aria-label="Clear search"
-              >
-                ×
-              </button>
-            )}
-          </div>
-          
-          {/* NEW: Collapse/Expand All Button */}
-          <div className={styles.collapseAllContainer}>
+          {/* NEW: Search + Collapse/Expand Row */}
+          <div className={styles.searchRow}>
+            <div className={styles.searchContainer}>
+              <svg className={styles.searchIcon} width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <path d="M7 13A6 6 0 1 0 7 1a6 6 0 0 0 0 12zM15 15l-3.35-3.35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <input
+                type="text"
+                className={styles.searchInput}
+                placeholder="Search components..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              {searchQuery && (
+                <button
+                  className={styles.searchClear}
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                >
+                  ×
+                </button>
+              )}
+            </div>
             <button
-              className={styles.collapseAllButton}
+              className={styles.collapseIconButton}
               onClick={allExpanded ? collapseAll : expandAll}
               title={allExpanded ? 'Collapse All Categories' : 'Expand All Categories'}
               aria-label={allExpanded ? 'Collapse All Categories' : 'Expand All Categories'}
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                {!allExpanded ? (
-                  // Expand icon (chevrons pointing down)
-                  <>
-                    <path d="M3 4L7 8L11 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M3 8L7 12L11 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </>
-                ) : (
-                  // Collapse icon (chevrons pointing up)
-                  <>
-                    <path d="M11 10L7 6L3 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M11 6L7 2L3 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </>
-                )}
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 14 14"
+                fill="none"
+                className={styles.expandChevron}
+                style={{
+                  transform: allExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease',
+                }}
+              >
+                <path d="M3 5L7 9L11 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              <span>{allExpanded ? 'Collapse All' : 'Expand All'}</span>
             </button>
           </div>
         </div>
@@ -1066,29 +2984,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           )}
         </div>
 
-        <div className={styles.aiSection}>
-          <button
-            className={styles.aiButton}
-            onClick={() => setShowAIModal(true)}
-            disabled={isGenerating}
-          >
-            {isGenerating ? (
-              <>
-                <span className={styles.spinner} />
-                Generating...
-              </>
-            ) : (
-              <>
-                <img
-                  src="/icons/Snowflake_ICON_AI_Star_Triple.svg"
-                  alt="AI"
-                  className={styles.aiIcon}
-                />
-                Generate with AI
-              </>
-            )}
-          </button>
-        </div>
+        <div className={styles.aiSection} />
       </div>
 
       {/* Right Canvas - Diagram Builder with ReactFlow */}
@@ -1124,15 +3020,16 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           onConnectEnd={onConnectEnd}
           onNodeMouseEnter={onNodeMouseEnter}
           onNodeMouseLeave={onNodeMouseLeave}
+          onNodeContextMenu={onNodeContextMenu}
           onDrop={onDrop}
           onDragOver={onDragOver}
           onNodeDragStop={onNodeDragStop}
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
-          connectionMode="loose"
+          connectionMode={ConnectionMode.Loose}
           isValidConnection={() => true}
           fitView
-          attributionPosition="bottom-right"
+        proOptions={{ hideAttribution: true }}
           deleteKeyCode={null}
           selectNodesOnDrag={false}
           multiSelectionKeyCode="Shift"
@@ -1467,6 +3364,42 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
               </button>
             </div>
           )}
+
+          {/* Node context menu (copy/delete) */}
+          {nodeMenu && (
+            <div
+              className={styles.edgeActionsMinimal}
+              style={{
+                position: 'absolute',
+                left: `${nodeMenu.x}px`,
+                top: `${nodeMenu.y}px`,
+                transform: 'translate(-50%, -50%)',
+                zIndex: 1000,
+                pointerEvents: 'auto',
+              }}
+            >
+              <button
+                className={`${styles.edgeIconButton}`}
+                onClick={() => {
+                  copyNode(nodeMenu.nodeId);
+                  setNodeMenu(null);
+                }}
+                title="Copy node"
+              >
+                Copy
+              </button>
+              <button
+                className={`${styles.edgeIconButton} ${styles.edgeIconButtonDelete}`}
+                onClick={() => {
+                  deleteNode(nodeMenu.nodeId);
+                  setNodeMenu(null);
+                }}
+                title="Delete node"
+              >
+                Delete
+              </button>
+            </div>
+          )}
           
           {/* Top-Left Panel with Instructions */}
           <Panel
@@ -1524,44 +3457,125 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
         </ReactFlow>
       </div>
 
-      {/* AI Generation Modal */}
-      {showAIModal && (
-        <div className={styles.modalOverlay} onClick={() => setShowAIModal(false)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <img
-                src="/icons/Snowflake_ICON_Copilot.svg"
-                alt="AI"
-                className={styles.modalIcon}
-              />
-              <h3 className={styles.modalTitle}>Generate with AI</h3>
+      {/* Agent Chat Panel */}
+      <div className={styles.chatAnchor} style={{ left: chatPos.x, top: chatPos.y }}>
+        <button
+          className={`${styles.chatHandle} ${chatOpen ? styles.chatHandleOpen : ''}`}
+          title={chatOpen ? 'Collapse chat' : 'Open Agent Chat'}
+          onMouseDown={onChatDragStart}
+          onClick={() => setChatOpen((v) => !v)}
+        >
+          <img
+            key={`icon-${chatOpen}`}
+            src="/icons/Snowflake_ICON_AI_Star.svg"
+            alt="Agent"
+            className={`${styles.chatToggleIcon} ${chatOpen ? styles.chatToggleIconSpinCW : styles.chatToggleIconSpinCCW}`}
+          />
+        </button>
+        <div
+          className={`${styles.chatPanel} ${chatOpen ? `${styles.chatPanelOpen} ${styles.chatEntered}` : `${styles.chatPanelCollapsed} ${styles.chatExited}`} ${showDebug ? styles.chatPanelDebugOpen : ''}`}
+          style={{ left: 0, top: 0 }}
+          aria-hidden={!chatOpen}
+        >
+          <div className={styles.chatContent}>
+            <div className={styles.chatHeader}>
+              <div className={styles.chatHeaderLeft}>
+                <div className={`${styles.chatTitle} ${chatOpen ? styles.textShimmer : ''}`}>
+                  <span className={styles.titleBrand}>SnowGram</span> Design Assistant
+                </div>
+                <div className={`${styles.chatSubtitle} ${chatOpen ? styles.textShimmer : ''}`}>Powered by Cortex</div>
+              </div>
+              <div className={styles.chatHeaderActions}>
+                <button
+                  className={styles.chatAction}
+                  onClick={() => {
+                    setClearSpin(true);
+                    handleClearChat();
+                    setTimeout(() => setClearSpin(false), 600);
+                  }}
+                  title="Clear chat"
+                >
+                  <img
+                    src="/icons/Snowflake_ICON_Refresh.svg"
+                    alt="Clear"
+                    className={`${styles.chatActionIcon} ${clearSpin ? styles.chatToggleIconSpinCW : ''}`}
+                  />
+                </button>
+                <button className={styles.chatAction} onClick={() => setChatOpen(false)} title="Collapse chat">
+                  ×
+                </button>
+              </div>
             </div>
-            <textarea
-              className={styles.modalInput}
-              placeholder="Describe your Snowflake architecture... (e.g., 'Create a real-time IoT pipeline with Kafka, Snowpipe, Stream, Task, and Warehouse')"
-              value={aiPrompt}
-              onChange={(e) => setAiPrompt(e.target.value)}
-              rows={5}
-              autoFocus
-            />
-            <div className={styles.modalActions}>
+            <div className={styles.chatMessages}>
+              {chatMessages.map((m, idx) => (
+                <div
+                  key={idx}
+                  className={m.role === 'user' ? styles.chatMessageUser : styles.chatMessageAssistant}
+                >
+                  <div className={styles.chatBubble}>
+                    <strong>{m.role === 'user' ? 'You' : 'SnowGram'}:</strong> {m.text}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className={styles.chatInputRow}>
+              <textarea
+                className={styles.chatInput}
+                placeholder="Ask the agent to refine or extend the diagram..."
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                rows={3}
+                disabled={chatSending}
+              />
               <button
-                className={styles.modalButtonSecondary}
-                onClick={() => setShowAIModal(false)}
+                className={styles.chatSend}
+                onClick={handleSendChat}
+                disabled={!chatInput.trim() || chatSending}
               >
-                Cancel
+                <img src="/icons/arrow-up-1x.svg" alt="Send" className={styles.chatSendIcon} />
+                <span className={styles.sendDots} aria-hidden="true">...</span>
               </button>
+            </div>
+
+            <div className={styles.debugSection}>
               <button
-                className={styles.modalButtonPrimary}
-                onClick={handleAIGenerate}
-                disabled={!aiPrompt.trim()}
+                className={styles.debugToggle}
+                onClick={() => setShowDebug((v) => !v)}
+                aria-expanded={showDebug}
               >
-                Generate
+                <svg
+                  className={`${styles.debugIcon} ${
+                    showDebug === true ? styles.debugIconSpinCW : showDebug === false ? styles.debugIconSpinCCW : ''
+                  }`}
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.32-.02-.64-.07-.95l2.03-1.58a.5.5 0 00.12-.64l-1.92-3.32a.5.5 0 00-.6-.22l-2.39.96a7.03 7.03 0 00-1.64-.95l-.36-2.54A.5.5 0 0014.28 2h-4.56a.5.5 0 00-.5.43l-.36 2.54c-.6.24-1.16.56-1.68.95l-2.39-.96a.5.5 0 00-.6.22L2.67 8.5a.5.5 0 00.12.64l2.03 1.58c-.05.31-.07.63-.07.95 0 .31.02.63.06.94l-2.04 1.58a.5.5 0 00-.12.64l1.92 3.32c.14.24.43.34.68.22l2.39-.96c.52.39 1.08.71 1.68.95l.36 2.54c.04.25.25.43.5.43h4.56c.25 0 .46-.18.5-.43l.36-2.54c.6-.24 1.16-.56 1.68-.95l2.39.96c.25.12.54.02.68-.22l1.92-3.32a.5.5 0 00-.12-.64l-2.03-1.58zM12 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7z"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Debug</span>
+                <span className={`${styles.debugChevron} ${showDebug ? styles.debugChevronOpen : ''}`}>▾</span>
               </button>
+              <div className={`${styles.debugBody} ${showDebug ? styles.debugBodyOpen : ''}`} aria-hidden={!showDebug}>
+                <div className={styles.debugRow}>
+                  <span>Nodes: {nodes.length}</span>
+                  <span>Edges: {edges.length}</span>
+                </div>
+                <div className={styles.debugMermaidLabel}>Current Mermaid</div>
+                <pre className={styles.debugMermaid}>{currentMermaid}</pre>
+              </div>
             </div>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Export Modal */}
       {showExportModal && (

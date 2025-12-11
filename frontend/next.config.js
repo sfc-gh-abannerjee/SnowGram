@@ -34,10 +34,6 @@ const nextConfig = {
     unoptimized: true, // For SPCS deployment
   },
   
-  // Experimental features
-  experimental: {
-    serverActions: true,
-  },
 };
 
 module.exports = nextConfig;

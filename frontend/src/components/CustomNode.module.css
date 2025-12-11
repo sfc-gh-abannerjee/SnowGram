@@ -2,8 +2,8 @@
   position: relative;
   background: white;
   border: none;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 16px;
+  padding: 0;
   width: 100%;
   height: 100%;
   min-width: 120px;
@@ -11,17 +11,31 @@
   box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(41, 181, 232, 0.15);
   transition: all 0.2s ease;
-}
-
-.nodeContainer:hover {
-  box-shadow: 0 4px 16px rgba(41, 181, 232, 0.25);
-  transform: translateY(-1px);
+  overflow: visible;
 }
 
 /* Selected state - minimal border change only */
 :global(.react-flow__node.selected) .nodeContainer {
-  border-width: 2px;
-  border-color: #0F4C75;
+  border-width: 0;
+  border-color: transparent;
+  border-radius: 16px;
+  box-shadow: 0 0 0 3px #29B5E8, 0 0 10px rgba(41, 181, 232, 0.35);
+}
+
+.nodeSurface {
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  overflow: visible;
+  box-shadow: none;
+  transition: all 0.2s ease;
+}
+
+.nodeSurface:hover {
+  box-shadow: 0 4px 16px rgba(41, 181, 232, 0.25);
+  transform: translateY(-1px);
 }
 
 .nodeContent {

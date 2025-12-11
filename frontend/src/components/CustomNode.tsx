@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element */
 import React, { memo, useState, useRef, useEffect } from 'react';
 import { Handle, Position, NodeProps, NodeResizer } from 'reactflow';
 import styles from './CustomNode.module.css';
@@ -13,22 +14,43 @@ interface CustomNodeData {
   borderRadius?: number;
   fillColor?: string;
   fillAlpha?: number;
+  showHandles?: boolean;
 }
 
-const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, data, selected, style }) => {
+const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
+  const { id, data, selected } = props;
+  const style = (props as any).style as React.CSSProperties | undefined;
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(data.label);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const isBoundary = data.componentType?.startsWith('account_boundary');
   const labelColor = (data as any)?.labelColor || (style as any)?.color;
+  // Force dark grey for nodes in dark mode, white for light mode
+  const bgFallback = data.isDarkMode ? '#1e3a4a' : '#ffffff';
+  
+  // For boundaries, ALWAYS use the style.background (which has the rgba value)
+  const boundaryBackground = isBoundary ? (style?.background || 'transparent') : null;
+  
   const mergedStyle: React.CSSProperties = {
     ...(style || {}),
-    background: data.background ?? style?.background,
-    borderRadius: data.borderRadius ?? style?.borderRadius,
+    background: boundaryBackground || data.background || style?.background || bgFallback,
+    borderRadius: data.borderRadius ?? style?.borderRadius ?? 16,
     border: style?.border,
+    color: data.isDarkMode ? '#e5f2ff' : '#0F172A',
   };
-  const backgroundStyle = isBoundary ? mergedStyle.background || 'transparent' : mergedStyle.background;
+  // Boundaries use their rgba backgrounds, regular nodes use solid colors
+  const backgroundStyle = isBoundary 
+    ? (style?.background || 'rgba(41, 181, 232, 0.08)') // Fallback to snowflake blue with low alpha
+    : (data.isDarkMode ? '#1e3a4a' : '#ffffff');
+
+  const surfaceStyle: React.CSSProperties = {
+    background: backgroundStyle,
+    borderRadius: mergedStyle.borderRadius,
+    border: mergedStyle.border,
+    boxShadow: mergedStyle.boxShadow,
+    overflow: 'visible',
+  };
 
   // Focus input when entering edit mode
   useEffect(() => {
@@ -46,7 +68,9 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, data, selected, s
 
   const handleBlur = () => {
     if (editValue.trim() && editValue !== data.label) {
-      data.onRename(id, editValue.trim());
+      if (typeof data.onRename === 'function') {
+        data.onRename(id, editValue.trim());
+      }
     }
     setIsEditing(false);
   };
@@ -65,8 +89,15 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, data, selected, s
     <div 
       className={`${styles.nodeContainer} ${isBoundary ? styles.boundaryNode : ''}`}
       data-dark-mode={data.isDarkMode ? 'true' : 'false'}
-      style={mergedStyle}
+      style={{
+        ...mergedStyle,
+        background: 'transparent',
+        boxShadow: 'none',
+        padding: 0,
+        overflow: 'visible',
+      }}
     >
+      <div className={styles.nodeSurface} style={surfaceStyle}>
       {/* Resize handles (only show when selected) */}
       {selected && (
         <NodeResizer
@@ -77,20 +108,34 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, data, selected, s
         />
       )}
 
-      {/* All handles are type="source" - connectionMode="loose" allows any-to-any connections */}
-      <Handle 
-        type="source" 
-        position={Position.Top} 
-        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`} 
-        id="top"
-        isConnectable={true}
+      {/* Handles on all sides as both sources and targets for cleaner routing */}
+      <Handle
+        type="source"
+        position={Position.Top}
+        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`}
+        id="top-source"
+        isConnectable
       />
-      <Handle 
-        type="source" 
-        position={Position.Left} 
-        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`} 
-        id="left"
-        isConnectable={true}
+      <Handle
+        type="target"
+        position={Position.Top}
+        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`}
+        id="top-target"
+        isConnectable
+      />
+      <Handle
+        type="source"
+        position={Position.Left}
+        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`}
+        id="left-source"
+        isConnectable
+      />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`}
+        id="left-target"
+        isConnectable
       />
 
       {/* Node content */}
@@ -136,20 +181,35 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = ({ id, data, selected, s
         )}
       </div>
 
-      <Handle 
-        type="source" 
-        position={Position.Right} 
-        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`} 
-        id="right"
-        isConnectable={true}
+      <Handle
+        type="source"
+        position={Position.Right}
+        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`}
+        id="right-source"
+        isConnectable
       />
-      <Handle 
-        type="source" 
-        position={Position.Bottom} 
-        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`} 
-        id="bottom"
-        isConnectable={true}
+      <Handle
+        type="target"
+        position={Position.Right}
+        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`}
+        id="right-target"
+        isConnectable
       />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`}
+        id="bottom-source"
+        isConnectable
+      />
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        className={`${styles.handle} ${(!selected && !data.showHandles) ? styles.handleHidden : ''}`}
+        id="bottom-target"
+        isConnectable
+      />
+      </div>
     </div>
   );
 };

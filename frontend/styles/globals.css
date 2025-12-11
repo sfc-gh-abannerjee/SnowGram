@@ -68,6 +68,17 @@ body {
   animation-direction: reverse !important;
 }
 
+/* Hide ReactFlow attribution */
+.react-flow__attribution {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+.react-flow__attribution * {
+  display: none !important;
+  visibility: hidden !important;
+}
+
 /* Connection line styling during drag */
 .react-flow__connection-path {
   stroke: #29B5E8;

@@ -1,4 +1,90 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { Edge, Node } from 'reactflow';
+
+type Catalog = Record<string, any>;
+
+const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+const cleanText = (s: string) =>
+  s
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/[<>]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+// Map common Mermaid labels to SnowGram component names
+const LABEL_SYNONYMS: Record<string, string> = {
+  database: 'Database',
+  db: 'Database',
+  datastore: 'Database',
+  datawarehouse: 'Data WH',
+  warehouse: 'Warehouse',
+  wh: 'Warehouse',
+  snowflake: 'Warehouse',
+  virtualwarehouse: 'Virtual WH',
+  snowparkwarehouse: 'Snowpark WH',
+  adaptivewarehouse: 'Adaptive WH',
+  table: 'Table',
+  tables: 'Table',
+  view: 'View',
+  schema: 'Schema',
+  schemas: 'Schema',
+  stream: 'Stream',
+  streaming: 'Stream',
+  snowpipe: 'Snowpipe',
+  pipe: 'Snowpipe',
+  task: 'Task',
+  tasks: 'Task',
+  staging: 'Table',
+  landing: 'Table',
+  rawdata: 'Table',
+  cleanseddata: 'Table',
+  curateddata: 'Table',
+  csv: 'Table',
+  csvfiles: 'Table',
+  files: 'Table',
+  api: 'Stream',
+  apis: 'Stream',
+  ingest: 'Snowpipe',
+  ingestion: 'Snowpipe',
+  extractlayer: 'Snowpipe',
+  transformlayer: 'Task',
+  loadlayer: 'Table',
+  monitoring: 'View',
+  logging: 'View',
+  monitoringlogging: 'View',
+  analytics: 'View',
+  dashboard: 'View',
+  report: 'View',
+  reporting: 'View',
+  metric: 'View',
+  metrics: 'View',
+};
+
+function classifyByHeuristic(norm: string): string | null {
+  const has = (k: string) => norm.includes(k);
+
+  if (has('warehouse')) return 'Warehouse';
+  if (has('virtualwh')) return 'Virtual WH';
+  if (has('snowparkw')) return 'Snowpark WH';
+  if (has('adaptive')) return 'Adaptive WH';
+  if (has('database') || has('datastore')) return 'Database';
+
+  if (has('view') || has('dashboard') || has('report') || has('reporting') || has('analytics') || has('monitor') || has('logg'))
+    return 'View';
+
+  if (has('table') || has('csv') || has('file') || has('staging') || has('landing') || has('rawdata') || has('curated'))
+    return 'Table';
+
+  if (has('api') || has('source') || has('ingest') || has('stream') || has('connect')) return 'Stream';
+
+  if (has('snowpipe') || has('extract') || has('pull') || has('ingestion')) return 'Snowpipe';
+
+  if (has('task') || has('transform') || has('clean') || has('validate') || has('aggregate') || has('format') || has('process'))
+    return 'Task';
+
+  return null;
+}
 
 /**
  * Lightweight Mermaid flowchart parser to produce ReactFlow nodes/edges.
@@ -7,7 +93,7 @@ import { Edge, Node } from 'reactflow';
  */
 export function convertMermaidToFlow(
   mermaidCode: string,
-  componentCatalog: Record<string, any>,
+  componentCatalog: Catalog,
   isDarkMode = false
 ): { nodes: Node[]; edges: Edge[] } {
   const edges: Edge[] = [];
@@ -21,31 +107,44 @@ export function convertMermaidToFlow(
     const def = lines.find(l => l.startsWith(`${id}[`));
     if (def) {
       const m = def.match(nodeDefRegex);
-      if (m) return m[2];
+      if (m) return cleanText(m[2]);
     }
+    return cleanText(id);
+  };
+
+  const normalizeBoundaryId = (id: string, label: string) => {
+    const txt = `${id} ${label}`.toLowerCase();
+    if (txt.includes('snowflake account')) return 'account_boundary_snowflake';
+    if (txt.includes('aws account') || txt.includes('amazon account')) return 'account_boundary_aws';
+    if (txt.includes('azure')) return 'account_boundary_azure';
+    if (txt.includes('gcp') || txt.includes('google')) return 'account_boundary_gcp';
     return id;
   };
 
-  const ensureNode = (id: string) => {
+  const ensureNode = (rawId: string) => {
+    const label = getLabel(rawId);
+    const id = normalizeBoundaryId(rawId, label);
     if (nodeMap.has(id)) return nodeMap.get(id)!;
-    const label = getLabel(id);
     const color = isDarkMode ? '#29B5E8' : '#0F4C75';
+    const isBoundary = id.startsWith('account_boundary');
+    const componentType = isBoundary ? id : matchComponent(label, componentCatalog);
     const node: Node = {
       id,
       type: 'snowflakeNode',
       data: {
         label,
-        componentType: matchComponent(label, componentCatalog),
+        componentType,
         labelColor: isDarkMode ? '#E5EDF5' : '#0F172A',
         isDarkMode,
-        showHandles: true,
+        showHandles: !isBoundary,
+        icon: isBoundary ? undefined : undefined,
       },
       position: { x: 0, y: 0 },
       style: {
         border: `2px solid ${color}`,
         borderRadius: 8,
-        background: isDarkMode ? '#0F172A' : '#ffffff',
-        color: isDarkMode ? '#E5EDF5' : '#0F172A',
+        background: isDarkMode ? '#1e3a4a' : '#ffffff',
+        color: isDarkMode ? '#e5f2ff' : '#0F172A',
       },
     };
     nodeMap.set(id, node);
@@ -64,14 +163,18 @@ export function convertMermaidToFlow(
     if (m) {
       const source = m[1];
       const target = m[2];
-      ensureNode(source);
-      ensureNode(target);
+      const sourceNode = ensureNode(source);
+      const targetNode = ensureNode(target);
+      const sourceId = sourceNode.id;
+      const targetId = targetNode.id;
       edges.push({
-        id: `${source}-${target}-${edges.length}`,
-        source,
-        target,
+        id: `${sourceId}-${targetId}-${edges.length}`,
+        source: sourceId,
+        target: targetId,
         type: 'smoothstep',
         animated: true,
+        sourceHandle: 'right-source',
+        targetHandle: 'left-target',
         style: { stroke: '#29B5E8', strokeWidth: 2 },
         deletable: true,
       });
@@ -90,13 +193,33 @@ export function convertMermaidToFlow(
   return { nodes, edges };
 }
 
-function matchComponent(label: string, catalog: Record<string, any>): string {
-  const normalized = label.toLowerCase();
+function matchComponent(label: string, catalog: Catalog): string {
+  const norm = normalize(cleanText(label));
+
+  // 1) Exact catalog name match
   for (const [_cat, comps] of Object.entries(catalog)) {
     for (const c of comps as any[]) {
-      if (c.name?.toLowerCase() === normalized) return c.name;
+      if (!c?.name) continue;
+      if (normalize(c.name) === norm) return c.name;
     }
   }
+
+  // 2) Synonym match
+  if (LABEL_SYNONYMS[norm]) return LABEL_SYNONYMS[norm];
+
+  // 2b) Heuristic classification
+  const heuristic = classifyByHeuristic(norm);
+  if (heuristic) return heuristic;
+
+  // 3) Fuzzy contains: if label contains a catalog item or vice versa
+  for (const [_cat, comps] of Object.entries(catalog)) {
+    for (const c of comps as any[]) {
+      if (!c?.name) continue;
+      const cn = normalize(c.name);
+      if (norm.includes(cn) || cn.includes(norm)) return c.name;
+    }
+  }
+
   return label;
 }
 
