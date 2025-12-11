@@ -1196,3 +1196,22 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 
 ***
 
+### Milestone 21: Account Boundary Styling & Layout Hardening ✅ (Completed)
+**Date**: 2025-12-11  
+**Impact**: Critical UX fix — correct cloud account boundaries (no overlap, brand-safe fills, dark/light legibility)
+
+**Deliverables**:
+- ✅ Preserved agent-provided boundaries and recalculated their bounding boxes from actual node extents (uses node width/height, not just position).
+- ✅ Enforced single-column layout for AWS boundary contents (S3 + Snowpipe) to avoid horizontal drift into Snowflake territory; maintained a fixed 40px gap between boundaries.
+- ✅ Dark/light-aware boundary fills and label colors; removed inadvertent white fills in dark mode and ensured labels stay readable.
+- ✅ Canonicalized boundary component types (account_boundary_*) to prevent icon rendering and preserve dashed, semi-transparent styling.
+
+**Files Updated**:
+- `frontend/src/App.tsx` — boundary recalculation, spacing logic, single-column AWS layout, boundary preservation/styling.
+- `frontend/src/components/CustomNode.tsx` — boundary background/label color handling for dark/light themes.
+
+**Result**:
+- Boundaries render as semi-transparent containers with dashed outlines, no center icons, consistent label colors in both light and dark mode, and no overlap between AWS and Snowflake account regions.
+
+***
+
