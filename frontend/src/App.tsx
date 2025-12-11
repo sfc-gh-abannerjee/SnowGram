@@ -725,10 +725,10 @@ const layoutMedallionDeterministic = (nodes: Node[]) => {
 
   // Fixed grid slots (tighter spacing) + gap to AWS
   const baseX = 360;
-  const baseY = 200;
-  const GAP_X = 60; // gap between AWS and Snowflake
-  const X = (c: number) => baseX + c * 200;
-  const Y = (r: number) => baseY + r * 140;
+  const baseY = 220;
+  const GAP_X = 80; // gap between AWS and Snowflake
+  const X = (c: number) => baseX + c * 230; // more breathing room horizontally
+  const Y = (r: number) => baseY + r * 170; // more breathing room vertically
   const place = (n: Node | null, c: number, r: number) =>
     n
       ? {
@@ -1114,12 +1114,12 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
   // Helper: get current z-index for a node
   const getZ = (n: Node) => (n.style as any)?.zIndex ?? 0;
 
-  // Grid snapping parameters (only snap when close)
+  // Grid snapping parameters (proximity-based, slightly stickier)
   const GRID_SIZE = 16;
-  const SNAP_THRESHOLD_X = 5;  // grid snap when within 5px horizontally
-  const SNAP_THRESHOLD_Y = 8;  // grid snap when within 8px vertically
-  const SNAP_NODE_THRESHOLD_X = 6;  // neighbor snap when within 6px horizontally
-  const SNAP_NODE_THRESHOLD_Y = 10; // neighbor snap when within 10px vertically
+  const SNAP_THRESHOLD_X = 10;  // grid snap when within 10px horizontally
+  const SNAP_THRESHOLD_Y = 10;  // grid snap when within 10px vertically
+  const SNAP_NODE_THRESHOLD_X = 12;  // neighbor snap when within 12px horizontally
+  const SNAP_NODE_THRESHOLD_Y = 14;  // neighbor snap when within 14px vertically
   
   // NEW: Toggle category collapse/expand
   const toggleCategory = useCallback((category: string) => {
@@ -2140,9 +2140,10 @@ const fitCspNodesIntoBoundaries = (nodes: Node[]) => {
     const boundary = boundaries[provider];
     if (!boundary) return;
     const padding = 32;
-    const rowHeight = 160; // 140px node height + 20px spacing
+    const titlePad = 32; // keep content clear of boundary title
+    const rowHeight = 170; // match medallion vertical spacing and give more breathing room
     const bx = boundary.position.x + padding;
-    const by = boundary.position.y + padding;
+    const by = boundary.position.y + padding + titlePad;
 
     let index = 0;
     let maxX = bx;
@@ -2703,14 +2704,43 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           (n.data as any)?.isDarkMode ?? isDarkMode
         )
       );
-      const finalEdges = enforcedBoundaries.edges.map((e) => ({
-        ...e,
-        sourceHandle: e.sourceHandle || 'right-source',
-        targetHandle: e.targetHandle || 'left-target',
-        type: e.type || 'smoothstep',
-        animated: true,
-        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
-      }));
+      const nodeMap = new Map<string, Node>(enforcedBoundaries.nodes.map(n => [n.id, n]));
+      const pickHandle = (fromId: string, toId: string) => {
+        const from = nodeMap.get(fromId);
+        const to = nodeMap.get(toId);
+        if (!from || !to) {
+          return { sourceHandle: 'right-source', targetHandle: 'left-target' };
+        }
+        const { width: w1, height: h1 } = getNodeSize(from);
+        const { width: w2, height: h2 } = getNodeSize(to);
+        const c1 = { x: from.position.x + w1 / 2, y: from.position.y + h1 / 2 };
+        const c2 = { x: to.position.x + w2 / 2, y: to.position.y + h2 / 2 };
+        const dx = c2.x - c1.x;
+        const dy = c2.y - c1.y;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          // Horizontal preference
+          return {
+            sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
+            targetHandle: dx >= 0 ? 'left-target' : 'right-target',
+          };
+        }
+        // Vertical preference
+        return {
+          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+        };
+      };
+
+      const finalEdges = enforcedBoundaries.edges.map((e) => {
+        const handles = pickHandle(e.source, e.target);
+        return {
+          ...e,
+          ...handles,
+          type: e.type || 'smoothstep',
+          animated: true,
+          style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+        };
+      });
       const finalNodes = enforcedBoundaries.nodes.map((n) =>
         ensureBoundaryStyle(
           n,
