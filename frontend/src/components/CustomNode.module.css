@@ -1,6 +1,6 @@
 .nodeContainer {
   position: relative;
-  background: transparent; /* avoid double-fill; actual fill comes from inline style */
+  background: transparent; /* let nodeSurface own the fill */
   border: none;
   border-radius: 16px;
   padding: 0;
@@ -214,9 +214,9 @@
 /* ===== DARK MODE SUPPORT ===== */
 /* We'll use a data attribute that can be set on the node container */
 .nodeContainer[data-dark-mode="true"] {
-  background: #1E293B;
-  border-color: #29B5E8;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
 }
 
 .nodeContainer[data-dark-mode="true"]:hover {

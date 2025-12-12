@@ -2717,24 +2717,14 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         const c2 = { x: to.position.x + w2 / 2, y: to.position.y + h2 / 2 };
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
-        const FAR = 60; // distant diagonal → favor horizontal to avoid crossing nodes
 
-        // If both deltas are large (not roughly aligned), prefer horizontal handles to avoid crossing through unrelated nodes
-        if (Math.abs(dx) > FAR && Math.abs(dy) > FAR) {
+        // Prefer the dominant axis; if roughly diagonal, stick with dominant delta to keep edges visible
+        if (Math.abs(dx) >= Math.abs(dy)) {
           return {
             sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
             targetHandle: dx >= 0 ? 'left-target' : 'right-target',
           };
         }
-
-        if (Math.abs(dx) > Math.abs(dy)) {
-          // Horizontal preference
-          return {
-            sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
-            targetHandle: dx >= 0 ? 'left-target' : 'right-target',
-          };
-        }
-        // Vertical preference
         return {
           sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
           targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
@@ -2811,16 +2801,8 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       const c2 = { x: to.position.x + w2 / 2, y: to.position.y + h2 / 2 };
       const dx = c2.x - c1.x;
       const dy = c2.y - c1.y;
-      const FAR = 60;
 
-      if (Math.abs(dx) > FAR && Math.abs(dy) > FAR) {
-        return {
-          sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
-          targetHandle: dx >= 0 ? 'left-target' : 'right-target',
-        };
-      }
-
-      if (Math.abs(dx) > Math.abs(dy)) {
+      if (Math.abs(dx) >= Math.abs(dy)) {
         return {
           sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
           targetHandle: dx >= 0 ? 'left-target' : 'right-target',

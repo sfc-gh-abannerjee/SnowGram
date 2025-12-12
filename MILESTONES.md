@@ -1207,6 +1207,7 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 - ✅ Canonicalized boundary component types (account_boundary_*) to prevent icon rendering and preserve dashed, semi-transparent styling.
 - ✅ Proximity-based grid and neighbor snapping tuned for easier horizontal/vertical alignment; edge handles now auto-pick the nearest side (top/bottom/left/right) based on relative positions.
 - ✅ Increased intra-boundary spacing and added title padding so boundary labels are never obscured by child nodes.
+- ✅ Edge routing refined to prefer dominant-axis handles (left/right vs. top/bottom) while preserving distant connections; node fills simplified to remove double-layer backgrounds on non-boundary nodes.
 
 **Files Updated**:
 - `frontend/src/App.tsx` — boundary recalculation, spacing logic, single-column AWS layout, boundary preservation/styling.
