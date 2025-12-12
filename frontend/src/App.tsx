@@ -2770,55 +2770,28 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
 
-        // Alignment thresholds
-        const VERTICAL_ALIGNMENT_THRESHOLD = 80;
-        const HORIZONTAL_ALIGNMENT_THRESHOLD = 50;
-        
-        // Check for vertical alignment (same column)
-        if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
+        // For medallion architectures: ALWAYS prefer vertical handles if there's ANY vertical distance
+        // This prevents horizontal handle selection that routes edges off-canvas
+        if (Math.abs(dy) > 20) {
+          // There's meaningful vertical distance - use vertical handles
           return {
             sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
             targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
           };
         }
         
-        // Check for horizontal alignment (same row)
-        if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
+        // Only use horizontal handles if nodes are on the same horizontal level
+        if (Math.abs(dy) <= 20) {
           return {
             sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
             targetHandle: dx >= 0 ? 'left-target' : 'right-target',
           };
         }
         
-        // Medallion tier detection
-        const similarYThreshold = 50;
-        const nodesAtSourceY = Array.from(nodeMap.values()).filter(n => 
-          Math.abs((n.position.y + getNodeSize(n).height / 2) - c1.y) < similarYThreshold
-        ).length;
-        const nodesAtTargetY = Array.from(nodeMap.values()).filter(n => 
-          Math.abs((n.position.y + getNodeSize(n).height / 2) - c2.y) < similarYThreshold
-        ).length;
-        
-        const isTierLayout = nodesAtSourceY >= 2 && nodesAtTargetY >= 2;
-        
-        if (isTierLayout && Math.abs(dy) > Math.abs(dx) * 1.2) {
-          return {
-            sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
-            targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
-          };
-        }
-        
-        // Default: use direction that has the larger distance component
-        if (Math.abs(dy) > Math.abs(dx)) {
-          return {
-            sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
-            targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
-          };
-        }
-        
+        // Fallback (should rarely reach here)
         return {
-          sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
-          targetHandle: dx >= 0 ? 'left-target' : 'right-target',
+          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
         };
       };
 
@@ -2902,55 +2875,28 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       const dx = c2.x - c1.x;
       const dy = c2.y - c1.y;
 
-      // Alignment thresholds
-      const VERTICAL_ALIGNMENT_THRESHOLD = 80;
-      const HORIZONTAL_ALIGNMENT_THRESHOLD = 50;
-      
-      // Check for vertical alignment (same column)
-      if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
+      // For medallion architectures: ALWAYS prefer vertical handles if there's ANY vertical distance
+      // This prevents horizontal handle selection that routes edges off-canvas
+      if (Math.abs(dy) > 20) {
+        // There's meaningful vertical distance - use vertical handles
         return {
           sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
           targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
         };
       }
       
-      // Check for horizontal alignment (same row)
-      if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
+      // Only use horizontal handles if nodes are on the same horizontal level
+      if (Math.abs(dy) <= 20) {
         return {
           sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
           targetHandle: dx >= 0 ? 'left-target' : 'right-target',
         };
       }
       
-      // Medallion tier detection
-      const similarYThreshold = 50;
-      const nodesAtSourceY = Array.from(nodeMap.values()).filter(n => 
-        Math.abs((n.position.y + getNodeSize(n).height / 2) - c1.y) < similarYThreshold
-      ).length;
-      const nodesAtTargetY = Array.from(nodeMap.values()).filter(n => 
-        Math.abs((n.position.y + getNodeSize(n).height / 2) - c2.y) < similarYThreshold
-      ).length;
-      
-      const isTierLayout = nodesAtSourceY >= 2 && nodesAtTargetY >= 2;
-      
-      if (isTierLayout && Math.abs(dy) > Math.abs(dx) * 1.2) {
-        return {
-          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
-          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
-        };
-      }
-      
-      // Default: use direction that has the larger distance component
-      if (Math.abs(dy) > Math.abs(dx)) {
-        return {
-          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
-          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
-        };
-      }
-      
+      // Fallback (should rarely reach here)
       return {
-        sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
-        targetHandle: dx >= 0 ? 'left-target' : 'right-target',
+        sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+        targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
       };
     };
 
