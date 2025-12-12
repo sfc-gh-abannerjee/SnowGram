@@ -27,7 +27,7 @@
   height: 100%;
   padding: 16px;
   box-sizing: border-box;
-  border-radius: 16px;
+  /* border-radius set via inline style to ensure perfect sync with border */
   overflow: visible;
   box-shadow: none;
   transition: all 0.2s ease;

@@ -1300,3 +1300,66 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 
 ***
 
+### Milestone 22.3: Intelligent Obstacle-Aware Edge Routing ✅ (Completed)
+**Date**: 2025-12-12  
+**Impact**: Critical routing quality — edges now intelligently route around obstacles regardless of handle selection
+
+**Deliverables**:
+- ✅ **Implemented intelligent obstacle detection**:
+  - Added `calculateRouteWithObstacleAvoidance` function to detect all obstacles in direct path between nodes
+  - Checks bounding box intersection with 20px margin around each node
+  - Returns obstacle count and waypoint calculations for routing decisions
+- ✅ **Dynamic edge type selection based on obstacles**:
+  - `step` edge type for paths with obstacles (creates orthogonal right-angle paths that route around)
+  - `smoothstep` edge type for aligned connections without obstacles (clean flowing curves)
+  - `default` edge type for diagonal connections without obstacles (straight bezier)
+- ✅ **Simplified handle selection logic**:
+  - Removed obstacle detection from `pickHandle` function
+  - Handle selection now based purely on alignment and tier layout
+  - Obstacle avoidance delegated to edge type (step edges naturally route around)
+- ✅ **Applied to both pipelines**:
+  - Spec-based diagram generation (agent responses)
+  - Mermaid-based diagram generation
+  - Consistent behavior across all diagram types
+- ✅ **Removed deprecated helpers**:
+  - Cleaned up unused `pathPassesThroughNode` functions (2 instances)
+  - Simplified codebase and reduced complexity
+
+**Files Updated**:
+- `frontend/src/App.tsx`:
+  - Added `calculateRouteWithObstacleAvoidance` and `calculateRouteWithObstacleAvoidanceMermaid` functions
+  - Updated edge creation in both pipelines to use dynamic edge type selection
+  - Simplified `pickHandle` functions (removed obstacle detection logic)
+  - Removed deprecated `pathPassesThroughNode` helper functions
+
+**Technical Details**:
+- **Obstacle Detection Algorithm**:
+  - Calculates actual handle positions based on handle type (top/bottom/left/right)
+  - Creates bounding box for direct path between source and target handles
+  - Checks all non-boundary nodes for intersection with path bounds
+  - 20px margin ensures safe clearance around nodes
+- **Edge Type Selection**:
+  - `step` edges with `borderRadius: 8` create smooth right-angle transitions
+  - ReactFlow's step edge algorithm automatically calculates optimal intermediate waypoints
+  - No manual waypoint calculation needed—ReactFlow handles the complexity
+- **Handle Selection Logic** (unchanged but now obstacle-independent):
+  - Vertical alignment (<80px horizontal distance): use top/bottom handles
+  - Horizontal alignment (<50px vertical distance): use left/right handles
+  - Medallion tier detection: prefer vertical for multi-node rows with large vertical distance
+  - Default: choose direction with larger distance component
+
+**Result**:
+- ✅ Edges **always** route cleanly around intermediate nodes, regardless of handle selection
+- ✅ Bronze Stream → Bronze→Silver Stream no longer passes under Bronze Tables/Silver Schema
+- ✅ All medallion connections maintain clean vertical flow without cutting through nodes
+- ✅ Cross-tier connections use step edges for clean right-angle routing
+- ✅ Production-ready edge routing suitable for complex multi-tier architectures
+- ✅ Console logging (`🚧 Routing around N obstacles`) helps debug routing decisions
+
+**Console Output Example**:
+```
+🚧 Routing around 2 obstacles for bronze_stream → bronze_silver_stream
+```
+
+***
+

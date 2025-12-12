@@ -2756,31 +2756,90 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         )
         .map(applyThemeToNode);
       const nodeMap = new Map<string, Node>(enforcedBoundaries.nodes.map(n => [n.id, n]));
-      
-      // Helper: check if a direct straight path would pass through a node's center region
-      const pathPassesThroughNode = (x1: number, y1: number, x2: number, y2: number, node: Node) => {
-        const size = getNodeSize(node);
-        const nodeCenterX = node.position.x + size.width / 2;
-        const nodeCenterY = node.position.y + size.height / 2;
-        const nodeHalfWidth = size.width / 2;
-        const nodeHalfHeight = size.height / 2;
+      // Calculate obstacle-avoiding waypoints for edge routing
+      const calculateRouteWithObstacleAvoidance = (fromId: string, toId: string, sourceHandle: string, targetHandle: string) => {
+        const from = nodeMap.get(fromId);
+        const to = nodeMap.get(toId);
+        if (!from || !to) return { waypoints: [], obstacleCount: 0 };
+
+        const { width: w1, height: h1 } = getNodeSize(from);
+        const { width: w2, height: h2 } = getNodeSize(to);
         
-        // Only consider it an obstacle if the path goes through the center 60% of the node
-        const coreMargin = 0.6;
-        const coreLeft = nodeCenterX - (nodeHalfWidth * coreMargin);
-        const coreRight = nodeCenterX + (nodeHalfWidth * coreMargin);
-        const coreTop = nodeCenterY - (nodeHalfHeight * coreMargin);
-        const coreBottom = nodeCenterY + (nodeHalfHeight * coreMargin);
+        // Calculate handle positions
+        const getHandlePos = (node: Node, handle: string, w: number, h: number) => {
+          const base = { x: node.position.x, y: node.position.y };
+          if (handle.includes('top')) return { x: base.x + w/2, y: base.y };
+          if (handle.includes('bottom')) return { x: base.x + w/2, y: base.y + h };
+          if (handle.includes('left')) return { x: base.x, y: base.y + h/2 };
+          if (handle.includes('right')) return { x: base.x + w, y: base.y + h/2 };
+          return { x: base.x + w/2, y: base.y + h/2 };
+        };
         
-        // Check if the bounding box of the line intersects the core region
-        const lineMinX = Math.min(x1, x2);
-        const lineMaxX = Math.max(x1, x2);
-        const lineMinY = Math.min(y1, y2);
-        const lineMaxY = Math.max(y1, y2);
+        const start = getHandlePos(from, sourceHandle, w1, h1);
+        const end = getHandlePos(to, targetHandle, w2, h2);
         
-        return !(coreRight < lineMinX || coreLeft > lineMaxX || coreBottom < lineMinY || coreTop > lineMaxY);
+        // Find all obstacles along the direct path
+        const obstacles = Array.from(nodeMap.values()).filter(n => {
+          if (n.id === fromId || n.id === toId) return false;
+          if (((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary')) return false;
+          
+          const size = getNodeSize(n);
+          const nodeBounds = {
+            left: n.position.x - 20, // Add margin
+            right: n.position.x + size.width + 20,
+            top: n.position.y - 20,
+            bottom: n.position.y + size.height + 20,
+          };
+          
+          // Check if the bounding box of the direct path intersects this node
+          const pathBounds = {
+            left: Math.min(start.x, end.x),
+            right: Math.max(start.x, end.x),
+            top: Math.min(start.y, end.y),
+            bottom: Math.max(start.y, end.y),
+          };
+          
+          return !(nodeBounds.right < pathBounds.left || 
+                   nodeBounds.left > pathBounds.right || 
+                   nodeBounds.bottom < pathBounds.top || 
+                   nodeBounds.top > pathBounds.bottom);
+        });
+        
+        if (obstacles.length === 0) {
+          return { waypoints: [], obstacleCount: 0 };
+        }
+        
+        console.log(`🚧 Routing around ${obstacles.length} obstacles for ${fromId} → ${toId}`);
+        
+        // Calculate detour waypoints based on obstacle positions
+        const waypoints: Array<{x: number, y: number}> = [];
+        
+        // Determine if we should route horizontally-then-vertically or vice versa
+        const isHorizontalFirst = sourceHandle.includes('left') || sourceHandle.includes('right');
+        
+        if (isHorizontalFirst) {
+          // Route right/left first, then up/down
+          // Find the furthest obstacle boundary in the horizontal direction
+          const rightMost = Math.max(...obstacles.map(o => o.position.x + getNodeSize(o).width + 30));
+          const leftMost = Math.min(...obstacles.map(o => o.position.x - 30));
+          
+          const midX = sourceHandle.includes('right') ? rightMost : leftMost;
+          waypoints.push({ x: midX, y: start.y });
+          waypoints.push({ x: midX, y: end.y });
+        } else {
+          // Route up/down first, then left/right
+          // Find the furthest obstacle boundary in the vertical direction
+          const bottomMost = Math.max(...obstacles.map(o => o.position.y + getNodeSize(o).height + 30));
+          const topMost = Math.min(...obstacles.map(o => o.position.y - 30));
+          
+          const midY = sourceHandle.includes('bottom') ? bottomMost : topMost;
+          waypoints.push({ x: start.x, y: midY });
+          waypoints.push({ x: end.x, y: midY });
+        }
+        
+        return { waypoints, obstacleCount: obstacles.length };
       };
-      
+
       const pickHandle = (fromId: string, toId: string) => {
         const from = nodeMap.get(fromId);
         const to = nodeMap.get(toId);
@@ -2794,31 +2853,20 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
 
-        // Check for obstacles in the direct path between nodes (only center regions)
-        const obstacles = Array.from(nodeMap.values()).filter(n => 
-          n.id !== fromId && n.id !== toId && 
-          !((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary') &&
-          pathPassesThroughNode(c1.x, c1.y, c2.x, c2.y, n)
-        );
-        
-        const hasObstacles = obstacles.length > 0;
-
         // Alignment thresholds
-        const VERTICAL_ALIGNMENT_THRESHOLD = 80; // Increased from 60
-        const HORIZONTAL_ALIGNMENT_THRESHOLD = 50; // Increased from 40
+        const VERTICAL_ALIGNMENT_THRESHOLD = 80;
+        const HORIZONTAL_ALIGNMENT_THRESHOLD = 50;
         
-        // Check for vertical alignment (same column) - prioritize vertical connections
+        // Check for vertical alignment (same column)
         if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
-          // Even with obstacles, prefer vertical if vertically aligned (smoothstep will route around)
           return {
             sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
             targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
           };
         }
         
-        // Check for horizontal alignment (same row) - use horizontal connections
+        // Check for horizontal alignment (same row)
         if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
-          // Even with obstacles, prefer horizontal if horizontally aligned
           return {
             sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
             targetHandle: dx >= 0 ? 'left-target' : 'right-target',
@@ -2836,14 +2884,21 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         
         const isTierLayout = nodesAtSourceY >= 2 && nodesAtTargetY >= 2;
         
-        if (isTierLayout || Math.abs(dy) > Math.abs(dx) * 0.7) {
+        if (isTierLayout && Math.abs(dy) > Math.abs(dx) * 1.2) {
           return {
             sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
             targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
           };
         }
         
-        // Default to horizontal for side-by-side nodes
+        // Default: use direction that has the larger distance component
+        if (Math.abs(dy) > Math.abs(dx)) {
+          return {
+            sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+            targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+          };
+        }
+        
         return {
           sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
           targetHandle: dx >= 0 ? 'left-target' : 'right-target',
@@ -2852,12 +2907,32 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
 
       const finalEdges = enforcedBoundaries.edges.map((e) => {
         const handles = pickHandle(e.source, e.target);
+        
+        // Check for obstacles and calculate routing
+        const routing = calculateRouteWithObstacleAvoidance(e.source, e.target, handles.sourceHandle, handles.targetHandle);
+        
+        // Use step edge for obstacle avoidance (creates right-angle paths)
+        // Use smoothstep for clean aligned connections
+        // Use default for straight connections
+        const isVertical = handles.sourceHandle.includes('bottom') || handles.sourceHandle.includes('top');
+        const isHorizontal = handles.sourceHandle.includes('left') || handles.sourceHandle.includes('right');
+        
+        let edgeType: string;
+        if (routing.obstacleCount > 0) {
+          edgeType = 'step'; // Step edges create orthogonal paths that route around obstacles
+        } else if (isVertical || isHorizontal) {
+          edgeType = 'smoothstep'; // Smoothstep for aligned connections
+        } else {
+          edgeType = 'default'; // Default bezier for diagonal
+        }
+        
         return {
           ...e,
           ...handles,
-          type: e.type || 'smoothstep',
+          type: edgeType,
           animated: true,
           style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+          pathOptions: edgeType === 'step' ? { borderRadius: 8 } : undefined,
         };
       });
       const finalNodes = enforcedBoundaries.nodes
@@ -2912,31 +2987,6 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     const completed = ensureMedallionCompleteness(nonBoundaryNodes, newEdges);
     console.log(`[Pipeline] After completeness: ${completed.nodes.length} nodes, ${completed.edges.length} edges`);
     const nodeMap = new Map<string, Node>(completed.nodes.map(n => [n.id, n]));
-    
-    // Helper: check if a direct straight path would pass through a node's center region
-    const pathPassesThroughNode = (x1: number, y1: number, x2: number, y2: number, node: Node) => {
-      const size = getNodeSize(node);
-      const nodeCenterX = node.position.x + size.width / 2;
-      const nodeCenterY = node.position.y + size.height / 2;
-      const nodeHalfWidth = size.width / 2;
-      const nodeHalfHeight = size.height / 2;
-      
-      // Only consider it an obstacle if the path goes through the center 60% of the node
-      const coreMargin = 0.6;
-      const coreLeft = nodeCenterX - (nodeHalfWidth * coreMargin);
-      const coreRight = nodeCenterX + (nodeHalfWidth * coreMargin);
-      const coreTop = nodeCenterY - (nodeHalfHeight * coreMargin);
-      const coreBottom = nodeCenterY + (nodeHalfHeight * coreMargin);
-      
-      // Check if the bounding box of the line intersects the core region
-      const lineMinX = Math.min(x1, x2);
-      const lineMaxX = Math.max(x1, x2);
-      const lineMinY = Math.min(y1, y2);
-      const lineMaxY = Math.max(y1, y2);
-      
-      return !(coreRight < lineMinX || coreLeft > lineMaxX || coreBottom < lineMinY || coreTop > lineMaxY);
-    };
-    
     const pickHandle = (fromId: string, toId: string) => {
       const from = nodeMap.get(fromId);
       const to = nodeMap.get(toId);
@@ -2951,21 +3001,19 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       const dy = c2.y - c1.y;
 
       // Alignment thresholds
-      const VERTICAL_ALIGNMENT_THRESHOLD = 80; // Increased from 60
-      const HORIZONTAL_ALIGNMENT_THRESHOLD = 50; // Increased from 40
+      const VERTICAL_ALIGNMENT_THRESHOLD = 80;
+      const HORIZONTAL_ALIGNMENT_THRESHOLD = 50;
       
-      // Check for vertical alignment (same column) - prioritize vertical connections
+      // Check for vertical alignment (same column)
       if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
-        // Even with obstacles, prefer vertical if vertically aligned (smoothstep will route around)
         return {
           sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
           targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
         };
       }
       
-      // Check for horizontal alignment (same row) - use horizontal connections
+      // Check for horizontal alignment (same row)
       if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
-        // Even with obstacles, prefer horizontal if horizontally aligned
         return {
           sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
           targetHandle: dx >= 0 ? 'left-target' : 'right-target',
@@ -2983,28 +3031,106 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       
       const isTierLayout = nodesAtSourceY >= 2 && nodesAtTargetY >= 2;
       
-      if (isTierLayout || Math.abs(dy) > Math.abs(dx) * 0.7) {
+      if (isTierLayout && Math.abs(dy) > Math.abs(dx) * 1.2) {
         return {
           sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
           targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
         };
       }
       
-      // Default to horizontal for side-by-side nodes
+      // Default: use direction that has the larger distance component
+      if (Math.abs(dy) > Math.abs(dx)) {
+        return {
+          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+        };
+      }
+      
       return {
         sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
         targetHandle: dx >= 0 ? 'left-target' : 'right-target',
       };
     };
 
+    // Calculate obstacle-avoiding waypoints for edge routing (mermaid pipeline)
+    const calculateRouteWithObstacleAvoidanceMermaid = (fromId: string, toId: string, sourceHandle: string, targetHandle: string) => {
+      const from = nodeMap.get(fromId);
+      const to = nodeMap.get(toId);
+      if (!from || !to) return { waypoints: [], obstacleCount: 0 };
+
+      const { width: w1, height: h1 } = getNodeSize(from);
+      const { width: w2, height: h2 } = getNodeSize(to);
+      
+      const getHandlePos = (node: Node, handle: string, w: number, h: number) => {
+        const base = { x: node.position.x, y: node.position.y };
+        if (handle.includes('top')) return { x: base.x + w/2, y: base.y };
+        if (handle.includes('bottom')) return { x: base.x + w/2, y: base.y + h };
+        if (handle.includes('left')) return { x: base.x, y: base.y + h/2 };
+        if (handle.includes('right')) return { x: base.x + w, y: base.y + h/2 };
+        return { x: base.x + w/2, y: base.y + h/2 };
+      };
+      
+      const start = getHandlePos(from, sourceHandle, w1, h1);
+      const end = getHandlePos(to, targetHandle, w2, h2);
+      
+      const obstacles = Array.from(nodeMap.values()).filter(n => {
+        if (n.id === fromId || n.id === toId) return false;
+        if (((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary')) return false;
+        
+        const size = getNodeSize(n);
+        const nodeBounds = {
+          left: n.position.x - 20,
+          right: n.position.x + size.width + 20,
+          top: n.position.y - 20,
+          bottom: n.position.y + size.height + 20,
+        };
+        
+        const pathBounds = {
+          left: Math.min(start.x, end.x),
+          right: Math.max(start.x, end.x),
+          top: Math.min(start.y, end.y),
+          bottom: Math.max(start.y, end.y),
+        };
+        
+        return !(nodeBounds.right < pathBounds.left || 
+                 nodeBounds.left > pathBounds.right || 
+                 nodeBounds.bottom < pathBounds.top || 
+                 nodeBounds.top > pathBounds.bottom);
+      });
+      
+      if (obstacles.length > 0) {
+        console.log(`🚧 Routing around ${obstacles.length} obstacles for ${fromId} → ${toId}`);
+      }
+      
+      return { waypoints: [], obstacleCount: obstacles.length };
+    };
+
     const completedEdges = completed.edges.map((e) => {
       const handles = pickHandle(e.source, e.target);
+      
+      // Check for obstacles and calculate routing
+      const routing = calculateRouteWithObstacleAvoidanceMermaid(e.source, e.target, handles.sourceHandle, handles.targetHandle);
+      
+      // Use step edge for obstacle avoidance (creates right-angle paths)
+      const isVertical = handles.sourceHandle.includes('bottom') || handles.sourceHandle.includes('top');
+      const isHorizontal = handles.sourceHandle.includes('left') || handles.sourceHandle.includes('right');
+      
+      let edgeType: string;
+      if (routing.obstacleCount > 0) {
+        edgeType = 'step'; // Step edges create orthogonal paths that route around obstacles
+      } else if (isVertical || isHorizontal) {
+        edgeType = 'smoothstep'; // Smoothstep for aligned connections
+      } else {
+        edgeType = 'default'; // Default bezier for diagonal
+      }
+      
       return {
         ...e,
         ...handles,
-        type: e.type || 'smoothstep',
+        type: edgeType,
         animated: true,
         style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+        pathOptions: edgeType === 'step' ? { borderRadius: 8 } : undefined,
       };
     });
     // Add icons to ALL nodes AFTER completeness (including newly created medallion nodes)
