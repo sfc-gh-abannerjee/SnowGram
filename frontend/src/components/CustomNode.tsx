@@ -42,17 +42,15 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  const rawBg = style?.background || data.background;
-  const isNearWhite = (val?: string) => {
-    if (!val) return false;
-    const v = val.trim().toLowerCase();
-    return v === '#fff' || v === '#ffffff' || (v.startsWith('rgb(') && v.includes('255'));
-  };
+  // For regular nodes: use darker background in dark mode for contrast with light text
+  const darkModeBg = 'rgba(30, 41, 59, 0.95)'; // Dark slate with high opacity
+  const lightModeBg = '#ffffff';
 
   // For boundaries: derive fill from border color with low opacity
   const boundaryBg = isBoundary
     ? (() => {
-        // First try to use existing rawBg if it's already a proper rgba
+        // Check if boundary already has proper rgba background
+        const rawBg = style?.background || data.background;
         if (rawBg && rawBg.startsWith('rgba(')) return rawBg;
         
         // Otherwise derive from border color
@@ -61,17 +59,10 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
       })()
     : null;
 
-  // For regular nodes: use darker background in dark mode for contrast with light text
-  const darkModeBg = 'rgba(30, 41, 59, 0.95)'; // Dark slate with high opacity
-  const lightModeBg = '#ffffff';
-
+  // For regular nodes: ALWAYS use computed backgrounds, ignore any prop backgrounds to avoid double layers
   const nodeBackground = isBoundary
     ? boundaryBg!
-    : (
-        data.isDarkMode
-          ? (isNearWhite(rawBg) ? darkModeBg : (rawBg || darkModeBg))
-          : (rawBg || lightModeBg)
-      );
+    : (data.isDarkMode ? darkModeBg : lightModeBg);
   
   const mergedStyle: React.CSSProperties = {
     ...(style || {}),
