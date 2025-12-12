@@ -26,8 +26,9 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
 
   const isBoundary = data.componentType?.startsWith('account_boundary');
   const labelColor = (data as any)?.labelColor || (style as any)?.color;
-  // Force dark grey for nodes in dark mode, white for light mode
-  const bgFallback = data.isDarkMode ? '#1e3a4a' : '#ffffff';
+  // Brand-aligned defaults: semi-transparent Snowflake blue on dark, white on light
+  const brandLightBlue = 'rgba(41, 181, 232, 0.14)';
+  const bgFallback = data.isDarkMode ? brandLightBlue : '#ffffff';
   
   // For boundaries, ALWAYS use the style.background (which has the rgba value)
   const boundaryBackground = isBoundary ? (style?.background || 'transparent') : null;

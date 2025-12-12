@@ -916,7 +916,7 @@ const App: React.FC = () => {
   // NEW: Combined style/layer controls (screen coords + state)
   const [stylePanelPos, setStylePanelPos] = useState<{ x: number; y: number } | null>(null);
   const [fillColor, setFillColor] = useState('#29B5E8');
-  const [fillAlpha, setFillAlpha] = useState(0); // user-adjustable; defaults applied per node on create
+  const [fillAlpha, setFillAlpha] = useState(0);
   const [cornerRadius, setCornerRadius] = useState(8);
   const [hideBorder, setHideBorder] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -1148,6 +1148,12 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
   // NEW: Check if all categories are collapsed
   const allCollapsed = collapsedCategories.size === Object.keys(COMPONENT_CATEGORIES).length;
   const allExpanded = collapsedCategories.size === 0;
+
+  // Apply theme flag to node data so components can pick correct defaults
+  const applyThemeToNode = useCallback((node: Node): Node => ({
+    ...node,
+    data: { ...(node.data as any), isDarkMode },
+  }), [isDarkMode]);
   
   // NEW: Filter components by search query (fuzzy match)
   const filterComponents = useCallback((components: any[], query: string) => {
@@ -1710,12 +1716,6 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     const rgbFill = hexToRgb(fillColor) || { r: 41, g: 181, b: 232 };
     const labelColor = getLabelColor(fillColor, fillAlpha, isDarkMode);
 
-      // Apply mode-aware default alpha only for non-boundary nodes when fillAlpha is 0
-      const effectiveFillAlpha =
-        isBoundary
-          ? fillAlpha
-          : (fillAlpha === 0 ? (isDarkMode ? 0.16 : 0.08) : fillAlpha);
-
       const newNode: Node = {
         id: `${component.id}_${Date.now()}`,
         type: 'snowflakeNode',
@@ -1726,7 +1726,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
         border: isBoundary ? `2px dashed ${boundaryColor}` : `2px solid ${fillColor}`,
           background: isBoundary
             ? `rgba(${rgb.r},${rgb.g},${rgb.b},${boundaryFill})`
-            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${effectiveFillAlpha})`,
+            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${fillAlpha})`,
           borderRadius: isBoundary ? cornerRadius : cornerRadius,
           color: labelColor,
         },
@@ -1736,9 +1736,9 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           componentType: component.id,
           background: isBoundary
             ? `rgba(${rgb.r},${rgb.g},${rgb.b},${boundaryFill})`
-            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${effectiveFillAlpha})`,
+            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${fillAlpha})`,
           fillColor: isBoundary ? boundaryColor : fillColor,
-          fillAlpha: effectiveFillAlpha,
+          fillAlpha: fillAlpha,
           cornerRadius: cornerRadius,
           labelColor,
         hideBorder: false,
@@ -1778,14 +1778,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
       nds.map((node) => {
         const data: any = node.data || {};
         const fill = data.fillColor || '#29B5E8';
-        const alpha =
-          typeof data.fillAlpha === 'number'
-            ? data.fillAlpha
-            : (data.componentType as string | undefined)?.toLowerCase().startsWith('account_boundary')
-              ? 0.08
-              : isDarkMode
-                ? 0.16
-                : 0.08;
+        const alpha = typeof data.fillAlpha === 'number' ? data.fillAlpha : 0;
         const labelColor = getLabelColor(fill, alpha, isDarkMode);
         return {
           ...node,
@@ -2736,12 +2729,14 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       console.log(`[Pipeline] After fitting (spec): ${fitted.length} nodes`);
       const normalizedFinal = normalizeGraph(fitted, laidOut.edges);
       const enforcedBoundaries = enforceAccountBoundaries(normalizedFinal.nodes, normalizedFinal.edges, isDarkMode);
-      const finalNodesWithStyle = normalizedFinal.nodes.map((n) =>
-        ensureBoundaryStyle(
-          n,
-          (n.data as any)?.isDarkMode ?? isDarkMode
+      const finalNodesWithStyle = normalizedFinal.nodes
+        .map((n) =>
+          ensureBoundaryStyle(
+            n,
+            (n.data as any)?.isDarkMode ?? isDarkMode
+          )
         )
-      );
+        .map(applyThemeToNode);
       const nodeMap = new Map<string, Node>(enforcedBoundaries.nodes.map(n => [n.id, n]));
       const pickHandle = (fromId: string, toId: string) => {
         const from = nodeMap.get(fromId);
@@ -2779,12 +2774,14 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
         };
       });
-      const finalNodes = enforcedBoundaries.nodes.map((n) =>
-        ensureBoundaryStyle(
-          n,
-          (n.data as any)?.isDarkMode ?? isDarkMode
+      const finalNodes = enforcedBoundaries.nodes
+        .map((n) =>
+          ensureBoundaryStyle(
+            n,
+            (n.data as any)?.isDarkMode ?? isDarkMode
+          )
         )
-      );
+        .map(applyThemeToNode);
       
       // Debug final nodes before rendering
       const boundaries = finalNodes.filter(n => 
@@ -2879,7 +2876,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           onCopy: copyNode,
         },
       };
-      return isBoundary ? ensureBoundaryStyle(base, isDarkMode) : base;
+      return isBoundary ? ensureBoundaryStyle(base, isDarkMode) : applyThemeToNode(base);
     });
     // Separate boundaries from regular nodes before layout
     const mermaidBoundariesRaw = nodesWithIcons.filter((n) => {
