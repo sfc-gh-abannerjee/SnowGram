@@ -2769,16 +2769,51 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
 
-        // Prefer the dominant axis; if roughly diagonal, stick with dominant delta to keep edges visible
-        if (Math.abs(dx) >= Math.abs(dy)) {
+        // Alignment thresholds - if nodes are roughly aligned on an axis, prefer that axis
+        const VERTICAL_ALIGNMENT_THRESHOLD = 60; // If dx < 60px, consider vertically aligned
+        const HORIZONTAL_ALIGNMENT_THRESHOLD = 40; // If dy < 40px, consider horizontally aligned
+        
+        // Check for vertical alignment (same column) - prioritize vertical connections
+        if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
+          return {
+            sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+            targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+          };
+        }
+        
+        // Check for horizontal alignment (same row) - use horizontal connections
+        if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
           return {
             sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
             targetHandle: dx >= 0 ? 'left-target' : 'right-target',
           };
         }
+        
+        // For diagonal connections: prefer vertical if dy is larger OR if nodes are in medallion tier layout
+        // Medallion detection: if there are multiple nodes at similar Y positions, it's likely a tier
+        const similarYThreshold = 50;
+        const nodesAtSourceY = Array.from(nodeMap.values()).filter(n => 
+          Math.abs((n.position.y + getNodeSize(n).height / 2) - c1.y) < similarYThreshold
+        ).length;
+        const nodesAtTargetY = Array.from(nodeMap.values()).filter(n => 
+          Math.abs((n.position.y + getNodeSize(n).height / 2) - c2.y) < similarYThreshold
+        ).length;
+        
+        // If both source and target have multiple nodes at their Y level, it's likely a tier layout
+        const isTierLayout = nodesAtSourceY >= 2 && nodesAtTargetY >= 2;
+        
+        if (isTierLayout || Math.abs(dy) > Math.abs(dx) * 0.7) {
+          // Prefer vertical for tier layouts or when dy is significant
+          return {
+            sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+            targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+          };
+        }
+        
+        // Default to horizontal for side-by-side nodes
         return {
-          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
-          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+          sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
+          targetHandle: dx >= 0 ? 'left-target' : 'right-target',
         };
       };
 
@@ -2857,15 +2892,51 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       const dx = c2.x - c1.x;
       const dy = c2.y - c1.y;
 
-      if (Math.abs(dx) >= Math.abs(dy)) {
+      // Alignment thresholds - if nodes are roughly aligned on an axis, prefer that axis
+      const VERTICAL_ALIGNMENT_THRESHOLD = 60; // If dx < 60px, consider vertically aligned
+      const HORIZONTAL_ALIGNMENT_THRESHOLD = 40; // If dy < 40px, consider horizontally aligned
+      
+      // Check for vertical alignment (same column) - prioritize vertical connections
+      if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
+        return {
+          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+        };
+      }
+      
+      // Check for horizontal alignment (same row) - use horizontal connections
+      if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
         return {
           sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
           targetHandle: dx >= 0 ? 'left-target' : 'right-target',
         };
       }
+      
+      // For diagonal connections: prefer vertical if dy is larger OR if nodes are in medallion tier layout
+      // Medallion detection: if there are multiple nodes at similar Y positions, it's likely a tier
+      const similarYThreshold = 50;
+      const nodesAtSourceY = Array.from(nodeMap.values()).filter(n => 
+        Math.abs((n.position.y + getNodeSize(n).height / 2) - c1.y) < similarYThreshold
+      ).length;
+      const nodesAtTargetY = Array.from(nodeMap.values()).filter(n => 
+        Math.abs((n.position.y + getNodeSize(n).height / 2) - c2.y) < similarYThreshold
+      ).length;
+      
+      // If both source and target have multiple nodes at their Y level, it's likely a tier layout
+      const isTierLayout = nodesAtSourceY >= 2 && nodesAtTargetY >= 2;
+      
+      if (isTierLayout || Math.abs(dy) > Math.abs(dx) * 0.7) {
+        // Prefer vertical for tier layouts or when dy is significant
+        return {
+          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+        };
+      }
+      
+      // Default to horizontal for side-by-side nodes
       return {
-        sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
-        targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+        sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
+        targetHandle: dx >= 0 ? 'left-target' : 'right-target',
       };
     };
 
