@@ -916,7 +916,7 @@ const App: React.FC = () => {
   // NEW: Combined style/layer controls (screen coords + state)
   const [stylePanelPos, setStylePanelPos] = useState<{ x: number; y: number } | null>(null);
   const [fillColor, setFillColor] = useState('#29B5E8');
-  const [fillAlpha, setFillAlpha] = useState(0.12); // default semi-transparent fill
+  const [fillAlpha, setFillAlpha] = useState(0); // user-adjustable; defaults applied per node on create
   const [cornerRadius, setCornerRadius] = useState(8);
   const [hideBorder, setHideBorder] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -1710,6 +1710,12 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
     const rgbFill = hexToRgb(fillColor) || { r: 41, g: 181, b: 232 };
     const labelColor = getLabelColor(fillColor, fillAlpha, isDarkMode);
 
+      // Apply mode-aware default alpha only for non-boundary nodes when fillAlpha is 0
+      const effectiveFillAlpha =
+        isBoundary
+          ? fillAlpha
+          : (fillAlpha === 0 ? (isDarkMode ? 0.16 : 0.08) : fillAlpha);
+
       const newNode: Node = {
         id: `${component.id}_${Date.now()}`,
         type: 'snowflakeNode',
@@ -1720,7 +1726,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
         border: isBoundary ? `2px dashed ${boundaryColor}` : `2px solid ${fillColor}`,
           background: isBoundary
             ? `rgba(${rgb.r},${rgb.g},${rgb.b},${boundaryFill})`
-            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${fillAlpha})`,
+            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${effectiveFillAlpha})`,
           borderRadius: isBoundary ? cornerRadius : cornerRadius,
           color: labelColor,
         },
@@ -1730,9 +1736,9 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
           componentType: component.id,
           background: isBoundary
             ? `rgba(${rgb.r},${rgb.g},${rgb.b},${boundaryFill})`
-            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${fillAlpha})`,
+            : `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${effectiveFillAlpha})`,
           fillColor: isBoundary ? boundaryColor : fillColor,
-          fillAlpha: fillAlpha,
+          fillAlpha: effectiveFillAlpha,
           cornerRadius: cornerRadius,
           labelColor,
         hideBorder: false,
@@ -1775,9 +1781,11 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
         const alpha =
           typeof data.fillAlpha === 'number'
             ? data.fillAlpha
-            : isDarkMode
-              ? 0.18
-              : 0.12;
+            : (data.componentType as string | undefined)?.toLowerCase().startsWith('account_boundary')
+              ? 0.08
+              : isDarkMode
+                ? 0.16
+                : 0.08;
         const labelColor = getLabelColor(fill, alpha, isDarkMode);
         return {
           ...node,
