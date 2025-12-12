@@ -2413,7 +2413,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     'stream_silver_gold->gold_db', 'gold_db->gold_schema', 'gold_schema->gold_tables',
     'gold_tables->analytics_views', 'analytics_views->compute_wh',
     'silver_tables->transform_task', 'transform_task->gold_tables',
-    'bronze_tables->bronze_stream', 'bronze_stream->silver_db',
+    'bronze_tables->bronze_stream', 'bronze_stream->stream_bronze_silver',  // Fixed: correct medallion flow
     'gold_tables->secure_views'
   ];
   const validSet = new Set(validEdges);
@@ -2510,7 +2510,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
   ensureEdge('silver_tables', 'transform_task');
   ensureEdge('transform_task', 'gold_tables');
   ensureEdge('bronze_tables', 'bronze_stream');
-  ensureEdge('bronze_stream', 'silver_db');
+  ensureEdge('bronze_stream', 'stream_bronze_silver');  // Fixed: bronze_stream connects to stream, not directly to silver_db
   ensureEdge('gold_tables', 'secure_views');
 
   console.log('[Completeness] Output:', { nodeCount: nodes.length, edgeCount: edges.length, nodeIds: nodes.map(n => n.id) });
