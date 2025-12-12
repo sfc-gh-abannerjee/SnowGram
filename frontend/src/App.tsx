@@ -3083,6 +3083,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       {/* Right Canvas - Diagram Builder with ReactFlow */}
       <div className={styles.canvas} ref={reactFlowWrapper}>
         <ReactFlow
+          style={{ background: isDarkMode ? '#0F172A' : '#F8FAFC' }}
           nodes={nodes}
           edges={edges.map(edge => {
             const isSelected = selectedEdges.some(e => e.id === edge.id);
