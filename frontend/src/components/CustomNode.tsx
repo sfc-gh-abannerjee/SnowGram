@@ -26,11 +26,22 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
 
   const isBoundary = data.componentType?.startsWith('account_boundary');
   const labelColor = (data as any)?.labelColor || (style as any)?.color;
-  // Brand-aligned defaults: semi-transparent Snowflake blue on dark, white on light
-  const brandLightBlue = 'rgba(41, 181, 232, 0.14)';
-  const bgFallback = data.isDarkMode ? brandLightBlue : '#ffffff';
   
-  // Resolve effective background
+  // Helper to extract hex color from border string (e.g., "2px dashed #29B5E8" -> "#29B5E8")
+  const extractBorderColor = (border?: string): string | null => {
+    if (!border) return null;
+    const match = border.match(/#[0-9A-Fa-f]{6}/);
+    return match ? match[0] : null;
+  };
+
+  // Helper to convert hex to rgba with specified alpha
+  const hexToRgba = (hex: string, alpha: number): string => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
   const rawBg = style?.background || data.background;
   const isNearWhite = (val?: string) => {
     if (!val) return false;
@@ -38,14 +49,28 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
     return v === '#fff' || v === '#ffffff' || (v.startsWith('rgb(') && v.includes('255'));
   };
 
-  const boundaryBackground = isBoundary ? (rawBg || 'transparent') : null;
+  // For boundaries: derive fill from border color with low opacity
+  const boundaryBg = isBoundary
+    ? (() => {
+        // First try to use existing rawBg if it's already a proper rgba
+        if (rawBg && rawBg.startsWith('rgba(')) return rawBg;
+        
+        // Otherwise derive from border color
+        const borderColor = extractBorderColor(style?.border);
+        return borderColor ? hexToRgba(borderColor, 0.08) : 'rgba(41, 181, 232, 0.08)';
+      })()
+    : null;
+
+  // For regular nodes: use darker background in dark mode for contrast with light text
+  const darkModeBg = 'rgba(30, 41, 59, 0.95)'; // Dark slate with high opacity
+  const lightModeBg = '#ffffff';
+
   const nodeBackground = isBoundary
-    ? (boundaryBackground || 'rgba(41, 181, 232, 0.08)')
+    ? boundaryBg!
     : (
-        // In dark mode, force brand light blue if missing or near-white
         data.isDarkMode
-          ? (isNearWhite(rawBg) ? brandLightBlue : (rawBg || brandLightBlue))
-          : (isNearWhite(rawBg) ? bgFallback : (rawBg || bgFallback))
+          ? (isNearWhite(rawBg) ? darkModeBg : (rawBg || darkModeBg))
+          : (rawBg || lightModeBg)
       );
   
   const mergedStyle: React.CSSProperties = {

@@ -2796,7 +2796,9 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           componentType: (b.data as any)?.componentType,
           icon: (b.data as any)?.icon,
           label: (b.data as any)?.label,
-          showHandles: (b.data as any)?.showHandles
+          showHandles: (b.data as any)?.showHandles,
+          styleBorder: (b.style as any)?.border,
+          styleBackground: (b.style as any)?.background
         });
       });
       if (snowflakeLabeled.length > 1) {
