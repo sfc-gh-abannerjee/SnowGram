@@ -1218,3 +1218,32 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 
 ***
 
+### Milestone 22: Node Background & Edge Routing Refinement ✅ (Completed)
+**Date**: 2025-12-12  
+**Impact**: Critical visual quality fix — eliminated double backgrounds on nodes, improved edge routing for cleaner diagrams
+
+**Deliverables**:
+- ✅ Removed duplicate background layers from agent-generated nodes (eliminated conflicting `data.background` and `style.background` assignments).
+- ✅ Simplified `CustomNode.tsx` background logic to always use computed values (`darkModeBg`/`lightModeBg`), completely ignoring prop backgrounds to prevent double-layer artifacts.
+- ✅ Fixed icon container backgrounds: light mode keeps gradient, dark mode uses semi-transparent dark overlay to blend with node surface.
+- ✅ Added handle type validation to `onConnect`: validates source handles end with `-source`, target handles end with `-target`, preventing ReactFlow errors.
+- ✅ Implemented alignment-aware edge routing:
+  - Detects vertical alignment (nodes within 60px horizontally) → uses top/bottom handles
+  - Detects horizontal alignment (nodes within 40px vertically) → uses left/right handles
+  - Auto-detects tier layouts (medallion architectures) by counting nodes at similar Y positions
+  - Prioritizes vertical connections for tier-based layouts
+  - Diagonal connections prefer vertical routing if `dy > dx * 0.7` or tier layout detected
+- ✅ Applied improved routing to both spec-based and mermaid-based diagram generation.
+
+**Files Updated**:
+- `frontend/src/App.tsx` — removed background assignments from agent node creation, enhanced `pickHandle` with alignment and tier detection logic, added handle type validation.
+- `frontend/src/components/CustomNode.tsx` — simplified background logic, removed dependency on prop backgrounds.
+- `frontend/src/components/CustomNode.module.css` — removed gradient from dark mode icon container, added blended dark background.
+
+**Result**:
+- Nodes render with clean, single-layer backgrounds in both light (white) and dark (dark slate) modes.
+- Manual and automatic edge connections work reliably without handle type errors.
+- Edge routing respects layout structure: medallion tiers connect vertically (top→bottom), aligned nodes use appropriate handles, reducing visual clutter and line crossings.
+
+***
+
