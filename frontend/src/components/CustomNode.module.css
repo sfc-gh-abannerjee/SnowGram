@@ -223,9 +223,7 @@
   box-shadow: 0 4px 20px rgba(41, 181, 232, 0.35);
 }
 
-.nodeContainer[data-dark-mode="true"] .iconContainer {
-  background: linear-gradient(135deg, #0F172A 0%, #1E3A4F 100%);
-}
+/* Icon container background removed - nodeSurface handles all backgrounds */
 
 .nodeContainer[data-dark-mode="true"] .label {
   color: #E2E8F0;

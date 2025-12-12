@@ -1363,25 +1363,43 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
 
       // If user-selected handles are missing or incompatible, pick sane defaults based on relative positions
       const pickHandle = (fromId: string, toId: string, srcHandle?: string, tgtHandle?: string) => {
-        if (srcHandle && tgtHandle) return { sourceHandle: srcHandle, targetHandle: tgtHandle };
+        // Validate handle types: source handles must end with '-source', target with '-target'
+        const isValidSourceHandle = (h?: string) => h && h.endsWith('-source');
+        const isValidTargetHandle = (h?: string) => h && h.endsWith('-target');
+        
+        // If both are provided AND valid, use them
+        if (isValidSourceHandle(srcHandle) && isValidTargetHandle(tgtHandle)) {
+          return { sourceHandle: srcHandle!, targetHandle: tgtHandle! };
+        }
+        
+        // Otherwise, compute based on relative positions
         const from = getNodes().find(n => n.id === fromId);
         const to = getNodes().find(n => n.id === toId);
-        if (!from || !to) return { sourceHandle: srcHandle, targetHandle: tgtHandle };
+        if (!from || !to) {
+          // Fallback to defaults if nodes not found
+          return { 
+            sourceHandle: isValidSourceHandle(srcHandle) ? srcHandle! : 'right-source', 
+            targetHandle: isValidTargetHandle(tgtHandle) ? tgtHandle! : 'left-target' 
+          };
+        }
+        
         const { width: w1, height: h1 } = getNodeSize(from);
         const { width: w2, height: h2 } = getNodeSize(to);
         const c1 = { x: from.position.x + w1 / 2, y: from.position.y + h1 / 2 };
         const c2 = { x: to.position.x + w2 / 2, y: to.position.y + h2 / 2 };
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
+        
+        // Pick handles based on direction, but only use provided handles if they're valid
         if (Math.abs(dx) >= Math.abs(dy)) {
           return {
-            sourceHandle: dx >= 0 ? (srcHandle || 'right-source') : (srcHandle || 'left-source'),
-            targetHandle: dx >= 0 ? (tgtHandle || 'left-target') : (tgtHandle || 'right-target'),
+            sourceHandle: isValidSourceHandle(srcHandle) ? srcHandle! : (dx >= 0 ? 'right-source' : 'left-source'),
+            targetHandle: isValidTargetHandle(tgtHandle) ? tgtHandle! : (dx >= 0 ? 'left-target' : 'right-target'),
           };
         }
         return {
-          sourceHandle: dy >= 0 ? (srcHandle || 'bottom-source') : (srcHandle || 'top-source'),
-          targetHandle: dy >= 0 ? (tgtHandle || 'top-target') : (tgtHandle || 'bottom-target'),
+          sourceHandle: isValidSourceHandle(srcHandle) ? srcHandle! : (dy >= 0 ? 'bottom-source' : 'top-source'),
+          targetHandle: isValidTargetHandle(tgtHandle) ? tgtHandle! : (dy >= 0 ? 'top-target' : 'bottom-target'),
         };
       };
 
