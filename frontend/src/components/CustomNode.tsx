@@ -30,20 +30,28 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
   const brandLightBlue = 'rgba(41, 181, 232, 0.14)';
   const bgFallback = data.isDarkMode ? brandLightBlue : '#ffffff';
   
-  // For boundaries, ALWAYS use the style.background (which has the rgba value)
-  const boundaryBackground = isBoundary ? (style?.background || 'transparent') : null;
+  // Resolve effective background
+  const rawBg = style?.background || data.background;
+  const isNearWhite = (val?: string) => {
+    if (!val) return false;
+    const v = val.trim().toLowerCase();
+    return v === '#fff' || v === '#ffffff' || (v.startsWith('rgb(') && v.includes('255'));
+  };
+
+  const boundaryBackground = isBoundary ? (rawBg || 'transparent') : null;
+  const nodeBackground = isBoundary
+    ? (boundaryBackground || 'rgba(41, 181, 232, 0.08)')
+    : (isNearWhite(rawBg) ? brandLightBlue : (rawBg || bgFallback));
   
   const mergedStyle: React.CSSProperties = {
     ...(style || {}),
-    background: boundaryBackground || data.background || style?.background || bgFallback,
+    background: nodeBackground,
     borderRadius: data.borderRadius ?? style?.borderRadius ?? 16,
     border: style?.border,
     color: data.isDarkMode ? '#e5f2ff' : '#0F172A',
   };
-  // Boundaries use rgba backgrounds; regular nodes use the provided style/data background only
-  const backgroundStyle = isBoundary 
-    ? (style?.background || 'rgba(41, 181, 232, 0.08)') // Fallback to snowflake blue with low alpha
-    : (mergedStyle.background || bgFallback);
+  // Boundaries use rgba backgrounds; regular nodes use resolved nodeBackground
+  const backgroundStyle = nodeBackground;
 
   const surfaceStyle: React.CSSProperties = {
     background: backgroundStyle,
