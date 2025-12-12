@@ -1,6 +1,6 @@
 .nodeContainer {
   position: relative;
-  background: white;
+  background: transparent; /* avoid double-fill; actual fill comes from inline style */
   border: none;
   border-radius: 16px;
   padding: 0;
