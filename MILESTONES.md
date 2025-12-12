@@ -1269,5 +1269,34 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 - Professional, production-ready diagram quality with clean, non-intersecting connection lines.
 - Visual clarity dramatically improved for complex multi-tier architectures.
 
+---
+
+### Milestone 22.2: Corner Radius & Edge Routing Polish ✅ (Completed)
+**Date**: 2025-12-12  
+**Impact**: Critical visual quality — eliminates corner artifacts and reduces edge routing complexity
+
+**Deliverables**:
+- ✅ **Fixed corner radius gap issue**:
+  - Removed `borderRadius` from outer `nodeContainer` div (set to 0)
+  - Only `nodeSurface` inner div has `borderRadius` now
+  - Eliminates visual artifact/gap where inner fill didn't align with outer boundary
+  - Prevents double-radius application that caused corner misalignment
+- ✅ **Refined edge routing logic**:
+  - Changed obstacle detection to `pathPassesThroughNode`: only center 60% of nodes count as obstacles
+  - Increased alignment thresholds: 80px vertical (from 60), 50px horizontal (from 40)
+  - Removed `hasObstacles` check from alignment logic—trust ReactFlow's smoothstep to handle minor obstacles naturally
+  - Simplified decision tree: if nodes are aligned, use aligned handles; let smoothstep create gentle bends around obstacles
+  - Removed complex obstacle avoidance code that created jagged, unnatural paths
+- ✅ Applied consistently to both spec-based and mermaid-based diagram generation.
+
+**Files Updated**:
+- `frontend/src/components/CustomNode.tsx` — removed borderRadius from container style object.
+- `frontend/src/App.tsx` — refined `pathPassesThroughNode` helper, simplified `pickHandle` functions (spec & mermaid).
+
+**Result**:
+- Nodes render with clean, perfectly aligned corners (no visible gap between fill and border).
+- Edge routing is smoother and more natural—fewer unnecessary bends and zigzags.
+- Production-ready visual quality suitable for customer-facing architecture diagrams.
+
 ***
 
