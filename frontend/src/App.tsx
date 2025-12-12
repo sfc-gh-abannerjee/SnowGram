@@ -2756,6 +2756,24 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         )
         .map(applyThemeToNode);
       const nodeMap = new Map<string, Node>(enforcedBoundaries.nodes.map(n => [n.id, n]));
+      
+      // Helper: check if a rectangle intersects with the direct path between two points
+      const pathIntersectsNode = (x1: number, y1: number, x2: number, y2: number, node: Node, margin = 20) => {
+        const size = getNodeSize(node);
+        const nodeLeft = node.position.x - margin;
+        const nodeRight = node.position.x + size.width + margin;
+        const nodeTop = node.position.y - margin;
+        const nodeBottom = node.position.y + size.height + margin;
+        
+        // Check if line segment (x1,y1)→(x2,y2) intersects node bounding box
+        const minX = Math.min(x1, x2);
+        const maxX = Math.max(x1, x2);
+        const minY = Math.min(y1, y2);
+        const maxY = Math.max(y1, y2);
+        
+        return !(nodeRight < minX || nodeLeft > maxX || nodeBottom < minY || nodeTop > maxY);
+      };
+      
       const pickHandle = (fromId: string, toId: string) => {
         const from = nodeMap.get(fromId);
         const to = nodeMap.get(toId);
@@ -2769,12 +2787,21 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
 
-        // Alignment thresholds - if nodes are roughly aligned on an axis, prefer that axis
-        const VERTICAL_ALIGNMENT_THRESHOLD = 60; // If dx < 60px, consider vertically aligned
-        const HORIZONTAL_ALIGNMENT_THRESHOLD = 40; // If dy < 40px, consider horizontally aligned
+        // Check for obstacles in the direct path between nodes
+        const obstacles = Array.from(nodeMap.values()).filter(n => 
+          n.id !== fromId && n.id !== toId && 
+          !((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary') &&
+          pathIntersectsNode(c1.x, c1.y, c2.x, c2.y, n, 30)
+        );
+        
+        const hasObstacles = obstacles.length > 0;
+
+        // Alignment thresholds
+        const VERTICAL_ALIGNMENT_THRESHOLD = 60;
+        const HORIZONTAL_ALIGNMENT_THRESHOLD = 40;
         
         // Check for vertical alignment (same column) - prioritize vertical connections
-        if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
+        if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD && !hasObstacles) {
           return {
             sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
             targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
@@ -2782,15 +2809,33 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         }
         
         // Check for horizontal alignment (same row) - use horizontal connections
-        if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
+        if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD && !hasObstacles) {
           return {
             sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
             targetHandle: dx >= 0 ? 'left-target' : 'right-target',
           };
         }
         
-        // For diagonal connections: prefer vertical if dy is larger OR if nodes are in medallion tier layout
-        // Medallion detection: if there are multiple nodes at similar Y positions, it's likely a tier
+        // If there are obstacles in the direct path, route around them
+        if (hasObstacles) {
+          // Try routing above/below if horizontal distance is large
+          if (Math.abs(dx) > 150) {
+            // Route horizontally around obstacles
+            const goUp = c1.y > c2.y; // Source is below target
+            return {
+              sourceHandle: goUp ? 'top-source' : 'bottom-source',
+              targetHandle: goUp ? 'bottom-target' : 'top-target',
+            };
+          }
+          // Otherwise route left/right around obstacles
+          const goLeft = c1.x > c2.x; // Source is to the right of target
+          return {
+            sourceHandle: goLeft ? 'left-source' : 'right-source',
+            targetHandle: goLeft ? 'right-target' : 'left-target',
+          };
+        }
+        
+        // Medallion tier detection
         const similarYThreshold = 50;
         const nodesAtSourceY = Array.from(nodeMap.values()).filter(n => 
           Math.abs((n.position.y + getNodeSize(n).height / 2) - c1.y) < similarYThreshold
@@ -2799,11 +2844,9 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           Math.abs((n.position.y + getNodeSize(n).height / 2) - c2.y) < similarYThreshold
         ).length;
         
-        // If both source and target have multiple nodes at their Y level, it's likely a tier layout
         const isTierLayout = nodesAtSourceY >= 2 && nodesAtTargetY >= 2;
         
         if (isTierLayout || Math.abs(dy) > Math.abs(dx) * 0.7) {
-          // Prefer vertical for tier layouts or when dy is significant
           return {
             sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
             targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
@@ -2879,6 +2922,24 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     const completed = ensureMedallionCompleteness(nonBoundaryNodes, newEdges);
     console.log(`[Pipeline] After completeness: ${completed.nodes.length} nodes, ${completed.edges.length} edges`);
     const nodeMap = new Map<string, Node>(completed.nodes.map(n => [n.id, n]));
+    
+    // Helper: check if a rectangle intersects with the direct path between two points
+    const pathIntersectsNode = (x1: number, y1: number, x2: number, y2: number, node: Node, margin = 20) => {
+      const size = getNodeSize(node);
+      const nodeLeft = node.position.x - margin;
+      const nodeRight = node.position.x + size.width + margin;
+      const nodeTop = node.position.y - margin;
+      const nodeBottom = node.position.y + size.height + margin;
+      
+      // Check if line segment (x1,y1)→(x2,y2) intersects node bounding box
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+      
+      return !(nodeRight < minX || nodeLeft > maxX || nodeBottom < minY || nodeTop > maxY);
+    };
+    
     const pickHandle = (fromId: string, toId: string) => {
       const from = nodeMap.get(fromId);
       const to = nodeMap.get(toId);
@@ -2892,12 +2953,21 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       const dx = c2.x - c1.x;
       const dy = c2.y - c1.y;
 
-      // Alignment thresholds - if nodes are roughly aligned on an axis, prefer that axis
-      const VERTICAL_ALIGNMENT_THRESHOLD = 60; // If dx < 60px, consider vertically aligned
-      const HORIZONTAL_ALIGNMENT_THRESHOLD = 40; // If dy < 40px, consider horizontally aligned
+      // Check for obstacles in the direct path between nodes
+      const obstacles = Array.from(nodeMap.values()).filter(n => 
+        n.id !== fromId && n.id !== toId && 
+        !((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary') &&
+        pathIntersectsNode(c1.x, c1.y, c2.x, c2.y, n, 30)
+      );
+      
+      const hasObstacles = obstacles.length > 0;
+
+      // Alignment thresholds
+      const VERTICAL_ALIGNMENT_THRESHOLD = 60;
+      const HORIZONTAL_ALIGNMENT_THRESHOLD = 40;
       
       // Check for vertical alignment (same column) - prioritize vertical connections
-      if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
+      if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD && !hasObstacles) {
         return {
           sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
           targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
@@ -2905,15 +2975,33 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       }
       
       // Check for horizontal alignment (same row) - use horizontal connections
-      if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
+      if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD && !hasObstacles) {
         return {
           sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
           targetHandle: dx >= 0 ? 'left-target' : 'right-target',
         };
       }
       
-      // For diagonal connections: prefer vertical if dy is larger OR if nodes are in medallion tier layout
-      // Medallion detection: if there are multiple nodes at similar Y positions, it's likely a tier
+      // If there are obstacles in the direct path, route around them
+      if (hasObstacles) {
+        // Try routing above/below if horizontal distance is large
+        if (Math.abs(dx) > 150) {
+          // Route horizontally around obstacles
+          const goUp = c1.y > c2.y; // Source is below target
+          return {
+            sourceHandle: goUp ? 'top-source' : 'bottom-source',
+            targetHandle: goUp ? 'bottom-target' : 'top-target',
+          };
+        }
+        // Otherwise route left/right around obstacles
+        const goLeft = c1.x > c2.x; // Source is to the right of target
+        return {
+          sourceHandle: goLeft ? 'left-source' : 'right-source',
+          targetHandle: goLeft ? 'right-target' : 'left-target',
+        };
+      }
+      
+      // Medallion tier detection
       const similarYThreshold = 50;
       const nodesAtSourceY = Array.from(nodeMap.values()).filter(n => 
         Math.abs((n.position.y + getNodeSize(n).height / 2) - c1.y) < similarYThreshold
@@ -2922,11 +3010,9 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         Math.abs((n.position.y + getNodeSize(n).height / 2) - c2.y) < similarYThreshold
       ).length;
       
-      // If both source and target have multiple nodes at their Y level, it's likely a tier layout
       const isTierLayout = nodesAtSourceY >= 2 && nodesAtTargetY >= 2;
       
       if (isTierLayout || Math.abs(dy) > Math.abs(dx) * 0.7) {
-        // Prefer vertical for tier layouts or when dy is significant
         return {
           sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
           targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
