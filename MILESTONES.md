@@ -1245,5 +1245,29 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 - Manual and automatic edge connections work reliably without handle type errors.
 - Edge routing respects layout structure: medallion tiers connect vertically (top→bottom), aligned nodes use appropriate handles, reducing visual clutter and line crossings.
 
+---
+
+### Milestone 22.1: Obstacle-Aware Edge Routing ✅ (Completed)
+**Date**: 2025-12-12  
+**Impact**: Production-critical — eliminates edge-node intersections for professional diagram quality
+
+**Deliverables**:
+- ✅ Implemented `pathIntersectsNode` helper function to detect when direct edge paths would intersect with node bounding boxes (with 30px margin).
+- ✅ Enhanced `pickHandle` to check for obstacles between source and target nodes before selecting handles.
+- ✅ Intelligent routing around obstacles:
+  - If horizontal distance > 150px: routes vertically around obstacles (top/bottom handles)
+  - Otherwise: routes horizontally around obstacles (left/right handles)
+- ✅ Alignment-based routing (vertical/horizontal alignment detection) now only applies when no obstacles are present.
+- ✅ Filters out boundary nodes from obstacle detection to prevent false positives.
+- ✅ Applied consistently to both spec-based and mermaid-based diagram generation.
+
+**Files Updated**:
+- `frontend/src/App.tsx` — added `pathIntersectsNode` helper, enhanced both `pickHandle` functions (spec and mermaid paths).
+
+**Result**:
+- Edges no longer cut through nodes (e.g., Bronze Stream → Snowpipe now routes around medallion tier instead of through it).
+- Professional, production-ready diagram quality with clean, non-intersecting connection lines.
+- Visual clarity dramatically improved for complex multi-tier architectures.
+
 ***
 
