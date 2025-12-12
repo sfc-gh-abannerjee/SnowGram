@@ -2249,13 +2249,13 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           showHandles: true,
           isDarkMode: isDark,
           labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
-          background: isDark ? '#1e3a4a' : '#ffffff',
+          // background handled by CustomNode.tsx based on isDarkMode
           onRename: renameNode,
           onDelete: deleteNode,
           onCopy: copyNode,
         },
         style: {
-          background: isDark ? '#1e3a4a' : '#ffffff',
+          // background handled by CustomNode.tsx based on isDarkMode
           color: isDark ? '#e5f2ff' : '#1a1a1a',
         },
       });
@@ -2284,13 +2284,13 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         showHandles: true,
         isDarkMode: isDark,
         labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
-        background: isDark ? '#1e3a4a' : '#ffffff',
+        // background handled by CustomNode.tsx based on isDarkMode
         onRename: renameNode,
         onDelete: deleteNode,
         onCopy: copyNode,
       },
       style: {
-        background: isDark ? '#1e3a4a' : '#ffffff',
+        // background handled by CustomNode.tsx based on isDarkMode
         color: isDark ? '#e5f2ff' : '#1a1a1a',
       },
     });
@@ -2618,7 +2618,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
             fillAlpha,
             cornerRadius,
             hideBorder,
-            background: isDarkMode ? '#1e3a4a' : '#ffffff',
+            // background handled by CustomNode.tsx based on isDarkMode
             onRename: renameNode,
             onDelete: deleteNode,
             onCopy: copyNode,
@@ -2627,7 +2627,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           style: {
             border: `2px solid ${isDarkMode ? '#4a9eff' : '#0F4C75'}`,
             borderRadius: cornerRadius,
-            background: isDarkMode ? '#1e3a4a' : '#ffffff',
+            // background handled by CustomNode.tsx based on isDarkMode
             color: isDarkMode ? '#e5f2ff' : '#0F172A',
           },
         };
