@@ -1354,13 +1354,38 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
         console.warn('❌ Missing source/target on connect, skipping edge', params);
         return;
       }
-      
+
+      // If user-selected handles are missing or incompatible, pick sane defaults based on relative positions
+      const pickHandle = (fromId: string, toId: string, srcHandle?: string, tgtHandle?: string) => {
+        if (srcHandle && tgtHandle) return { sourceHandle: srcHandle, targetHandle: tgtHandle };
+        const from = getNodes().find(n => n.id === fromId);
+        const to = getNodes().find(n => n.id === toId);
+        if (!from || !to) return { sourceHandle: srcHandle, targetHandle: tgtHandle };
+        const { width: w1, height: h1 } = getNodeSize(from);
+        const { width: w2, height: h2 } = getNodeSize(to);
+        const c1 = { x: from.position.x + w1 / 2, y: from.position.y + h1 / 2 };
+        const c2 = { x: to.position.x + w2 / 2, y: to.position.y + h2 / 2 };
+        const dx = c2.x - c1.x;
+        const dy = c2.y - c1.y;
+        if (Math.abs(dx) >= Math.abs(dy)) {
+          return {
+            sourceHandle: dx >= 0 ? (srcHandle || 'right-source') : (srcHandle || 'left-source'),
+            targetHandle: dx >= 0 ? (tgtHandle || 'left-target') : (tgtHandle || 'right-target'),
+          };
+        }
+        return {
+          sourceHandle: dy >= 0 ? (srcHandle || 'bottom-source') : (srcHandle || 'top-source'),
+          targetHandle: dy >= 0 ? (tgtHandle || 'top-target') : (tgtHandle || 'bottom-target'),
+        };
+      };
+
+      const handles = pickHandle(params.source, params.target, params.sourceHandle ?? undefined, params.targetHandle ?? undefined);
       const newEdge: Edge = {
         id: `${params.source}-${params.target}-${Date.now()}`,
         source: params.source,
         target: params.target,
-        sourceHandle: params.sourceHandle ?? undefined,
-        targetHandle: params.targetHandle ?? undefined,
+        sourceHandle: handles.sourceHandle,
+        targetHandle: handles.targetHandle,
         type: 'smoothstep',
         animated: true,
         style: { stroke: '#29B5E8', strokeWidth: 2 },

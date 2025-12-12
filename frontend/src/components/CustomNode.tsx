@@ -39,10 +39,10 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
     border: style?.border,
     color: data.isDarkMode ? '#e5f2ff' : '#0F172A',
   };
-  // Boundaries use their rgba backgrounds, regular nodes use solid colors
+  // Boundaries use rgba backgrounds; regular nodes use the provided style/data background only
   const backgroundStyle = isBoundary 
     ? (style?.background || 'rgba(41, 181, 232, 0.08)') // Fallback to snowflake blue with low alpha
-    : (data.isDarkMode ? '#1e3a4a' : '#ffffff');
+    : (mergedStyle.background || bgFallback);
 
   const surfaceStyle: React.CSSProperties = {
     background: backgroundStyle,
