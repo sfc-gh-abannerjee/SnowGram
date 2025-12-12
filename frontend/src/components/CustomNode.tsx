@@ -120,11 +120,13 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
       className={`${styles.nodeContainer} ${isBoundary ? styles.boundaryNode : ''}`}
       data-dark-mode={data.isDarkMode ? 'true' : 'false'}
       style={{
-        ...mergedStyle,
         background: 'transparent',
         boxShadow: 'none',
         padding: 0,
         overflow: 'visible',
+        border: 'none',
+        borderRadius: 0, // No radius on container - only nodeSurface has radius
+        color: mergedStyle.color,
       }}
     >
       <div className={styles.nodeSurface} style={surfaceStyle}>

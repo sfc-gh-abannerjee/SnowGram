@@ -2757,21 +2757,28 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         .map(applyThemeToNode);
       const nodeMap = new Map<string, Node>(enforcedBoundaries.nodes.map(n => [n.id, n]));
       
-      // Helper: check if a rectangle intersects with the direct path between two points
-      const pathIntersectsNode = (x1: number, y1: number, x2: number, y2: number, node: Node, margin = 20) => {
+      // Helper: check if a direct straight path would pass through a node's center region
+      const pathPassesThroughNode = (x1: number, y1: number, x2: number, y2: number, node: Node) => {
         const size = getNodeSize(node);
-        const nodeLeft = node.position.x - margin;
-        const nodeRight = node.position.x + size.width + margin;
-        const nodeTop = node.position.y - margin;
-        const nodeBottom = node.position.y + size.height + margin;
+        const nodeCenterX = node.position.x + size.width / 2;
+        const nodeCenterY = node.position.y + size.height / 2;
+        const nodeHalfWidth = size.width / 2;
+        const nodeHalfHeight = size.height / 2;
         
-        // Check if line segment (x1,y1)→(x2,y2) intersects node bounding box
-        const minX = Math.min(x1, x2);
-        const maxX = Math.max(x1, x2);
-        const minY = Math.min(y1, y2);
-        const maxY = Math.max(y1, y2);
+        // Only consider it an obstacle if the path goes through the center 60% of the node
+        const coreMargin = 0.6;
+        const coreLeft = nodeCenterX - (nodeHalfWidth * coreMargin);
+        const coreRight = nodeCenterX + (nodeHalfWidth * coreMargin);
+        const coreTop = nodeCenterY - (nodeHalfHeight * coreMargin);
+        const coreBottom = nodeCenterY + (nodeHalfHeight * coreMargin);
         
-        return !(nodeRight < minX || nodeLeft > maxX || nodeBottom < minY || nodeTop > maxY);
+        // Check if the bounding box of the line intersects the core region
+        const lineMinX = Math.min(x1, x2);
+        const lineMaxX = Math.max(x1, x2);
+        const lineMinY = Math.min(y1, y2);
+        const lineMaxY = Math.max(y1, y2);
+        
+        return !(coreRight < lineMinX || coreLeft > lineMaxX || coreBottom < lineMinY || coreTop > lineMaxY);
       };
       
       const pickHandle = (fromId: string, toId: string) => {
@@ -2787,21 +2794,22 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
 
-        // Check for obstacles in the direct path between nodes
+        // Check for obstacles in the direct path between nodes (only center regions)
         const obstacles = Array.from(nodeMap.values()).filter(n => 
           n.id !== fromId && n.id !== toId && 
           !((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary') &&
-          pathIntersectsNode(c1.x, c1.y, c2.x, c2.y, n, 30)
+          pathPassesThroughNode(c1.x, c1.y, c2.x, c2.y, n)
         );
         
         const hasObstacles = obstacles.length > 0;
 
         // Alignment thresholds
-        const VERTICAL_ALIGNMENT_THRESHOLD = 60;
-        const HORIZONTAL_ALIGNMENT_THRESHOLD = 40;
+        const VERTICAL_ALIGNMENT_THRESHOLD = 80; // Increased from 60
+        const HORIZONTAL_ALIGNMENT_THRESHOLD = 50; // Increased from 40
         
         // Check for vertical alignment (same column) - prioritize vertical connections
-        if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD && !hasObstacles) {
+        if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
+          // Even with obstacles, prefer vertical if vertically aligned (smoothstep will route around)
           return {
             sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
             targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
@@ -2809,29 +2817,11 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         }
         
         // Check for horizontal alignment (same row) - use horizontal connections
-        if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD && !hasObstacles) {
+        if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
+          // Even with obstacles, prefer horizontal if horizontally aligned
           return {
             sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
             targetHandle: dx >= 0 ? 'left-target' : 'right-target',
-          };
-        }
-        
-        // If there are obstacles in the direct path, route around them
-        if (hasObstacles) {
-          // Try routing above/below if horizontal distance is large
-          if (Math.abs(dx) > 150) {
-            // Route horizontally around obstacles
-            const goUp = c1.y > c2.y; // Source is below target
-            return {
-              sourceHandle: goUp ? 'top-source' : 'bottom-source',
-              targetHandle: goUp ? 'bottom-target' : 'top-target',
-            };
-          }
-          // Otherwise route left/right around obstacles
-          const goLeft = c1.x > c2.x; // Source is to the right of target
-          return {
-            sourceHandle: goLeft ? 'left-source' : 'right-source',
-            targetHandle: goLeft ? 'right-target' : 'left-target',
           };
         }
         
@@ -2923,21 +2913,28 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     console.log(`[Pipeline] After completeness: ${completed.nodes.length} nodes, ${completed.edges.length} edges`);
     const nodeMap = new Map<string, Node>(completed.nodes.map(n => [n.id, n]));
     
-    // Helper: check if a rectangle intersects with the direct path between two points
-    const pathIntersectsNode = (x1: number, y1: number, x2: number, y2: number, node: Node, margin = 20) => {
+    // Helper: check if a direct straight path would pass through a node's center region
+    const pathPassesThroughNode = (x1: number, y1: number, x2: number, y2: number, node: Node) => {
       const size = getNodeSize(node);
-      const nodeLeft = node.position.x - margin;
-      const nodeRight = node.position.x + size.width + margin;
-      const nodeTop = node.position.y - margin;
-      const nodeBottom = node.position.y + size.height + margin;
+      const nodeCenterX = node.position.x + size.width / 2;
+      const nodeCenterY = node.position.y + size.height / 2;
+      const nodeHalfWidth = size.width / 2;
+      const nodeHalfHeight = size.height / 2;
       
-      // Check if line segment (x1,y1)→(x2,y2) intersects node bounding box
-      const minX = Math.min(x1, x2);
-      const maxX = Math.max(x1, x2);
-      const minY = Math.min(y1, y2);
-      const maxY = Math.max(y1, y2);
+      // Only consider it an obstacle if the path goes through the center 60% of the node
+      const coreMargin = 0.6;
+      const coreLeft = nodeCenterX - (nodeHalfWidth * coreMargin);
+      const coreRight = nodeCenterX + (nodeHalfWidth * coreMargin);
+      const coreTop = nodeCenterY - (nodeHalfHeight * coreMargin);
+      const coreBottom = nodeCenterY + (nodeHalfHeight * coreMargin);
       
-      return !(nodeRight < minX || nodeLeft > maxX || nodeBottom < minY || nodeTop > maxY);
+      // Check if the bounding box of the line intersects the core region
+      const lineMinX = Math.min(x1, x2);
+      const lineMaxX = Math.max(x1, x2);
+      const lineMinY = Math.min(y1, y2);
+      const lineMaxY = Math.max(y1, y2);
+      
+      return !(coreRight < lineMinX || coreLeft > lineMaxX || coreBottom < lineMinY || coreTop > lineMaxY);
     };
     
     const pickHandle = (fromId: string, toId: string) => {
@@ -2953,21 +2950,13 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       const dx = c2.x - c1.x;
       const dy = c2.y - c1.y;
 
-      // Check for obstacles in the direct path between nodes
-      const obstacles = Array.from(nodeMap.values()).filter(n => 
-        n.id !== fromId && n.id !== toId && 
-        !((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary') &&
-        pathIntersectsNode(c1.x, c1.y, c2.x, c2.y, n, 30)
-      );
-      
-      const hasObstacles = obstacles.length > 0;
-
       // Alignment thresholds
-      const VERTICAL_ALIGNMENT_THRESHOLD = 60;
-      const HORIZONTAL_ALIGNMENT_THRESHOLD = 40;
+      const VERTICAL_ALIGNMENT_THRESHOLD = 80; // Increased from 60
+      const HORIZONTAL_ALIGNMENT_THRESHOLD = 50; // Increased from 40
       
       // Check for vertical alignment (same column) - prioritize vertical connections
-      if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD && !hasObstacles) {
+      if (Math.abs(dx) < VERTICAL_ALIGNMENT_THRESHOLD) {
+        // Even with obstacles, prefer vertical if vertically aligned (smoothstep will route around)
         return {
           sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
           targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
@@ -2975,29 +2964,11 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       }
       
       // Check for horizontal alignment (same row) - use horizontal connections
-      if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD && !hasObstacles) {
+      if (Math.abs(dy) < HORIZONTAL_ALIGNMENT_THRESHOLD) {
+        // Even with obstacles, prefer horizontal if horizontally aligned
         return {
           sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
           targetHandle: dx >= 0 ? 'left-target' : 'right-target',
-        };
-      }
-      
-      // If there are obstacles in the direct path, route around them
-      if (hasObstacles) {
-        // Try routing above/below if horizontal distance is large
-        if (Math.abs(dx) > 150) {
-          // Route horizontally around obstacles
-          const goUp = c1.y > c2.y; // Source is below target
-          return {
-            sourceHandle: goUp ? 'top-source' : 'bottom-source',
-            targetHandle: goUp ? 'bottom-target' : 'top-target',
-          };
-        }
-        // Otherwise route left/right around obstacles
-        const goLeft = c1.x > c2.x; // Source is to the right of target
-        return {
-          sourceHandle: goLeft ? 'left-source' : 'right-source',
-          targetHandle: goLeft ? 'right-target' : 'left-target',
         };
       }
       
