@@ -41,7 +41,12 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
   const boundaryBackground = isBoundary ? (rawBg || 'transparent') : null;
   const nodeBackground = isBoundary
     ? (boundaryBackground || 'rgba(41, 181, 232, 0.08)')
-    : (isNearWhite(rawBg) ? brandLightBlue : (rawBg || bgFallback));
+    : (
+        // In dark mode, force brand light blue if missing or near-white
+        data.isDarkMode
+          ? (isNearWhite(rawBg) ? brandLightBlue : (rawBg || brandLightBlue))
+          : (isNearWhite(rawBg) ? bgFallback : (rawBg || bgFallback))
+      );
   
   const mergedStyle: React.CSSProperties = {
     ...(style || {}),
