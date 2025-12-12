@@ -916,7 +916,7 @@ const App: React.FC = () => {
   // NEW: Combined style/layer controls (screen coords + state)
   const [stylePanelPos, setStylePanelPos] = useState<{ x: number; y: number } | null>(null);
   const [fillColor, setFillColor] = useState('#29B5E8');
-  const [fillAlpha, setFillAlpha] = useState(0);
+  const [fillAlpha, setFillAlpha] = useState(0.12); // default semi-transparent fill
   const [cornerRadius, setCornerRadius] = useState(8);
   const [hideBorder, setHideBorder] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -1772,7 +1772,12 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
       nds.map((node) => {
         const data: any = node.data || {};
         const fill = data.fillColor || '#29B5E8';
-        const alpha = typeof data.fillAlpha === 'number' ? data.fillAlpha : 0;
+        const alpha =
+          typeof data.fillAlpha === 'number'
+            ? data.fillAlpha
+            : isDarkMode
+              ? 0.18
+              : 0.12;
         const labelColor = getLabelColor(fill, alpha, isDarkMode);
         return {
           ...node,
