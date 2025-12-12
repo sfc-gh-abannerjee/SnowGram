@@ -2717,6 +2717,16 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         const c2 = { x: to.position.x + w2 / 2, y: to.position.y + h2 / 2 };
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
+        const FAR = 60; // distant diagonal → favor horizontal to avoid crossing nodes
+
+        // If both deltas are large (not roughly aligned), prefer horizontal handles to avoid crossing through unrelated nodes
+        if (Math.abs(dx) > FAR && Math.abs(dy) > FAR) {
+          return {
+            sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
+            targetHandle: dx >= 0 ? 'left-target' : 'right-target',
+          };
+        }
+
         if (Math.abs(dx) > Math.abs(dy)) {
           // Horizontal preference
           return {
@@ -2788,14 +2798,50 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     );
     const completed = ensureMedallionCompleteness(nonBoundaryNodes, newEdges);
     console.log(`[Pipeline] After completeness: ${completed.nodes.length} nodes, ${completed.edges.length} edges`);
-    const completedEdges = completed.edges.map((e) => ({
-      ...e,
-      sourceHandle: e.sourceHandle || 'right-source',
-      targetHandle: e.targetHandle || 'left-target',
-      type: e.type || 'smoothstep',
-      animated: true,
-      style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
-    }));
+    const nodeMap = new Map<string, Node>(completed.nodes.map(n => [n.id, n]));
+    const pickHandle = (fromId: string, toId: string) => {
+      const from = nodeMap.get(fromId);
+      const to = nodeMap.get(toId);
+      if (!from || !to) {
+        return { sourceHandle: 'right-source', targetHandle: 'left-target' };
+      }
+      const { width: w1, height: h1 } = getNodeSize(from);
+      const { width: w2, height: h2 } = getNodeSize(to);
+      const c1 = { x: from.position.x + w1 / 2, y: from.position.y + h1 / 2 };
+      const c2 = { x: to.position.x + w2 / 2, y: to.position.y + h2 / 2 };
+      const dx = c2.x - c1.x;
+      const dy = c2.y - c1.y;
+      const FAR = 60;
+
+      if (Math.abs(dx) > FAR && Math.abs(dy) > FAR) {
+        return {
+          sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
+          targetHandle: dx >= 0 ? 'left-target' : 'right-target',
+        };
+      }
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        return {
+          sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
+          targetHandle: dx >= 0 ? 'left-target' : 'right-target',
+        };
+      }
+      return {
+        sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
+        targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+      };
+    };
+
+    const completedEdges = completed.edges.map((e) => {
+      const handles = pickHandle(e.source, e.target);
+      return {
+        ...e,
+        ...handles,
+        type: e.type || 'smoothstep',
+        animated: true,
+        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+      };
+    });
     // Add icons to ALL nodes AFTER completeness (including newly created medallion nodes)
     const nodesWithIcons = completed.nodes.map((n) => {
       const rawType = ((n.data as any)?.componentType || '').toString();
