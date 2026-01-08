@@ -2,7 +2,7 @@
 
 > **AI-powered architecture diagramming for Snowflake Solution Engineers**
 
-SnowGram is an intelligent diagram generation application that combines Snowflake Cortex AI/ML services with a modular "Lego block" framework to help SEs create professional architecture diagrams quickly through natural language conversations.
+SnowGram is an intelligent diagram generation application that combines Snowflake Cortex AI/ML services with a modular "Lego block" framework to help users create professional Snowflake-friendly architecture diagrams quickly through natural language conversations.
 
 ## 🎯 Key Features
 
@@ -242,15 +242,11 @@ docker-compose -f docker-compose.test.yml up
 
 ## 🤝 Contributing
 
-1. Read `.cursor/rules` for coding standards
-2. Create a feature branch: `git checkout -b feature/new-component-block`
-3. Update `BUILD_PROGRESS.md` with your changes
-4. Test locally with Docker Compose
-5. Submit PR with clear description
+1. Create a feature branch: `git checkout -b feature/new-component-block`
+2. Update `BUILD_PROGRESS.md` with your changes
+3. Test locally with Docker Compose
+4. Submit PR with clear description
 
-## 📝 License
-
-Internal Snowflake SE tool - not for public distribution
 
 ## 🆘 Support
 
