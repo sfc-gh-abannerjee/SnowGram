@@ -177,6 +177,45 @@ const edgeDefaults = {
 
 ## Priority 5: Visual Polish
 
+### Problem
+- Fixed node sizing (150x130) doesn't adapt to label length
+- No visual distinction between medallion layers in the canvas
+- Color coding based on text matching rather than flowStageOrder
+
+### Solution
+
+#### 5.1 Auto-size nodes based on label length
+Replace fixed sizing with dynamic calculation:
+```typescript
+const calculateNodeSize = (label: string) => {
+  const baseWidth = 120;
+  const charWidth = 8;
+  const width = Math.max(baseWidth, Math.min(200, label.length * charWidth + 40));
+  const height = label.length > 15 ? 150 : 130;
+  return { width, height };
+};
+```
+
+#### 5.2 Visual layer bands (background zones)
+Add semi-transparent colored rectangles behind each medallion layer:
+- Bronze zone: `rgba(205, 127, 50, 0.05)` 
+- Silver zone: `rgba(192, 192, 192, 0.05)`
+- Gold zone: `rgba(255, 215, 0, 0.05)`
+
+#### 5.3 Color coding by flowStageOrder
+Add `STAGE_COLORS` map using flowStageOrder directly:
+```typescript
+const STAGE_COLORS = {
+  0: { border: '#6366F1', bg: '#EEF2FF' },  // source (indigo)
+  1: { border: '#8B5CF6', bg: '#F5F3FF' },  // ingest (violet)
+  2: { border: '#CD7F32', bg: '#FDF5E6' },  // raw/bronze
+  3: { border: '#C0C0C0', bg: '#F5F5F5' },  // transform/silver
+  4: { border: '#FFD700', bg: '#FFFACD' },  // refined/gold
+  5: { border: '#10B981', bg: '#ECFDF5' },  // serve (emerald)
+  6: { border: '#F59E0B', bg: '#FFFBEB' },  // consume (amber)
+};
+```
+
 | Element | Current | Target |
 |---------|---------|--------|
 | Node sizing | Fixed 150x130 | Auto-size based on label |
@@ -184,8 +223,8 @@ const edgeDefaults = {
 | Color coding | Single blue | Gradient by flowStageOrder |
 
 ### Files to Modify
-- `frontend/src/components/CustomNode.tsx`
-- `frontend/src/App.tsx`
+- `frontend/src/App.tsx` (node sizing, layer bands)
+- `frontend/src/lib/mermaidToReactFlow.ts` (STAGE_COLORS)
 
 ---
 
@@ -214,10 +253,10 @@ const edgeDefaults = {
 ## Progress Tracking
 
 - [x] Phase 1: Agent prompt improvements ✅ (2026-02-13)
-- [ ] Phase 2: ELK layout tuning
-- [ ] Phase 3: Edge routing
+- [x] Phase 2: ELK layout tuning ✅ (2026-02-13)
+- [x] Phase 3: Edge routing ✅ (2026-02-13)
 - [ ] Phase 4: Test expansion
-- [ ] Phase 5: Visual polish
+- [x] Phase 5: Visual polish ✅ (2026-02-13)
 
 ### Phase 1 Results
 - Agent now produces 10 nodes (was 15-20)
@@ -225,6 +264,20 @@ const edgeDefaults = {
 - Single "Analytics Views" (no redundant views)
 - Warehouse positioned separately from data flow
 - All flowStageOrder values correctly assigned
+
+### Phase 2 & 3 Results
+- Edge strokeWidth increased from 2 to 2.5 for better visibility
+- Boundary label padding increased (padYTop: 50 → 70)
+- ELK options tuned for better alignment and spacing
+- Smoothstep edge type in elkLayout for curved routing
+- Consistent styling across light and dark modes
+
+### Phase 5 Results
+- Added STAGE_COLORS map for flowStageOrder-based coloring
+- Nodes now colored by pipeline stage (source→ingest→raw→transform→refined→serve→consume)
+- Color scheme: Indigo→Violet→Bronze→Silver→Gold→Emerald→Amber
+- Both spec and mermaid paths apply consistent stage coloring
+- Added calculateNodeSize helper for future dynamic sizing
 
 ---
 

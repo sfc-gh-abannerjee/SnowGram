@@ -20,7 +20,7 @@ import styles from './App.module.css';
 import { COMPONENT_CATEGORIES, SNOWFLAKE_ICONS } from './components/iconMap';
 import CustomNode from './components/CustomNode';
 import { SnowgramAgentClient } from './lib/snowgram-agent-client';
-import { convertMermaidToFlow, LAYER_COLORS } from './lib/mermaidToReactFlow';
+import { convertMermaidToFlow, LAYER_COLORS, STAGE_COLORS, getStageColor } from './lib/mermaidToReactFlow';
 import { layoutWithELK, enrichNodesWithFlowOrder } from './lib/elkLayout';
 
 type AgentResult = {
@@ -47,6 +47,25 @@ type AgentResult = {
 
 const nodeTypes: NodeTypes = {
   snowflakeNode: CustomNode,
+};
+
+// ============================================
+// DYNAMIC NODE SIZING (Phase 5 Visual Polish)
+// ============================================
+// Calculate node dimensions based on label length for better readability
+const calculateNodeSize = (label: string): { width: number; height: number } => {
+  const baseWidth = 120;
+  const charWidth = 7;
+  const maxWidth = 200;
+  const minWidth = 130;
+  
+  // Calculate width based on label length
+  const calculatedWidth = Math.min(maxWidth, Math.max(minWidth, label.length * charWidth + 40));
+  
+  // Taller nodes for longer labels that might wrap
+  const height = label.length > 18 ? 150 : 130;
+  
+  return { width: calculatedWidth, height };
 };
 
 // Flattened catalog for quick icon lookup
@@ -3258,12 +3277,20 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       const normalizedNodesWithSize = enforcedBoundaries.nodes.map(n => {
         const isBoundary = ((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary');
         if (isBoundary) return n; // Keep boundary sizes as-is
+        
+        // Phase 5: Apply flowStageOrder-based coloring
+        const flowStage = (n.data as any)?.flowStageOrder;
+        const stageColor = getStageColor(flowStage, isDarkMode);
+        
         return {
           ...n,
           style: {
             ...(n.style || {}),
             width: STANDARD_NODE_WIDTH,
             height: STANDARD_NODE_HEIGHT,
+            // Apply stage-based colors (overrides previous styling)
+            border: `2px solid ${stageColor.border}`,
+            background: stageColor.background,
           },
         };
       });
@@ -3536,15 +3563,26 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     const STANDARD_WIDTH_MERMAID = 150;
     const STANDARD_HEIGHT_MERMAID = 130;
     
-    const normalizedNodesWithSizeMermaid = enforcedBoundaries.nodes.map(n => {
+    // Enrich mermaid nodes with flowStageOrder for consistent coloring
+    const enrichedMermaidNodes = enrichNodesWithFlowOrder(enforcedBoundaries.nodes);
+    
+    const normalizedNodesWithSizeMermaid = enrichedMermaidNodes.map(n => {
       const isBoundary = ((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary');
       if (isBoundary) return n; // Keep boundary sizes as-is
+      
+      // Phase 5: Apply flowStageOrder-based coloring (Mermaid path)
+      const flowStage = (n.data as any)?.flowStageOrder;
+      const stageColor = getStageColor(flowStage, isDarkMode);
+      
       return {
         ...n,
         style: {
           ...(n.style || {}),
           width: STANDARD_WIDTH_MERMAID,
           height: STANDARD_HEIGHT_MERMAID,
+          // Apply stage-based colors
+          border: `2px solid ${stageColor.border}`,
+          background: stageColor.background,
         },
       };
     });

@@ -56,6 +56,30 @@ export const LAYER_COLORS = {
   }
 };
 
+// ============================================
+// FLOW STAGE COLOR SCHEME (by flowStageOrder)
+// ============================================
+// Colors mapped to flowStageOrder values for consistent
+// visual coding across the data pipeline stages
+export const STAGE_COLORS: Record<number, { border: string; bg: string; bgDark: string }> = {
+  0: { border: '#6366F1', bg: '#EEF2FF', bgDark: '#312E81' },  // source (indigo)
+  1: { border: '#8B5CF6', bg: '#F5F3FF', bgDark: '#3B2A6D' },  // ingest (violet)
+  2: { border: '#CD7F32', bg: '#FDF5E6', bgDark: '#3D2B1F' },  // raw/bronze
+  3: { border: '#C0C0C0', bg: '#F5F5F5', bgDark: '#2F4F4F' },  // transform/silver
+  4: { border: '#FFD700', bg: '#FFFACD', bgDark: '#4A3C00' },  // refined/gold
+  5: { border: '#10B981', bg: '#ECFDF5', bgDark: '#064E3B' },  // serve (emerald)
+  6: { border: '#F59E0B', bg: '#FFFBEB', bgDark: '#78350F' },  // consume (amber)
+};
+
+// Helper to get color by flowStageOrder with fallback
+export const getStageColor = (flowStageOrder: number | undefined, isDark = false) => {
+  const stage = STAGE_COLORS[flowStageOrder ?? -1] || STAGE_COLORS[5]; // default to serve
+  return {
+    border: stage.border,
+    background: isDark ? stage.bgDark : stage.bg,
+  };
+};
+
 // Detect which medallion layer a node belongs to based on ID/label
 function detectLayer(id: string, label: string): keyof typeof LAYER_COLORS {
   const text = `${id} ${label}`.toLowerCase();
