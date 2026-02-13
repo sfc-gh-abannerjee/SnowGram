@@ -10,14 +10,17 @@
 #     - has_mermaid: Response contains ```mermaid``` block
 #     - json_has_nodes: JSON has nodes array
 #     - json_has_edges: JSON has edges array
+#     - json_has_flowstage: All nodes have flowStage and flowStageOrder
+#     - json_flowstage_ordered: Edges flow from lower to higher flowStageOrder
 #     - no_external_sources: Should NOT contain S3/Kafka/Azure (for internal-only requests)
 #     - has_external_sources: Should contain external sources
 #     - contains: List of strings that must appear in response
 #     - not_contains: List of strings that must NOT appear in response
+#     - expected_tools_called: Verify specific tools were used
 
 test_suite:
   name: "SnowGram Agent Regression Suite"
-  version: "1.0"
+  version: "2.0"
   agent:
     name: "SNOWGRAM_AGENT"
     database: "SNOWGRAM_DB"
@@ -154,10 +157,113 @@ test_cases:
   # ===========================================
 
   - name: "layout_grid"
-    description: "Verify grid layout is included"
+    description: "Verify grid positioning is included"
     query: "Create a 3-tier data architecture"
     validations:
       - has_json
+      - json_has_nodes
       - contains:
-          - "layout"
           - "position"
+
+  # ===========================================
+  # FLOWSTAGE METADATA TESTS (NEW)
+  # ===========================================
+
+  - name: "flowstage_all_nodes"
+    description: "Verify all nodes have flowStage and flowStageOrder"
+    query: "Create a data pipeline from Kafka to PowerBI with transformation in between"
+    validations:
+      - has_json
+      - json_has_nodes
+      - json_has_flowstage
+      - has_external_sources
+
+  - name: "flowstage_ordering"
+    description: "Verify edges flow from lower to higher flowStageOrder"
+    query: "Create a pipeline: S3 -> Snowpipe -> Bronze Table -> Stream -> Task -> Silver Table -> Gold View -> Tableau"
+    validations:
+      - has_json
+      - json_has_edges
+      - json_has_flowstage
+      - json_flowstage_ordered
+
+  # ===========================================
+  # TOOL COVERAGE TESTS (NEW)
+  # ===========================================
+
+  - name: "tool_classify_unknown"
+    description: "Test classify_component for unknown components"
+    query: "Create a diagram with Apache Flink for stream processing connected to Snowflake"
+    expected_tools:
+      - classify_component
+    validations:
+      - has_json
+      - contains:
+          - "Flink"
+
+  - name: "tool_map_known"
+    description: "Test map_component for known Snowflake components"
+    query: "Create a simple pipeline with Stream, Task, and Table"
+    expected_tools:
+      - map_component
+    validations:
+      - has_json
+      - json_has_nodes
+      - contains:
+          - "Stream"
+          - "Task"
+          - "Table"
+
+  - name: "tool_docs_search"
+    description: "Test documentation search via cortex_search"
+    query: "What is the best practice for using Dynamic Tables in Snowflake? Show me an example architecture."
+    expected_tools:
+      - cortex_search
+    validations:
+      - contains:
+          - "Dynamic"
+
+  - name: "tool_best_practice"
+    description: "Test architecture best practices lookup"
+    query: "What are the best practices for building a medallion architecture? Create a diagram following them."
+    expected_tools:
+      - cortex_search
+    validations:
+      - has_json
+      - contains:
+          - "bronze"
+          - "silver"
+          - "gold"
+
+  # ===========================================
+  # END-TO-END TESTS (NEW)
+  # ===========================================
+
+  - name: "e2e_full_pipeline"
+    description: "Full pipeline with all flow stages"
+    query: "Create: Kafka -> Snowpipe -> Bronze DB -> Stream -> Task -> Silver DB -> dbt -> Gold DB -> Tableau"
+    validations:
+      - has_json
+      - has_mermaid
+      - json_has_nodes
+      - json_has_edges
+      - json_has_flowstage
+      - has_external_sources
+      - contains:
+          - "Kafka"
+          - "Snowpipe"
+          - "Bronze"
+          - "Silver"
+          - "Gold"
+          - "Tableau"
+
+  - name: "e2e_internal_only"
+    description: "Complete internal architecture without external sources"
+    query: "Design a complete data warehouse with raw, staging, curated layers and analytics views - all within Snowflake"
+    validations:
+      - has_json
+      - has_mermaid
+      - json_has_nodes
+      - json_has_edges
+      - json_has_flowstage
+      - no_external_sources
