@@ -101,6 +101,10 @@ backend/agent/*.sql
 
 # Local test sandbox (not required for runtime)
 tests/
+# But keep the agent test harness
+!backend/tests/
+!backend/tests/agent/
+backend/tests/agent/results/
 
 # Local setup helpers
 setup_user_access.sql

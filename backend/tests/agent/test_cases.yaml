@@ -1,0 +1,163 @@
+# SnowGram Agent Test Cases
+# Run with: python run_tests.py
+# 
+# Test case structure:
+#   name: Short identifier
+#   query: Question to ask the agent
+#   expected_tools: Tools that should be called (optional)
+#   validations: Checks to perform on response
+#     - has_json: Response contains ```json``` block
+#     - has_mermaid: Response contains ```mermaid``` block
+#     - json_has_nodes: JSON has nodes array
+#     - json_has_edges: JSON has edges array
+#     - no_external_sources: Should NOT contain S3/Kafka/Azure (for internal-only requests)
+#     - has_external_sources: Should contain external sources
+#     - contains: List of strings that must appear in response
+#     - not_contains: List of strings that must NOT appear in response
+
+test_suite:
+  name: "SnowGram Agent Regression Suite"
+  version: "1.0"
+  agent:
+    name: "SNOWGRAM_AGENT"
+    database: "SNOWGRAM_DB"
+    schema: "AGENTS"
+    connection: "se_demo"
+
+test_cases:
+  # ===========================================
+  # MEDALLION ARCHITECTURE TESTS
+  # ===========================================
+  
+  - name: "medallion_internal"
+    description: "Medallion architecture without external sources"
+    query: "Create a simple medallion architecture with bronze, silver, and gold layers"
+    validations:
+      - has_json
+      - has_mermaid
+      - json_has_nodes
+      - json_has_edges
+      - no_external_sources
+    expected_tools:
+      - map_component
+
+  - name: "medallion_with_s3"
+    description: "Medallion architecture with S3 ingestion"
+    query: "Create a medallion architecture with S3 data lake ingestion"
+    validations:
+      - has_json
+      - has_mermaid
+      - json_has_nodes
+      - has_external_sources
+      - contains:
+          - "S3"
+
+  - name: "medallion_bi"
+    description: "Medallion for BI workload"
+    query: "Design a bronze-silver-gold architecture for BI reporting"
+    validations:
+      - has_json
+      - has_mermaid
+      - no_external_sources
+
+  # ===========================================
+  # STREAMING & IOT TESTS
+  # ===========================================
+
+  - name: "iot_kafka"
+    description: "IoT pipeline with Kafka"
+    query: "Design a real-time IoT pipeline with Kafka ingestion and streaming analytics"
+    validations:
+      - has_json
+      - has_mermaid
+      - has_external_sources
+      - contains:
+          - "Kafka"
+          - "Stream"
+
+  - name: "streaming_snowpipe"
+    description: "Streaming with Snowpipe"
+    query: "Create a streaming data pipeline using Snowpipe Streaming"
+    validations:
+      - has_json
+      - has_mermaid
+      - contains:
+          - "Snowpipe"
+
+  # ===========================================
+  # COMPONENT VALIDATION TESTS
+  # ===========================================
+
+  - name: "component_types"
+    description: "Verify component types are validated"
+    query: "Create a pipeline with a database, schema, table, view, stream, task, and warehouse"
+    validations:
+      - has_json
+      - json_has_nodes
+    expected_tools:
+      - map_component
+
+  - name: "dynamic_tables"
+    description: "Dynamic tables pipeline"
+    query: "Show me an architecture using dynamic tables for incremental processing"
+    validations:
+      - has_json
+      - has_mermaid
+      - contains:
+          - "Dynamic"
+
+  # ===========================================
+  # DOCUMENTATION SEARCH TESTS
+  # ===========================================
+
+  - name: "component_recommendations"
+    description: "Ask for component recommendations"
+    query: "What Snowflake components should I use for a data transformation pipeline?"
+    validations:
+      - contains:
+          - "Stream"
+          - "Task"
+    expected_tools:
+      - cortex_search
+
+  - name: "best_practices"
+    description: "Ask about best practices"
+    query: "What are best practices for building a medallion architecture in Snowflake?"
+    validations:
+      - contains:
+          - "bronze"
+          - "silver"
+          - "gold"
+
+  # ===========================================
+  # EDGE CASES & NEGATIVE TESTS
+  # ===========================================
+
+  - name: "ambiguous_request"
+    description: "Vague request should still produce valid output"
+    query: "Create a data pipeline"
+    validations:
+      - has_json
+      - json_has_nodes
+
+  - name: "complex_request"
+    description: "Complex multi-system architecture"
+    query: "Design an enterprise data platform with ingestion from multiple sources, transformation layers, and analytics"
+    validations:
+      - has_json
+      - has_mermaid
+      - json_has_nodes
+      - json_has_edges
+
+  # ===========================================
+  # LAYOUT & POSITIONING TESTS
+  # ===========================================
+
+  - name: "layout_grid"
+    description: "Verify grid layout is included"
+    query: "Create a 3-tier data architecture"
+    validations:
+      - has_json
+      - contains:
+          - "layout"
+          - "position"
