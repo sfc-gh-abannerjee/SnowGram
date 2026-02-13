@@ -279,6 +279,29 @@ const STAGE_COLORS = {
 - Both spec and mermaid paths apply consistent stage coloring
 - Added calculateNodeSize helper for future dynamic sizing
 
+### Phase 5b: Agent Instruction Strengthening (2026-02-13)
+**Issue**: Testing revealed agent still not following instructions:
+- VIEW CONSOLIDATION ignored (both "Analytics Views" + "Secure Views" appeared)
+- STREAM + TASK PAIRING ignored (missing "Gold Transform Task" after "Silver to Gold Stream")
+- Diagonal edges from poor node alignment
+
+**Fixes Applied**:
+1. **Stronger VIEW CONSOLIDATION instruction**:
+   - Added explicit "INCORRECT/CORRECT" examples
+   - Made rule STRICT with "NEVER add Secure Views" language
+   
+2. **Stronger STREAM + TASK PAIRING instruction**:
+   - Added "REQUIRED - DO NOT SKIP" emphasis
+   - Added explicit INCORRECT/CORRECT flow diagrams
+   - Named specific tasks: "Transform Task", "Aggregate Task"
+
+3. **Added concrete EXAMPLE section**:
+   - Exact 8-9 node list with flowStageOrder values
+   - Exact flow pattern: Bronze → Stream → Task → Silver → Stream → Task → Gold → Views → PowerBI
+   - Explicit "clean LINEAR horizontal flow with NO diagonal edges" requirement
+
+4. **Agent updated** via `CREATE OR REPLACE AGENT` with all improvements
+
 ---
 
 ## Testing Commands

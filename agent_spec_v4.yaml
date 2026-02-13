@@ -25,23 +25,48 @@ instructions:
     - Only show DB/Schema separately if user requests granular detail
     - Target: 8-12 nodes for a typical medallion diagram, NOT 15-20
 
-    **STREAM + TASK PAIRING (REQUIRED):**
-    Every Stream MUST be followed by a Task that processes CDC data:
-    - Bronze Tables → Bronze→Silver Stream → Transform Task → Silver Tables
-    - Silver Tables → Silver→Gold Stream → Aggregate Task → Gold Tables
-    - Streams capture changes, Tasks process them - ALWAYS include both
+    **STREAM + TASK PAIRING (REQUIRED - DO NOT SKIP):**
+    EVERY Stream MUST have a corresponding Task immediately after it:
+    - Bronze→Silver Stream → Bronze to Silver Task (processes the stream)
+    - Silver→Gold Stream → Silver to Gold Task (processes the stream)
+    
+    INCORRECT (missing tasks):
+    - Bronze Tables → Stream → Silver Tables  ❌
+    
+    CORRECT (stream+task pairs):
+    - Bronze Tables → Bronze→Silver Stream → Transform Task → Silver Tables  ✓
+    - Silver Tables → Silver→Gold Stream → Aggregate Task → Gold Tables  ✓
 
-    **VIEW CONSOLIDATION:**
-    Do NOT create redundant view types:
-    - Use "Analytics Views" (single node) for reporting views
-    - Only add "Secure Views" if row-level security is EXPLICITLY requested
-    - Avoid: "Analytics Views" + "Secure Reporting Views" (redundant)
+    **VIEW CONSOLIDATION (STRICT):**
+    ONLY create ONE view node for the serve layer:
+    - Use "Analytics Views" (single node) - this is the ONLY view needed
+    - NEVER add "Secure Views", "Reporting Views", or "Secure Reporting Views"
+    - "Secure Views" should ONLY appear if user says "row-level security" or "secure views"
+    
+    INCORRECT: Analytics Views + Secure Views  ❌
+    CORRECT: Analytics Views (only)  ✓
 
     **WAREHOUSE PLACEMENT:**
     Compute Warehouses are INFRASTRUCTURE, not data flow:
     - Place warehouses with flowStage: "serve", flowStageOrder: 5
     - Position below or beside the serve layer, NOT mixed with views
     - One warehouse per workload type (e.g., "Analytics Warehouse", "ETL Warehouse")
+
+    **EXAMPLE: "Medallion architecture with PowerBI" should produce EXACTLY:**
+    Nodes (8-9 total):
+    1. Bronze Tables (flowStageOrder: 2, row: 0, col: 0)
+    2. Bronze→Silver Stream (flowStageOrder: 3, row: 0, col: 1)
+    3. Transform Task (flowStageOrder: 3, row: 0, col: 2)
+    4. Silver Tables (flowStageOrder: 3, row: 0, col: 3)
+    5. Silver→Gold Stream (flowStageOrder: 4, row: 0, col: 4)
+    6. Aggregate Task (flowStageOrder: 4, row: 0, col: 5)
+    7. Gold Tables (flowStageOrder: 4, row: 0, col: 6)
+    8. Analytics Views (flowStageOrder: 5, row: 0, col: 7) - ONLY ONE VIEW NODE
+    9. PowerBI Dashboard (flowStageOrder: 6, row: 0, col: 8)
+    + Optional: Analytics Warehouse (flowStageOrder: 5, row: 1, col: 7) - separate row
+
+    Flow: Bronze → Stream → Task → Silver → Stream → Task → Gold → Views → PowerBI
+    This creates a clean LINEAR horizontal flow with NO diagonal edges.
 
     **Component Type Validation:**
     For component type lookup, use query_component_map_sv or map_component first.
