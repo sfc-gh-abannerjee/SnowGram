@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  frontend:
+    name: Frontend Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Install dependencies
+      working-directory: frontend
+      run: npm ci
+    
+    - name: Type check
+      working-directory: frontend
+      run: npm run type-check
+    
+    - name: Lint
+      working-directory: frontend
+      run: npm run lint --if-present
+    
+    - name: Build
+      working-directory: frontend
+      run: npm run build
+
+  backend:
+    name: Backend Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install pyyaml snowflake-connector-python
+    
+    - name: Validate test harness syntax
+      run: |
+        python -m py_compile backend/tests/agent/run_tests.py
+        echo "✅ Test harness syntax OK"
+    
+    - name: Validate test cases YAML
+      run: |
+        python -c "import yaml; yaml.safe_load(open('backend/tests/agent/test_cases.yaml'))"
+        echo "✅ Test cases YAML valid"
+    
+    - name: List test configuration
+      run: |
+        python -c "
+        import yaml
+        config = yaml.safe_load(open('backend/tests/agent/test_cases.yaml'))
+        tests = config['test_cases']
+        print(f'📋 {len(tests)} tests configured:')
+        for t in tests:
+            print(f'  - {t[\"name\"]}: {t.get(\"description\", t[\"query\"][:50])}')
+        "
+
+  # Agent tests require Snowflake credentials - run manually or with secrets
+  agent-tests:
+    name: Agent Tests (Smoke)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[test-agent]')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install uv
+      run: pip install uv
+    
+    - name: Setup Snowflake config
+      env:
+        SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+        SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+        SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      run: |
+        mkdir -p ~/.snowflake
+        cat > ~/.snowflake/config.toml << EOF
+        [connections.se_demo]
+        account = "$SNOWFLAKE_ACCOUNT"
+        user = "$SNOWFLAKE_USER"
+        password = "$SNOWFLAKE_PASSWORD"
+        warehouse = "COMPUTE_WH"
+        database = "SNOWGRAM_DB"
+        schema = "AGENTS"
+        role = "ACCOUNTADMIN"
+        EOF
+    
+    - name: Install test dependencies
+      run: |
+        pip install pyyaml snowflake-connector-python requests
+    
+    - name: Run smoke tests
+      working-directory: backend/tests/agent
+      run: |
+        python run_tests.py --verbose --report
+      timeout-minutes: 10
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: test-results
+        path: backend/tests/agent/results/
+        retention-days: 7
