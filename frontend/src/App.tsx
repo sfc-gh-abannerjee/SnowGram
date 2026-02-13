@@ -321,7 +321,7 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
 
   // Padding for boundaries - TOP needs extra space for label
   const padX = 24;
-  const padYTop = 50;  // Extra top padding for boundary label
+  const padYTop = 70;  // Phase 2: Increased from 50 for boundary label room
   const padYBottom = 24;
   const padY = 30; // Average padding for non-Snowflake boundaries
 
@@ -667,9 +667,9 @@ const layoutMedallion = (nodes: Node[], edges: Edge[]) => {
           id: `m-${a.id}-${b.id}-${idx}`,
           source: a.id,
           target: b.id,
-          type: 'straight',  // Direct line between handles (no routing kinks)
+          type: 'smoothstep',  // Phase 3: Changed from 'straight' for better routing
           animated: true,
-          style: { stroke: '#29B5E8', strokeWidth: 2 },
+          style: { stroke: '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth
           deletable: true,
         } as Edge)
       : null;
@@ -931,7 +931,7 @@ const layoutMedallionDeterministic = (nodes: Node[]) => {
       // 'straight' for aligned connections (no kinks), 'step' for diagonal
       type: edgeType,
       animated: true,
-      style: { stroke: '#29B5E8', strokeWidth: 2 },
+      style: { stroke: '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth
       deletable: true,
     } as Edge;
   };
@@ -1543,7 +1543,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
         targetHandle: handles.targetHandle,
         type: 'straight',  // Direct line between handles (no routing kinks)
         animated: true,
-        style: { stroke: '#29B5E8', strokeWidth: 2 },
+      style: { stroke: '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth
         deletable: true,
         data: {
           // Track animation direction: 'forward' = source -> target, 'reverse' = target -> source
@@ -2722,7 +2722,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       animated: true,
       sourceHandle: 'right-source',
       targetHandle: 'left-target',
-      style: { stroke: '#60A5FA', strokeWidth: 2 },
+      style: { stroke: '#60A5FA', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
     };
     edges.push(edge);
   };
@@ -3155,7 +3155,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         animated: true,
         sourceHandle: e.sourceHandle || 'right-source',
         targetHandle: e.targetHandle || 'left-target',
-        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
         deletable: true,
       }));
 
@@ -3328,7 +3328,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           ...handles,
           type: edgeType,
           animated: true,
-          style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+          style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth
         };
       });
       let finalNodes = enforcedBoundaries.nodes
@@ -3471,7 +3471,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         ...handles,
         type: edgeType,
         animated: true,
-        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth
       };
     });
     // Add icons to ALL nodes AFTER completeness (including newly created medallion nodes)
@@ -3561,7 +3561,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       targetHandle: e.targetHandle || 'left-target',
       type: 'straight',  // Direct line between handles (no routing kinks)
       animated: true,
-      style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
+      style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
     }));
     
     // =============================================================================
@@ -3801,7 +3801,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           defaultEdgeOptions={{
             type: 'straight',  // Direct line between handles (no routing kinks)
             animated: true,
-        style: { stroke: isDarkMode ? '#FFFFFF' : '#29B5E8', strokeWidth: 2 },
+        style: { stroke: isDarkMode ? '#FFFFFF' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
             deletable: true,
           }}
           onMove={onMove}
