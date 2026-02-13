@@ -95,7 +95,7 @@ async def generate_diagram(request: GenerateDiagramRequest):
         start_time = datetime.now()
         
         # Get Cortex Agent client from app state
-        from backend.api.main import cortex_agent_client
+        from api.main import cortex_agent_client
         
         # Prepare context for the agent
         context = {

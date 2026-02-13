@@ -7,9 +7,10 @@ const nextConfig = {
   output: 'standalone',
   
   // Environment variables
+  // Local dev: Frontend on 3002, Backend on 8082 (avoids conflicts with 3001/8081)
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
-    NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8082',
+    NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8082',
   },
   
   // Styled components support

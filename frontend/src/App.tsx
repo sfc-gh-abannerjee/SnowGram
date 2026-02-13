@@ -20,11 +20,24 @@ import styles from './App.module.css';
 import { COMPONENT_CATEGORIES, SNOWFLAKE_ICONS } from './components/iconMap';
 import CustomNode from './components/CustomNode';
 import { SnowgramAgentClient } from './lib/snowgram-agent-client';
-import { convertMermaidToFlow } from './lib/mermaidToReactFlow';
+import { convertMermaidToFlow, LAYER_COLORS } from './lib/mermaidToReactFlow';
+import { layoutWithELK, enrichNodesWithFlowOrder } from './lib/elkLayout';
 
 type AgentResult = {
   mermaidCode: string;
-  spec?: { nodes: any[]; edges: any[] };
+  spec?: { 
+    nodes: any[]; 
+    edges: any[];
+    // Backend-driven layout metadata (when agent provides positions)
+    layout?: {
+      type: string;
+      direction: string;
+      baseX: number;
+      baseY: number;
+      colWidth: number;
+      rowHeight: number;
+    };
+  };
   overview?: string;
   bestPractices?: string[];
   antiPatterns?: string[];
@@ -56,6 +69,11 @@ const getIconForComponentType = (componentType?: string) => {
     analytics_views: SNOWFLAKE_ICONS.view,
     analytics: SNOWFLAKE_ICONS.view,
     warehouse: SNOWFLAKE_ICONS.warehouse,
+    compute_wh: SNOWFLAKE_ICONS.warehouse,
+    compute_warehouse: SNOWFLAKE_ICONS.warehouse,
+    bi_warehouse: SNOWFLAKE_ICONS.warehouse,
+    bi_wh: SNOWFLAKE_ICONS.warehouse,
+    analytics_wh: SNOWFLAKE_ICONS.warehouse,
     'data wh': SNOWFLAKE_ICONS.warehouse_data,
     datawh: SNOWFLAKE_ICONS.warehouse_data,
     'virtual wh': SNOWFLAKE_ICONS.warehouse,
@@ -259,7 +277,8 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   const isBoundary = (n: Node) => lowered((n.data as any)?.componentType).startsWith('account_boundary');
 
   const cloudSets = {
-    aws: ['s3', 'lake', 'aws'],
+    // Only match truly AWS-specific keywords (NOT 'lake' which could mean lakehouse)
+    aws: ['s3', 'aws', 's3_bucket', 'aws_'],
     azure: ['azure', 'adls', 'blob'],
     gcp: ['gcp', 'gcs', 'google', 'bigquery', 'bq'],
   };
@@ -300,8 +319,11 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
     return { minX, minY, maxX, maxY };
   };
 
-  const padX = 16;
-  const padY = 24;
+  // Padding for boundaries - TOP needs extra space for label
+  const padX = 24;
+  const padYTop = 50;  // Extra top padding for boundary label
+  const padYBottom = 24;
+  const padY = 30; // Average padding for non-Snowflake boundaries
 
   const makeBoundary = (canonicalType: string, label: string, color: string, box: { minX: number; minY: number; maxX: number; maxY: number }, isDark: boolean = false) => {
     // Convert hex to RGB for proper alpha blending
@@ -321,10 +343,10 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
     return {
       id: `${canonicalType}_${Date.now()}`, // Timestamped ID for uniqueness
       type: 'snowflakeNode',
-      position: { x: box.minX - padX, y: box.minY - padY },
+      position: { x: box.minX - padX, y: box.minY - padYTop },
       style: {
         width: (box.maxX - box.minX) + padX * 2,
-        height: (box.maxY - box.minY) + padY * 2,
+        height: (box.maxY - box.minY) + padYTop + padYBottom,
         border: `2px dashed ${color}`,
         background: bgColor,
         borderRadius: 16,
@@ -645,7 +667,7 @@ const layoutMedallion = (nodes: Node[], edges: Edge[]) => {
           id: `m-${a.id}-${b.id}-${idx}`,
           source: a.id,
           target: b.id,
-          type: 'smoothstep',
+          type: 'straight',  // Direct line between handles (no routing kinks)
           animated: true,
           style: { stroke: '#29B5E8', strokeWidth: 2 },
           deletable: true,
@@ -686,9 +708,22 @@ const layoutMedallionDeterministic = (nodes: Node[]) => {
   const nonBoundary = nodes.filter((n) => !isBoundary(n));
   const boundaries = nodes.filter((n) => isBoundary(n));
 
-  const pick = (keywords: string[]): Node | null => {
+  // Exact ID picker - tries to find node by exact ID match first
+  const pickById = (id: string): Node | null => {
+    return nonBoundary.find(n => n.id === id) || null;
+  };
+
+  // Score-based node picker - matches against id, label, and componentType
+  const pick = (keywords: string[], preferredId?: string): Node | null => {
+    // FIRST: Try exact ID match if provided (most reliable)
+    if (preferredId) {
+      const exact = pickById(preferredId);
+      if (exact) return exact;
+    }
+    
     const score = (n: Node) => {
-      const s = `${((n.data as any)?.label || '')} ${((n.data as any)?.componentType || '')}`.toLowerCase();
+      // Check against node id, label, AND componentType for best matching
+      const s = `${n.id} ${((n.data as any)?.label || '')} ${((n.data as any)?.componentType || '')}`.toLowerCase();
       return keywords.reduce((acc, k) => (s.includes(k) ? acc + 1 : acc), 0);
     };
     return nonBoundary.reduce<{ best: Node | null; sc: number }>(
@@ -701,39 +736,80 @@ const layoutMedallionDeterministic = (nodes: Node[]) => {
     ).best;
   };
 
-  const cloud = pick(['s3', 'lake', 'aws']);
-  const snowpipe = pick(['snowpipe', 'ingest']);
-  const bronzeDb = pick(['bronze db', 'bronze database', 'bronze']);
-  const bronzeSchema = pick(['raw schema', 'bronze schema', 'raw']);
-  const bronzeTables = pick(['raw table', 'bronze table', 'raw tables']);
-  const bronzeStream = pick(['bronze to silver', 'bronze stream']);
-  const silverDb = pick(['silver db', 'silver database', 'silver']);
-  const silverSchema = pick(['cleansed schema', 'silver schema', 'clean schema', 'cleansed']);
-  const silverTables = pick(['cleansed table', 'silver table', 'cleansed tables']);
-  const silverStream = pick(['silver to gold', 'silver stream']);
-  const goldDb = pick(['gold db', 'gold database', 'gold']);
-  const goldSchema = pick(['curated schema', 'refined schema', 'gold schema']);
-  const goldTables = pick(['curated tables', 'refined tables', 'gold tables']);
-  const analytics = pick(['analytics', 'view']);
-  const warehouse = pick(['warehouse', 'compute']);
-  const analyticsWh = pick(['analytics wh', 'analytics warehouse', 'analytics_wh', 'analyticswh']);
-  const businessSchema = pick(['business schema', 'biz schema', 'business']);
-  const businessTables = pick(['business table', 'biz table', 'business tables']);
-  const businessDb = pick(['business db', 'biz db']);
-  const cleanedSchema = pick(['cleaned schema', 'clean schema']);
-  const cleanedTables = pick(['cleaned tables', 'clean tables']);
+  // === SOURCE LAYER (External) ===
+  const cloud = pick(['s3', 'lake', 'aws', 'data lake'], 's3');
+  const snowpipe = pick(['snowpipe', 'ingest', 'pipe'], 'pipe1');
+  
+  // === BRONZE LAYER (Raw Data) ===
+  const bronzeDb = pick(['bronze db', 'bronze database'], 'bronze_db');
+  const bronzeSchema = pick(['raw schema', 'bronze schema', 'raw_schema'], 'bronze_schema');
+  const bronzeTables = pick(['raw table', 'bronze table', 'raw tables', 'raw_tables'], 'bronze_tables');
+  
+  // === SILVER LAYER (Cleaned Data) ===
+  const silverDb = pick(['silver db', 'silver database'], 'silver_db');
+  const silverSchema = pick(['cleansed schema', 'silver schema', 'clean schema', 'silver_schema'], 'silver_schema');
+  const silverTables = pick(['cleansed table', 'silver table', 'cleansed tables', 'silver_tables'], 'silver_tables');
+  
+  // === GOLD LAYER (Business Ready) ===
+  const goldDb = pick(['gold db', 'gold database'], 'gold_db');
+  const goldSchema = pick(['curated schema', 'refined schema', 'gold schema', 'gold_schema'], 'gold_schema');
+  const goldTables = pick(['curated tables', 'refined tables', 'gold tables', 'gold_tables'], 'gold_tables');
+  
+  // === CONSUMPTION LAYER (BI & Analytics) - MINIMAL ===
+  const analyticsViews = pick(['analytics view', 'analytics_views', 'bi_views', 'reporting_views'], 'analytics_views');
+  const computeWarehouse = pick(['compute warehouse', 'compute wh', 'warehouse'], 'compute_wh');
+  
+  // Optional BI Tools (only if agent provides them) - no preferredId since these are optional
+  const tableau = pick(['tableau', 'tableau dashboard', 'tableau integration']);
+  const streamlit = pick(['streamlit', 'streamlit dashboard', 'streamlit app']);
 
-  // Fixed grid slots (tighter spacing) + gap to AWS
-  const baseX = 360;
-  const baseY = 220;
-  const GAP_X = 80; // gap between AWS and Snowflake
-  const X = (c: number) => baseX + c * 230; // more breathing room horizontally
-  const Y = (r: number) => baseY + r * 170; // more breathing room vertically
+  // DEBUG: Log picked nodes to help diagnose layout issues
+  console.log('[layoutMedallionDeterministic] Picked nodes:', {
+    bronzeDb: bronzeDb?.id,
+    bronzeSchema: bronzeSchema?.id,
+    bronzeTables: bronzeTables?.id,
+    silverDb: silverDb?.id,
+    silverSchema: silverSchema?.id,
+    silverTables: silverTables?.id,
+    goldDb: goldDb?.id,
+    goldSchema: goldSchema?.id,
+    goldTables: goldTables?.id,
+    analyticsViews: analyticsViews?.id,
+    computeWarehouse: computeWarehouse?.id,
+    tableau: tableau?.id,
+    streamlit: streamlit?.id,
+  });
+  console.log('[layoutMedallionDeterministic] Available non-boundary nodes:', nonBoundary.map(n => `${n.id}/${(n.data as any)?.label}`));
+
+  // Fixed grid slots with GENEROUS spacing for cleaner connections
+  // SIMPLIFIED LAYOUT: Bronze → Silver → Gold → Analytics
+  const baseX = 100;   // Start closer to left edge
+  const baseY = 180;   // INCREASED: More room at top for "Snowflake Account" boundary label
+  
+  // CRITICAL: All nodes must have IDENTICAL dimensions for handles to align
+  // This ensures right-edge handle of node A aligns with left-edge handle of node B
+  const nodeWidth = 150;   // Fixed width for all medallion nodes
+  const nodeHeight = 130;  // Fixed height for all medallion nodes
+  
+  // Spacing should account for node dimensions to align handle centers
+  const colWidth = 200;   // Horizontal spacing between columns (node centers)
+  const rowHeight = 160;  // Vertical spacing between rows (node centers)
+  
+  const X = (c: number) => baseX + c * colWidth;
+  const Y = (r: number) => baseY + r * rowHeight;
+  
+  // Place function enforces consistent node dimensions
   const place = (n: Node | null, c: number, r: number) =>
     n
       ? {
           ...n,
           position: { x: X(c), y: Y(r) },
+          // Force consistent width/height so handles align perfectly
+          style: {
+            ...(n.style || {}),
+            width: nodeWidth,
+            height: nodeHeight,
+          },
         }
       : null;
   const placeAt = (n: Node | null, x: number, y: number) =>
@@ -741,34 +817,49 @@ const layoutMedallionDeterministic = (nodes: Node[]) => {
       ? {
           ...n,
           position: { x, y },
+          // Force consistent width/height
+          style: {
+            ...(n.style || {}),
+            width: nodeWidth,
+            height: nodeHeight,
+          },
         }
       : null;
 
+  // ===============================
+  // SIMPLIFIED GRID LAYOUT - Medallion Architecture
+  // ===============================
+  // Row 0: Databases (Bronze DB → Silver DB → Gold DB → Analytics Views)
+  // Row 1: Schemas (Bronze Schema → Silver Schema → Gold Schema → Compute WH)
+  // Row 2: Tables (Bronze Tables → Silver Tables → Gold Tables)
+  // ===============================
+
   const positioned: Node[] = [
-    placeAt(cloud, 80, baseY + 20),
-    placeAt(snowpipe, 180, baseY + 20),
+    // External Sources (left of Snowflake boundary, only if present)
+    placeAt(cloud, -150, baseY),
+    placeAt(snowpipe, -150, baseY + rowHeight),
+    
+    // === MEDALLION CORE: Bronze → Silver → Gold ===
+    // Row 0: Databases
     place(bronzeDb, 0, 0),
     place(silverDb, 1, 0),
     place(goldDb, 2, 0),
-    place(analytics, 4, 0),
-    place(analyticsWh, 5, 0),
-    place(warehouse, 6, 0),
-    place(businessDb, 4, 1),
-    place(cleanedSchema, 3, 1),
-
+    place(analyticsViews, 3, 0),
+    
+    // Row 1: Schemas
     place(bronzeSchema, 0, 1),
     place(silverSchema, 1, 1),
     place(goldSchema, 2, 1),
-    place(businessSchema, 4, 2),
-
+    place(computeWarehouse, 3, 1),
+    
+    // Row 2: Tables
     place(bronzeTables, 0, 2),
     place(silverTables, 1, 2),
     place(goldTables, 2, 2),
-    place(cleanedTables, 3, 2),
-    place(businessTables, 4, 3),
-
-    place(bronzeStream, 0, 3),
-    place(silverStream, 1, 3),
+    
+    // Optional BI Tools (col 4)
+    place(tableau, 4, 0),
+    place(streamlit, 4, 1),
   ].filter(Boolean) as Node[];
 
   // Deduplicate positioned array (in case of any duplicates in the manual placement list)
@@ -784,64 +875,101 @@ const layoutMedallionDeterministic = (nodes: Node[]) => {
   positioned.length = 0;
   positioned.push(...dedupedPositioned);
 
-  // Extras to the right
+  // DO NOT place extras - filter them out completely
+  // Any node not in the core layout is a hallucination and should not appear
   const placedIds = new Set(positioned.map((n) => n.id));
-  let extrasCol = 7;
-  const extras: Node[] = [];
-  nonBoundary
-    .filter((n) => !placedIds.has(n.id))
-    .forEach((n, idx) => {
-      const extraNode = {
-        ...n,
-        position: { x: X(extrasCol), y: Y(idx) },
-      };
-      positioned.push(extraNode);
-      extras.push(extraNode);
-      if (idx % 4 === 3) extrasCol += 1;
-    });
+  const extras = nonBoundary.filter((n) => !placedIds.has(n.id));
+  if (extras.length > 0) {
+    console.warn(`[layoutMedallionDeterministic] DISCARDING ${extras.length} extra nodes:`, 
+      extras.map(n => `${n.id}/${(n.data as any)?.label}`));
+  }
+  // NOTE: We do NOT add extras to positioned array - they are filtered out
 
-  // Minimal edges
-  const makeEdge = (a: Node | null, b: Node | null, idx: number) =>
-    a && b
-      ? ({
-          id: `d-${a.id}-${b.id}-${idx}`,
-          source: a.id,
-          target: b.id,
-          type: 'smoothstep',
-          animated: true,
-          style: { stroke: '#29B5E8', strokeWidth: 2 },
-          deletable: true,
-        } as Edge)
-      : null;
+  // Minimal edges - PROPERLY CONNECT ALL LAYERS
+  // Create edges with proper handle selection based on node positions
+  const makeEdge = (a: Node | null, b: Node | null, idx: number) => {
+    if (!a || !b) return null;
+    
+    // Determine handle selection based on relative positions
+    const dx = b.position.x - a.position.x;
+    const dy = b.position.y - a.position.y;
+    
+    let sourceHandle: string;
+    let targetHandle: string;
+    
+    // Use 'straight' edges ALWAYS to eliminate kinks
+    // Straight edges draw direct lines between handles - no orthogonal routing
+    const edgeType = 'straight';
+    
+    // If target is primarily below source (vertical flow within a layer)
+    if (Math.abs(dy) > Math.abs(dx) && dy > 0) {
+      sourceHandle = 'bottom-source';
+      targetHandle = 'top-target';
+    }
+    // If target is primarily above source (shouldn't happen in medallion but handle it)
+    else if (Math.abs(dy) > Math.abs(dx) && dy < 0) {
+      sourceHandle = 'top-source';
+      targetHandle = 'bottom-target';
+    }
+    // If target is primarily to the right (horizontal flow between layers)
+    else if (dx > 0) {
+      sourceHandle = 'right-source';
+      targetHandle = 'left-target';
+    }
+    // If target is primarily to the left (shouldn't happen much)
+    else {
+      sourceHandle = 'left-source';
+      targetHandle = 'right-target';
+    }
+    
+    return {
+      id: `d-${a.id}-${b.id}-${idx}`,
+      source: a.id,
+      target: b.id,
+      sourceHandle,
+      targetHandle,
+      // 'straight' for aligned connections (no kinks), 'step' for diagonal
+      type: edgeType,
+      animated: true,
+      style: { stroke: '#29B5E8', strokeWidth: 2 },
+      deletable: true,
+    } as Edge;
+  };
 
+  // SIMPLIFIED edges - clean medallion flow
+  // FLOW: Horizontal at each row (DB→DB, Schema→Schema, Tables→Tables)
+  // This creates a clean grid pattern instead of diagonal lines
   const newEdges: Edge[] = [
+    // === SOURCE TO BRONZE (only if external sources present) ===
     makeEdge(cloud, snowpipe, 0),
     makeEdge(snowpipe, bronzeDb, 1),
-    makeEdge(bronzeDb, bronzeSchema, 2),
-    makeEdge(bronzeSchema, bronzeTables, 3),
-    makeEdge(bronzeTables, bronzeStream, 4),
-    makeEdge(bronzeStream, silverDb, 5),
-
-    makeEdge(silverDb, silverSchema, 6),
-    makeEdge(silverSchema, silverTables, 7),
-    makeEdge(silverTables, silverStream, 8),
-    makeEdge(silverStream, goldDb, 9),
-
-    makeEdge(goldDb, goldSchema, 10),
-    makeEdge(goldSchema, goldTables, 11),
-    makeEdge(goldTables, analytics, 12),
-    makeEdge(analytics, warehouse, 13),
+    
+    // === ROW 0: Database layer (horizontal flow) ===
+    makeEdge(bronzeDb, silverDb, 2),
+    makeEdge(silverDb, goldDb, 3),
+    makeEdge(goldDb, analyticsViews, 4),
+    
+    // === ROW 1: Schema layer (horizontal flow) ===
+    makeEdge(bronzeSchema, silverSchema, 5),
+    makeEdge(silverSchema, goldSchema, 6),
+    makeEdge(goldSchema, computeWarehouse, 7),
+    
+    // === ROW 2: Tables layer (horizontal flow) ===
+    makeEdge(bronzeTables, silverTables, 8),
+    makeEdge(silverTables, goldTables, 9),
+    
+    // === VERTICAL: Within each layer ===
+    makeEdge(bronzeDb, bronzeSchema, 10),
+    makeEdge(bronzeSchema, bronzeTables, 11),
+    makeEdge(silverDb, silverSchema, 12),
+    makeEdge(silverSchema, silverTables, 13),
     makeEdge(goldDb, goldSchema, 14),
     makeEdge(goldSchema, goldTables, 15),
-    makeEdge(goldTables, analytics, 16),
-    makeEdge(goldDb, cleanedSchema, 17),
-    makeEdge(cleanedSchema, cleanedTables, 18),
-    makeEdge(cleanedTables, analyticsWh, 19),
-    makeEdge(goldDb, analyticsWh, 20),
-    makeEdge(goldTables, analyticsWh, 21),
-    makeEdge(goldDb, businessSchema, 22),
-    makeEdge(businessDb, businessSchema, 23),
-    makeEdge(businessSchema, businessTables, 24),
+    makeEdge(analyticsViews, computeWarehouse, 16),
+    
+    // Optional BI tool connections
+    makeEdge(computeWarehouse, tableau, 17),
+    makeEdge(computeWarehouse, streamlit, 18),
   ].filter(Boolean) as Edge[];
 
   // Don't create boundaries here - let addAccountBoundaries handle it after layout
@@ -893,6 +1021,9 @@ const App: React.FC = () => {
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
   // const edgeReconnectSuccessful = useRef(true); // Not used - reconnection not supported in this version
   const { getNodes, getEdges } = useReactFlow();
+  
+  // Track the last user prompt to detect if external sources were requested
+  const lastUserPromptRef = useRef<string>('');
   
   // NEW: Dark mode state
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -1410,7 +1541,7 @@ const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
         target: params.target,
         sourceHandle: handles.sourceHandle,
         targetHandle: handles.targetHandle,
-        type: 'smoothstep',
+        type: 'straight',  // Direct line between handles (no routing kinks)
         animated: true,
         style: { stroke: '#29B5E8', strokeWidth: 2 },
         deletable: true,
@@ -2247,14 +2378,64 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
   // Detect dark mode from existing nodes
   const isDark = nodes.length > 0 && (nodes[0].data as any)?.isDarkMode === true;
   
+  // Helper to detect medallion layer and get colors
+  const getLayerColors = (id: string, label: string) => {
+    const text = `${id} ${label}`.toLowerCase();
+    
+    // Bronze layer
+    if (text.includes('bronze') || text.includes('raw') || text.includes('landing') ||
+        text.includes('ingest') || text.includes('source') || text.includes('staging')) {
+      return LAYER_COLORS.bronze;
+    }
+    
+    // Silver layer
+    if (text.includes('silver') || text.includes('clean') || text.includes('conform') ||
+        text.includes('transform') || text.includes('standardize') || text.includes('validated')) {
+      return LAYER_COLORS.silver;
+    }
+    
+    // Gold layer
+    if (text.includes('gold') || text.includes('curated') || text.includes('refined') ||
+        text.includes('aggregate') || text.includes('business') || text.includes('dim_') ||
+        text.includes('fact_') || text.includes('mart')) {
+      return LAYER_COLORS.gold;
+    }
+    
+    // External sources
+    if (text.includes('s3') || text.includes('aws') || text.includes('kafka') ||
+        text.includes('api') || text.includes('external') || text.includes('lake')) {
+      return LAYER_COLORS.external;
+    }
+    
+    // BI/Analytics
+    if (text.includes('analytics') || text.includes('dashboard') || text.includes('report') ||
+        text.includes('bi_') || text.includes('tableau') || text.includes('powerbi')) {
+      return LAYER_COLORS.bi;
+    }
+    
+    return LAYER_COLORS.snowflake; // Default
+  };
+  
   const addNode = (id: string, label: string, componentType: string, force = false) => {
+    // Get layer-specific colors
+    const layerColors = getLayerColors(id, label);
+    const borderColor = layerColors.border;
+    const backgroundColor = isDark ? layerColors.backgroundDark : layerColors.background;
+    
     // If force mode or severely incomplete, add without checking
     if (force || isSeverelyIncomplete) {
       const existing = nodes.find((n) => n.id === id);
       if (existing) {
-        // Update existing node to ensure correct type
+        // Update existing node to ensure correct type AND colors
         (existing.data as any).label = label;
         (existing.data as any).componentType = componentType;
+        // Update style with layer colors
+        existing.style = {
+          ...existing.style,
+          border: `2px solid ${borderColor}`,
+          background: backgroundColor,
+          color: isDark ? '#e5f2ff' : '#1a1a1a',
+        };
         return;
       }
       nodes.push({
@@ -2267,13 +2448,14 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           showHandles: true,
           isDarkMode: isDark,
           labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
-          // background handled by CustomNode.tsx based on isDarkMode
           onRename: renameNode,
           onDelete: deleteNode,
           onCopy: copyNode,
         },
         style: {
-          // background handled by CustomNode.tsx based on isDarkMode
+          border: `2px solid ${borderColor}`,
+          background: backgroundColor,
+          borderRadius: 8,
           color: isDark ? '#e5f2ff' : '#1a1a1a',
         },
       });
@@ -2302,13 +2484,14 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         showHandles: true,
         isDarkMode: isDark,
         labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
-        // background handled by CustomNode.tsx based on isDarkMode
         onRename: renameNode,
         onDelete: deleteNode,
         onCopy: copyNode,
       },
       style: {
-        // background handled by CustomNode.tsx based on isDarkMode
+        border: `2px solid ${borderColor}`,
+        background: backgroundColor,
+        borderRadius: 8,
         color: isDark ? '#e5f2ff' : '#1a1a1a',
       },
     });
@@ -2356,22 +2539,24 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
   
   remapId('s3', 'S3 Data Lake', ['s3', 'data_lake']);
   remapId('pipe1', 'Snowpipe', ['pipe', 'snowpipe']);
-  remapId('bronze_db', 'Bronze DB', ['bronze_db']);
-  remapId('bronze_schema', 'Bronze Schema', ['bronze_schema']);
-  remapId('bronze_tables', 'Bronze Tables', ['bronze_raw', 'bronze_table']);
-  remapId('stream_bronze_silver', 'Bronze→Silver Stream', ['stream_bronze', 'bronze_silver']);
-  remapId('silver_db', 'Silver DB', ['silver_db']);
-  remapId('silver_schema', 'Silver Schema', ['silver_schema']);
-  remapId('silver_tables', 'Silver Tables', ['silver_clean', 'silver_table']);
+  remapId('bronze_db', 'Bronze DB', ['bronze_db', 'bronze database']);
+  remapId('bronze_schema', 'Bronze Schema', ['bronze_schema', 'bronze schema', 'raw_schema']);
+  remapId('bronze_tables', 'Bronze Tables', ['bronze_raw', 'bronze_table', 'raw_tables']);
+  remapId('stream_bronze_silver', 'Bronze→Silver Stream', ['stream_bronze', 'bronze_silver', 'cdc_stream']);
+  remapId('silver_db', 'Silver DB', ['silver_db', 'silver database']);
+  remapId('silver_schema', 'Silver Schema', ['silver_schema', 'silver schema', 'clean_schema']);
+  remapId('silver_tables', 'Silver Tables', ['silver_clean', 'silver_table', 'cleansed_tables']);
   remapId('stream_silver_gold', 'Silver→Gold Stream', ['stream_silver', 'silver_gold']);
-  remapId('gold_db', 'Gold DB', ['gold_db']);
-  remapId('gold_schema', 'Gold Schema', ['gold_schema']);
-  remapId('gold_tables', 'Gold Tables', ['gold_curated', 'gold_table']);
-  remapId('analytics_views', 'Analytics Views', ['analytics']);
-  remapId('transform_task', 'Data Transform Task', ['transform_task', 'data transform', 'etl task']);
-  remapId('compute_wh', 'Compute Warehouse', ['compute', 'warehouse']);
+  remapId('gold_db', 'Gold DB', ['gold_db', 'gold database']);
+  remapId('gold_schema', 'Gold Schema', ['gold_schema', 'gold schema', 'curated_schema']);
+  remapId('gold_tables', 'Gold Tables', ['gold_curated', 'gold_table', 'curated_tables', 'business_tables']);
+  remapId('analytics_views', 'Analytics Views', ['analytics', 'analytics_view', 'reporting_views']);
+  remapId('transform_task', 'Data Transform Task', ['transform_task', 'data_transform', 'etl_task', 'data_cleansing', 'cleansing_task']);
+  remapId('compute_wh', 'Compute Warehouse', ['compute', 'warehouse', 'bi_warehouse', 'reporting_wh']);
   remapId('bronze_stream', 'Bronze Stream', ['bronze_stream', 'bronze stream']);
-  remapId('secure_views', 'Secure Reporting Views', ['secure', 'secure reporting']);
+  remapId('secure_views', 'Secure Reporting Views', ['secure', 'secure_reporting', 'executive_dashboard', 'exec_dashboard']);
+  // Map BI tools to standard Tableau node for simplicity
+  remapId('tableau', 'Tableau Dashboards', ['tableau', 'tableau_dashboard', 'powerbi', 'power_bi', 'bi_tool']);
 
   // Update all edge references to use canonical IDs
   edges.forEach((e) => {
@@ -2382,46 +2567,95 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
   console.log('[Completeness] After remapping:', { nodeCount: nodes.length });
 
   // SECOND, add all required medallion nodes (skip if they now exist after remapping)
-  addNode('s3', 'S3 Data Lake', 's3', true);
-  addNode('pipe1', 'Snowpipe', 'snowpipe', true);
+  // CRITICAL FDE FIX: NEVER automatically add S3/Snowpipe - only keep if agent explicitly provided them
+  // The hasExternalSource check was incorrectly matching 'lake' (lakehouse) and 'pipe' (pipeline)
+  // causing AWS components to appear when user never asked for them
+  const hasExplicitS3 = nodes.some(n => {
+    const label = ((n.data as any)?.label || '').toLowerCase();
+    const id = n.id.toLowerCase();
+    const compType = ((n.data as any)?.componentType || '').toLowerCase();
+    // Only match EXPLICIT S3/Snowpipe references, NOT 'lake' or 'pipe' substrings
+    return (label === 's3' || label === 's3 data lake' || label.startsWith('s3 ') || label.includes(' s3 ') ||
+            id === 's3' || compType === 's3' ||
+            label === 'snowpipe' || label.includes('snowpipe') ||
+            id === 'pipe1' || id === 'snowpipe' || compType === 'snowpipe');
+  });
+  
+  // FDE: Only add S3/Snowpipe if they ALREADY exist (don't create from scratch!)
+  // Previous logic added them if ANY node had 'lake' which caused phantom AWS
+  if (hasExplicitS3) {
+    console.log('[Completeness] Keeping existing S3/Snowpipe - they were explicitly in agent output');
+    addNode('s3', 'S3 Data Lake', 's3', true);
+    addNode('pipe1', 'Snowpipe', 'snowpipe', true);
+  } else {
+    console.log('[Completeness] NO explicit S3/Snowpipe found - NOT adding external AWS components');
+  }
+  // CORE MEDALLION NODES ONLY - no hallucinated extras
   addNode('bronze_db', 'Bronze DB', 'bronze_db', true);
   addNode('bronze_schema', 'Bronze Schema', 'bronze_schema', true);
   addNode('bronze_tables', 'Bronze Tables', 'bronze_tables', true);
-  addNode('stream_bronze_silver', 'Bronze→Silver Stream', 'stream', true);
   addNode('silver_db', 'Silver DB', 'silver_db', true);
   addNode('silver_schema', 'Silver Schema', 'silver_schema', true);
   addNode('silver_tables', 'Silver Tables', 'silver_tables', true);
-  addNode('stream_silver_gold', 'Silver→Gold Stream', 'stream', true);
   addNode('gold_db', 'Gold DB', 'gold_db', true);
   addNode('gold_schema', 'Gold Schema', 'gold_schema', true);
   addNode('gold_tables', 'Gold Tables', 'gold_tables', true);
+  // Minimal BI layer - only analytics views and one warehouse
   addNode('analytics_views', 'Analytics Views', 'analytics_views', true);
-  addNode('transform_task', 'Data Transform Task', 'transform_task', true);
   addNode('compute_wh', 'Compute Warehouse', 'compute_wh', true);
-  addNode('bronze_stream', 'Bronze Stream', 'bronze_stream', true);
-  addNode('secure_views', 'Secure Reporting Views', 'secure_views', true);
+  // DON'T add: transform_task, secure_views, bronze_stream, inter-layer streams
+  // These create visual clutter and orphaned nodes
   
   console.log('[Completeness] After addNode:', { nodeCount: nodes.length });
 
   console.log('[Completeness] Input edges:', edges.map(e => `${e.source}->${e.target}`));
   
   // CLEAN UP: Remove backwards/invalid edges that violate medallion logic
-  const validEdges = [
-    's3->pipe1', 'pipe1->bronze_db', 'bronze_db->bronze_schema', 'bronze_schema->bronze_tables',
-    'bronze_tables->stream_bronze_silver', 'stream_bronze_silver->silver_db',
-    'silver_db->silver_schema', 'silver_schema->silver_tables', 'silver_tables->stream_silver_gold',
-    'stream_silver_gold->gold_db', 'gold_db->gold_schema', 'gold_schema->gold_tables',
-    'gold_tables->analytics_views', 'analytics_views->compute_wh',
-    'silver_tables->transform_task', 'transform_task->gold_tables',
-    'bronze_tables->bronze_stream', 'bronze_stream->stream_bronze_silver',  // Fixed: correct medallion flow
-    'gold_tables->secure_views'
-  ];
+  // SIMPLIFIED: Only core medallion edges, no streams/transforms
+  const validEdges = hasExplicitS3 
+    ? [
+        // External → Bronze
+        's3->pipe1', 'pipe1->bronze_db',
+        // Bronze layer
+        'bronze_db->bronze_schema', 'bronze_schema->bronze_tables',
+        // Bronze → Silver
+        'bronze_tables->silver_db',
+        // Silver layer
+        'silver_db->silver_schema', 'silver_schema->silver_tables',
+        // Silver → Gold
+        'silver_tables->gold_db',
+        // Gold layer
+        'gold_db->gold_schema', 'gold_schema->gold_tables',
+        // Gold → Analytics
+        'gold_tables->analytics_views', 'analytics_views->compute_wh',
+      ]
+    : [
+        // No external sources - start from bronze_db
+        // Bronze layer
+        'bronze_db->bronze_schema', 'bronze_schema->bronze_tables',
+        // Bronze → Silver
+        'bronze_tables->silver_db',
+        // Silver layer
+        'silver_db->silver_schema', 'silver_schema->silver_tables',
+        // Silver → Gold
+        'silver_tables->gold_db',
+        // Gold layer
+        'gold_db->gold_schema', 'gold_schema->gold_tables',
+        // Gold → Analytics
+        'gold_tables->analytics_views', 'analytics_views->compute_wh',
+      ];
   const validSet = new Set(validEdges);
-  const medallionNodes = new Set([
-    's3', 'pipe1', 'bronze_db', 'bronze_schema', 'bronze_tables', 'stream_bronze_silver',
-    'silver_db', 'silver_schema', 'silver_tables', 'stream_silver_gold',
-    'gold_db', 'gold_schema', 'gold_tables', 'analytics_views'
-  ]);
+  const medallionNodes = hasExplicitS3
+    ? new Set([
+        's3', 'pipe1', 'bronze_db', 'bronze_schema', 'bronze_tables',
+        'silver_db', 'silver_schema', 'silver_tables',
+        'gold_db', 'gold_schema', 'gold_tables', 'analytics_views', 'compute_wh'
+      ])
+    : new Set([
+        'bronze_db', 'bronze_schema', 'bronze_tables',
+        'silver_db', 'silver_schema', 'silver_tables',
+        'gold_db', 'gold_schema', 'gold_tables', 'analytics_views', 'compute_wh'
+      ]);
   
   // Add common invalid patterns to explicitly block (catch any casing/whitespace variations)
   const normalizeEdgeId = (id: string) => id.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2484,7 +2718,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       id: key,
       source,
       target,
-      type: 'smoothstep',
+      type: 'straight',  // Direct line between handles (no routing kinks)
       animated: true,
       sourceHandle: 'right-source',
       targetHandle: 'left-target',
@@ -2493,8 +2727,13 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     edges.push(edge);
   };
   
-  ensureEdge('s3', 'pipe1');
-  ensureEdge('pipe1', 'bronze_db');
+  // Only add external source edges if the agent included them
+  if (hasExplicitS3) {
+    ensureEdge('s3', 'pipe1');
+    ensureEdge('pipe1', 'bronze_db');
+  }
+  
+  // Core medallion edges (always needed)
   ensureEdge('bronze_db', 'bronze_schema');
   ensureEdge('bronze_schema', 'bronze_tables');
   ensureEdge('bronze_tables', 'stream_bronze_silver');
@@ -2510,21 +2749,158 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
   ensureEdge('silver_tables', 'transform_task');
   ensureEdge('transform_task', 'gold_tables');
   ensureEdge('bronze_tables', 'bronze_stream');
-  ensureEdge('bronze_stream', 'stream_bronze_silver');  // Fixed: bronze_stream connects to stream, not directly to silver_db
+  ensureEdge('bronze_stream', 'stream_bronze_silver');
   ensureEdge('gold_tables', 'secure_views');
 
-  console.log('[Completeness] Output:', { nodeCount: nodes.length, edgeCount: edges.length, nodeIds: nodes.map(n => n.id) });
+  // FILTER OUT ORPHAN NODES: Nodes that have no connections are likely extraneous agent hallucinations
+  // Only keep nodes that are either:
+  // 1. Core medallion nodes (always needed)
+  // 2. Connected to at least one edge
+  // 3. Boundary nodes (special case)
+  const coreNodeIds = new Set([
+    's3', 'pipe1', 'bronze_db', 'bronze_schema', 'bronze_tables', 'bronze_stream',
+    'stream_bronze_silver', 'silver_db', 'silver_schema', 'silver_tables', 'silver_stream',
+    'stream_silver_gold', 'gold_db', 'gold_schema', 'gold_tables',
+    'analytics_views', 'secure_views', 'transform_task', 'compute_wh'
+  ]);
   
-  return { nodes, edges };
+  // Explicitly unwanted nodes that should never appear (agent hallucinations)
+  // These are "invented" tasks/components that create visual noise
+  // FDE FIX: AGGRESSIVELY filter out ALL non-core medallion BI hallucinations
+  const unwantedPatterns = [
+    // Aggregation tasks
+    'aggregation task', 'aggregation_task', 'agg task', 'agg_task',
+    'silver gold aggregation', 'silver_gold_agg', 'bronze silver aggregation',
+    // Cleansing/validation tasks
+    'cleansing task', 'cleaning task', 'validation task',
+    'quality check', 'data quality',
+    // Transform tasks - filter ALL variants to avoid orphans
+    'data transformation task', 'transformation task', 'data transform task',
+    'transform task', 'etl task',
+    // Processing nodes
+    'bronze to silver', 'silver to gold', 'gold to analytics',
+    'processing task', 'processing job', 'etl job',
+    // CRITICAL: Filter hallucinated BI "views" that aren't part of actual schema
+    // NOTE: Do NOT filter 'analytics views' or 'analytics_views' - that's a core medallion node!
+    'bi analytics views', 'bi views',
+    'performance materialized views', 'performance views', 'materialized view',
+    'secure reporting views', 'reporting views', 'secure views',
+    // Filter extra dashboards/reports beyond core
+    'executive dashboard', 'executive report',
+    // Filter orphaned inter-layer streams (keep only intra-layer bronze/silver/gold streams)
+    'bronze silver stream', 'silver gold stream',
+    'bronze→silver stream', 'silver→gold stream',
+    'bronze to silver stream', 'silver to gold stream'
+  ];
+  
+  // Build set of nodes that appear in edges
+  const connectedNodeIds = new Set<string>();
+  edges.forEach(e => {
+    connectedNodeIds.add(e.source);
+    connectedNodeIds.add(e.target);
+  });
+  
+  // WHITELIST: Only these node IDs are allowed in medallion diagrams
+  // This prevents agent hallucinations from appearing
+  const medallionWhitelist = new Set([
+    // External sources (only if explicitly requested)
+    's3', 'pipe1', 'snowpipe',
+    // Bronze layer
+    'bronze_db', 'bronze_schema', 'bronze_tables', 'bronze_stream',
+    // Silver layer  
+    'silver_db', 'silver_schema', 'silver_tables', 'silver_stream',
+    // Gold layer
+    'gold_db', 'gold_schema', 'gold_tables',
+    // Core analytics (minimal)
+    'analytics_views', 'compute_wh',
+    // BI tools (external consumers - user may want these)
+    'tableau', 'powerbi', 'streamlit',
+  ]);
+  
+  // Also allow nodes that match these patterns (for flexibility)
+  const allowedPatterns = [
+    'bronze', 'silver', 'gold', 'stream', 'warehouse', 'wh',
+    'tableau', 'powerbi', 'streamlit', 'dashboard',
+    'account_boundary'
+  ];
+  
+  // Filter out orphans AND unwanted patterns
+  const beforeOrphanFilter = nodes.length;
+  const filteredNodes = nodes.filter(n => {
+    const id = n.id.toLowerCase();
+    const label = ((n.data as any)?.label || '').toLowerCase();
+    const compType = ((n.data as any)?.componentType || '').toLowerCase();
+    const text = `${id} ${label} ${compType}`;
+    
+    // Always keep boundaries
+    if (compType.startsWith('account_boundary')) return true;
+    
+    // PRIORITY 1: Always keep core medallion nodes (never filter these)
+    if (coreNodeIds.has(id)) return true;
+    
+    // PRIORITY 2: Keep if in whitelist
+    if (medallionWhitelist.has(id)) return true;
+    
+    // PRIORITY 3: Filter out explicitly unwanted patterns (hallucinations)
+    const isUnwanted = unwantedPatterns.some(p => text.includes(p.toLowerCase()));
+    if (isUnwanted) {
+      console.warn(`🚫 [Completeness] Filtering unwanted hallucinated node: ${n.id} / "${label}"`);
+      return false;
+    }
+    
+    // Keep if matches allowed patterns
+    if (allowedPatterns.some(p => text.includes(p))) return true;
+    
+    // Keep if connected to any edge AND is a warehouse/BI tool
+    if (connectedNodeIds.has(n.id) && (text.includes('warehouse') || text.includes('tableau') || text.includes('bi'))) {
+      return true;
+    }
+    
+    // Otherwise, filter it out (don't keep random orphans or hallucinations)
+    console.warn(`🚫 [Completeness] Filtering non-core node: ${n.id} / "${label}"`);
+    return false;
+  });
+  
+  console.log('[Completeness] Orphan filter:', { 
+    before: beforeOrphanFilter, 
+    after: filteredNodes.length, 
+    removed: beforeOrphanFilter - filteredNodes.length 
+  });
+  
+  // DEDUPLICATION: Remove multiple "transform" type nodes - keep only ONE
+  // The agent sometimes creates both "Data Transform Task" and "Data Transformation Task"
+  const transformNodes = filteredNodes.filter(n => {
+    const label = ((n.data as any)?.label || '').toLowerCase();
+    return label.includes('transform') || label.includes('etl');
+  });
+  
+  let finalFilteredNodes = filteredNodes;
+  if (transformNodes.length > 1) {
+    console.warn(`[Completeness] Found ${transformNodes.length} transform nodes - keeping only first`);
+    // Keep only the first transform node (typically 'transform_task')
+    const keepTransformId = transformNodes[0].id;
+    finalFilteredNodes = filteredNodes.filter(n => {
+      const label = ((n.data as any)?.label || '').toLowerCase();
+      if (label.includes('transform') || label.includes('etl')) {
+        return n.id === keepTransformId;
+      }
+      return true;
+    });
+  }
+  
+  console.log('[Completeness] Output:', { nodeCount: finalFilteredNodes.length, edgeCount: edges.length, nodeIds: finalFilteredNodes.map(n => n.id) });
+  
+  return { nodes: finalFilteredNodes, edges };
 };
 
   // Handle AI generation (single shot)
   const handleAIGenerate = async () => {
     if (!aiPrompt.trim()) return;
+    lastUserPromptRef.current = aiPrompt.trim(); // Store for external source detection
     setIsGenerating(true);
     try {
       const data = await callAgent(aiPrompt);
-      if (data) parseMermaidAndCreateDiagram(data.mermaidCode, data.spec);
+      if (data) await parseMermaidAndCreateDiagram(data.mermaidCode, data.spec);
     } catch (error) {
       console.error('AI generation error:', error);
       alert('Failed to generate diagram. Ensure PAT or backend proxy is configured.');
@@ -2538,6 +2914,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
   const handleSendChat = async () => {
     if (!chatInput.trim() || chatSending) return;
     const userMessage = chatInput.trim();
+    lastUserPromptRef.current = userMessage; // Store for external source detection
     setChatSending(true);
     const history = [...chatMessages, { role: 'user' as const, text: userMessage }];
     setChatMessages(history);
@@ -2553,7 +2930,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     try {
       const data = await callAgent(enrichedPrompt);
       if (data) {
-        parseMermaidAndCreateDiagram(data.mermaidCode, data.spec);
+        await parseMermaidAndCreateDiagram(data.mermaidCode, data.spec);
         const reply = formatAgentReply(data);
         setChatMessages((msgs) => [...msgs, { role: 'assistant', text: reply }]);
       } else {
@@ -2601,8 +2978,22 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
   }, [chatDragging, setChatPos]);
 
   // Convert Mermaid to ReactFlow using shared component catalog
-  const parseMermaidAndCreateDiagram = (mermaidCode: string, spec?: { nodes: any[]; edges: any[] }) => {
+  const parseMermaidAndCreateDiagram = async (mermaidCode: string, spec?: { nodes: any[]; edges: any[]; layout?: any }) => {
     if (spec?.nodes?.length) {
+      // ================================================================
+      // BACKEND-DRIVEN LAYOUT: Check if agent provided positions
+      // If positions exist, use them directly (skip frontend layout logic)
+      // This enables cleaner, more consistent diagram generation
+      // Manual editing (dragging) still works after initial render
+      // ================================================================
+      const hasBackendPositions = spec.nodes.some((n: any) => 
+        n.position && typeof n.position.x === 'number' && typeof n.position.y === 'number'
+      );
+      
+      if (hasBackendPositions) {
+        console.log(`[Backend Layout] Agent provided positions - using directly (manual editing preserved)`);
+      }
+      
       // Build from spec
       let specNodes: Node[] = spec.nodes.map((n: any, idx: number) => {
         const rawType = n.componentType || n.label || 'Table';
@@ -2622,6 +3013,11 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           });
         }
         
+        // Use backend position if available, otherwise fallback to grid
+        const position = (n.position && typeof n.position.x === 'number') 
+          ? { x: n.position.x, y: n.position.y }
+          : { x: (idx % 4) * 260, y: Math.floor(idx / 4) * 200 };
+        
         return {
           id: n.id || `node-${idx}`,
           type: 'snowflakeNode',
@@ -2636,15 +3032,19 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
             fillAlpha,
             cornerRadius,
             hideBorder,
+            layer: n.layer, // Preserve layer info from backend
             // background handled by CustomNode.tsx based on isDarkMode
             onRename: renameNode,
             onDelete: deleteNode,
             onCopy: copyNode,
           },
-          position: { x: (idx % 4) * 260, y: Math.floor(idx / 4) * 200 },
+          position,
           style: {
             border: `2px solid ${isDarkMode ? '#4a9eff' : '#0F4C75'}`,
             borderRadius: cornerRadius,
+            // Use backend-provided dimensions if available
+            width: n.style?.width,
+            height: n.style?.height,
             // background handled by CustomNode.tsx based on isDarkMode
             color: isDarkMode ? '#e5f2ff' : '#0F172A',
           },
@@ -2664,7 +3064,21 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       const nonBoundaries = specNodes.filter(n => !isProperBoundary(n) && 
         !(((n.data as any)?.componentType || '').toString().toLowerCase().startsWith('account_boundary'))
       );
-      specNodes = [...properBoundaries, ...nonBoundaries];
+      
+      // Filter out nodes that are just boundary labels appearing as regular nodes
+      // These are artifacts from Mermaid parsing where "AWS Account" or "Snowflake Account" 
+      // become nodes instead of being recognized as boundary labels
+      const boundaryLabelPatterns = ['aws account', 'snowflake account', 'azure account', 'gcp account'];
+      const filteredNonBoundaries = nonBoundaries.filter(n => {
+        const label = ((n.data as any)?.label || '').toLowerCase().trim();
+        const isBoundaryLabel = boundaryLabelPatterns.some(p => label === p);
+        if (isBoundaryLabel) {
+          console.log(`[Pipeline] Filtering out boundary-label-as-node: "${label}" (id: ${n.id})`);
+        }
+        return !isBoundaryLabel;
+      });
+      
+      specNodes = [...properBoundaries, ...filteredNonBoundaries];
       const strippedCount = beforeStripCount - specNodes.length;
       if (strippedCount > 0) {
         console.log(`[Pipeline] Stripped ${strippedCount} malformed boundary node(s) from spec`);
@@ -2674,11 +3088,70 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           properBoundaries.map(b => b.id));
       }
 
+      // ===========================================================================
+      // FDE FIX: Remove external cloud components when user didn't ask for them
+      // This is a critical guardrail - even if the agent's tools return S3/AWS/Azure,
+      // we strip them out unless the user EXPLICITLY mentioned external data sources
+      // ===========================================================================
+      const userPrompt = lastUserPromptRef.current.toLowerCase();
+      const externalKeywords = ['s3', 'aws', 'azure', 'gcp', 'kafka', 'external', 'data lake', 'cloud storage', 'ingest from', 'load from', 'pull from'];
+      const userWantsExternal = externalKeywords.some(k => userPrompt.includes(k));
+      
+      if (!userWantsExternal) {
+        const externalPatterns = ['s3', 'aws', 'snowpipe', 'pipe', 'kafka', 'azure', 'gcp', 'lake', 'external', 'ingest'];
+        const beforeExtFilter = specNodes.length;
+        
+        specNodes = specNodes.filter(n => {
+          const id = n.id.toLowerCase();
+          const label = ((n.data as any)?.label || '').toLowerCase();
+          const compType = ((n.data as any)?.componentType || '').toLowerCase();
+          const text = `${id} ${label} ${compType}`;
+          
+          // Keep boundary nodes
+          if (compType.startsWith('account_boundary')) return true;
+          
+          // Check if this is an external component
+          const isExternal = externalPatterns.some(p => {
+            // More precise matching to avoid false positives
+            if (p === 's3') return text.includes('s3') && !text.includes('s3_bucket_used_correctly');
+            if (p === 'aws') return text.includes('aws');
+            if (p === 'snowpipe' || p === 'pipe') return text.includes('pipe') || text.includes('snowpipe');
+            if (p === 'lake') return text.includes('lake') && !text.includes('data lakehouse');
+            return text.includes(p);
+          });
+          
+          if (isExternal) {
+            console.warn(`🚫 [FDE Filter] Removing unwanted external component: ${id} / ${label} (user prompt: "${lastUserPromptRef.current.substring(0, 50)}...")`);
+            return false;
+          }
+          return true;
+        });
+        
+        const extFilterCount = beforeExtFilter - specNodes.length;
+        if (extFilterCount > 0) {
+          console.log(`[FDE Filter] Removed ${extFilterCount} external component(s) - user didn't request them`);
+        }
+        
+        // Also filter out AWS-related boundaries
+        specNodes = specNodes.filter(n => {
+          const id = n.id.toLowerCase();
+          const compType = ((n.data as any)?.componentType || '').toLowerCase();
+          if (id.includes('aws') || compType.includes('aws')) {
+            console.warn(`🚫 [FDE Filter] Removing AWS boundary: ${id}`);
+            return false;
+          }
+          return true;
+        });
+      } else {
+        console.log(`[FDE Filter] User requested external sources - keeping all components`);
+      }
+      // ===========================================================================
+
       const specEdges: Edge[] = (spec.edges || []).map((e: any, i: number) => ({
         id: `${e.source || 's'}-${e.target || 't'}-${i}`,
         source: e.source,
         target: e.target,
-        type: 'smoothstep',
+        type: 'straight',  // Direct line between handles (no routing kinks)
         animated: true,
         sourceHandle: e.sourceHandle || 'right-source',
         targetHandle: e.targetHandle || 'left-target',
@@ -2693,7 +3166,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         ...e,
         sourceHandle: e.sourceHandle || 'right-source',
         targetHandle: e.targetHandle || 'left-target',
-        type: e.type || 'smoothstep',
+        type: 'straight',  // Direct line between handles (no routing kinks)
       }));
 
       // Add icons to ALL nodes AFTER completeness (including newly created medallion nodes)
@@ -2735,9 +3208,38 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       });
       console.log(`[Pipeline] Separated ${properlyStyledBoundaries.length} boundaries for preservation, ${specNodes.length} nodes for layout`);
 
-      const laidOut = isMedallion(specNodes)
-        ? layoutMedallionDeterministic(specNodes)
-        : { nodes: layoutNodes(specNodes, cleanedSpecEdges), edges: cleanedSpecEdges };
+      // ================================================================
+      // ELK-BASED LAYOUT: Use professional graph layout algorithm
+      // ELK.js provides automatic positioning based on flowStageOrder
+      // This works for ANY architecture pattern and ANY component
+      // Manual dragging still works after render (ReactFlow handles it)
+      // ================================================================
+      let laidOut: { nodes: Node[]; edges: Edge[] };
+      
+      if (hasBackendPositions) {
+        // Backend provided explicit positions - use them directly
+        console.log(`[Backend Layout] Using agent-provided positions`);
+        laidOut = { nodes: specNodes, edges: cleanedSpecEdges };
+      } else {
+        // Use ELK.js for automatic layout based on flowStageOrder
+        console.log(`[ELK Layout] Using ELK.js for automatic positioning`);
+        
+        // Enrich nodes with flowStageOrder if not provided by agent
+        const enrichedNodes = enrichNodesWithFlowOrder(specNodes);
+        
+        // Apply ELK layout (async but we'll handle it)
+        try {
+          const elkResult = await layoutWithELK(enrichedNodes, cleanedSpecEdges);
+          laidOut = elkResult;
+          console.log(`[ELK Layout] Successfully positioned ${elkResult.nodes.length} nodes`);
+        } catch (elkError) {
+          console.warn(`[ELK Layout] Error, falling back to deterministic:`, elkError);
+          // Fallback to existing layout if ELK fails
+          laidOut = isMedallion(specNodes)
+            ? layoutMedallionDeterministic(specNodes)
+            : { nodes: layoutNodes(specNodes, cleanedSpecEdges), edges: cleanedSpecEdges };
+        }
+      }
       // Add back agent-provided boundaries (properly styled) before addAccountBoundaries
       const nodesWithAgentBoundaries = [...properlyStyledBoundaries, ...laidOut.nodes];
       console.log(`[Pipeline] After layout + agent boundaries: ${nodesWithAgentBoundaries.length} nodes (${properlyStyledBoundaries.length} from agent)`);
@@ -2747,7 +3249,26 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       console.log(`[Pipeline] After fitting (spec): ${fitted.length} nodes`);
       const normalizedFinal = normalizeGraph(fitted, laidOut.edges);
       const enforcedBoundaries = enforceAccountBoundaries(normalizedFinal.nodes, normalizedFinal.edges, isDarkMode);
-      const finalNodesWithStyle = normalizedFinal.nodes
+      
+      // CRITICAL: Enforce consistent node sizes for handle alignment
+      // All non-boundary nodes must have identical dimensions
+      const STANDARD_NODE_WIDTH = 150;
+      const STANDARD_NODE_HEIGHT = 130;
+      
+      const normalizedNodesWithSize = enforcedBoundaries.nodes.map(n => {
+        const isBoundary = ((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary');
+        if (isBoundary) return n; // Keep boundary sizes as-is
+        return {
+          ...n,
+          style: {
+            ...(n.style || {}),
+            width: STANDARD_NODE_WIDTH,
+            height: STANDARD_NODE_HEIGHT,
+          },
+        };
+      });
+      
+      const finalNodesWithStyle = normalizedNodesWithSize
         .map((n) =>
           ensureBoundaryStyle(
             n,
@@ -2755,7 +3276,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           )
         )
         .map(applyThemeToNode);
-      const nodeMap = new Map<string, Node>(enforcedBoundaries.nodes.map(n => [n.id, n]));
+      const nodeMap = new Map<string, Node>(normalizedNodesWithSize.map(n => [n.id, n]));
       
       const pickHandle = (fromId: string, toId: string) => {
         const from = nodeMap.get(fromId);
@@ -2770,37 +3291,37 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
         const dx = c2.x - c1.x;
         const dy = c2.y - c1.y;
 
-        // For medallion architectures: ALWAYS prefer vertical handles if there's ANY vertical distance
-        // This prevents horizontal handle selection that routes edges off-canvas
-        if (Math.abs(dy) > 20) {
-          // There's meaningful vertical distance - use vertical handles
+        // FIXED: Use magnitude comparison instead of absolute threshold
+        // This matches the logic in layoutMedallionDeterministic.makeEdge
+        // and prevents diagonal edges in grid layouts
+        
+        // If vertical distance is GREATER than horizontal → vertical flow
+        if (Math.abs(dy) > Math.abs(dx)) {
           return {
             sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
             targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
           };
         }
         
-        // Only use horizontal handles if nodes are on the same horizontal level
-        if (Math.abs(dy) <= 20) {
-          return {
-            sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
-            targetHandle: dx >= 0 ? 'left-target' : 'right-target',
-          };
-        }
-        
-        // Fallback (should rarely reach here)
+        // Otherwise (horizontal distance >= vertical) → horizontal flow
         return {
-          sourceHandle: dy >= 0 ? 'bottom-source' : 'top-source',
-          targetHandle: dy >= 0 ? 'top-target' : 'bottom-target',
+          sourceHandle: dx >= 0 ? 'right-source' : 'left-source',
+          targetHandle: dx >= 0 ? 'left-target' : 'right-target',
         };
       };
 
-      const finalEdges = enforcedBoundaries.edges.map((e) => {
-        // Pick handles based purely on alignment
-        const handles = pickHandle(e.source, e.target);
+      let finalEdges = enforcedBoundaries.edges.map((e) => {
+        // PRESERVE handles from layoutMedallionDeterministic if they exist
+        // Only use pickHandle as fallback for edges without handles
+        const hasExistingHandles = e.sourceHandle && e.targetHandle;
+        const handles = hasExistingHandles 
+          ? { sourceHandle: e.sourceHandle, targetHandle: e.targetHandle }
+          : pickHandle(e.source, e.target);
         
-        // Use smoothstep for all edges (creates natural flowing paths)
-        const edgeType = 'smoothstep';
+        // Use 'straight' edges - they draw direct lines between handles without any routing
+        // 'step' edges use a routing algorithm that creates intermediate waypoints (kinks)
+        // For clean connections, we rely on proper handle selection (right->left, bottom->top)
+        const edgeType = 'straight';
         
         return {
           ...e,
@@ -2810,7 +3331,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
         };
       });
-      const finalNodes = enforcedBoundaries.nodes
+      let finalNodes = enforcedBoundaries.nodes
         .map((n) =>
           ensureBoundaryStyle(
             n,
@@ -2843,6 +3364,44 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           console.log(`  - ${n.id}: componentType="${(n.data as any)?.componentType}", icon=${(n.data as any)?.icon ? 'YES' : 'NO'}`);
         });
       }
+      
+      // =============================================================================
+      // FINAL FDE GUARDRAIL: Strip AWS/external components if user didn't request them
+      // This is the LAST line of defense before rendering - catches any components
+      // that slipped through previous filters (agent hallucinations, completeness logic, etc.)
+      // =============================================================================
+      const userPromptFinal = lastUserPromptRef.current.toLowerCase();
+      const externalKeywordsFinal = ['s3', 'aws', 'azure', 'gcp', 'kafka', 'external', 'data lake', 'cloud storage', 'ingest from', 'load from', 'pull from'];
+      const userWantsExternalFinal = externalKeywordsFinal.some(k => userPromptFinal.includes(k));
+      
+      if (!userWantsExternalFinal) {
+        const beforeFinalFilter = finalNodes.length;
+        finalNodes = finalNodes.filter(n => {
+          const id = n.id.toLowerCase();
+          const label = ((n.data as any)?.label || '').toLowerCase();
+          const compType = ((n.data as any)?.componentType || '').toLowerCase();
+          
+          // Remove AWS/S3/Snowpipe related nodes
+          if (id === 's3' || id === 'pipe1' || id === 'snowpipe' ||
+              label.includes('s3 data lake') || label === 'snowpipe' ||
+              compType === 's3' || compType === 'snowpipe' ||
+              compType.includes('account_boundary_aws') || id.includes('aws')) {
+            console.warn(`🚫 [FINAL GUARDRAIL] Removing: ${id} / ${label}`);
+            return false;
+          }
+          return true;
+        });
+        
+        // Also remove edges that reference removed nodes
+        const validNodeIds = new Set(finalNodes.map(n => n.id));
+        const beforeEdgeFilter = finalEdges.length;
+        finalEdges = finalEdges.filter(e => validNodeIds.has(e.source) && validNodeIds.has(e.target));
+        
+        if (beforeFinalFilter !== finalNodes.length || beforeEdgeFilter !== finalEdges.length) {
+          console.log(`[FINAL GUARDRAIL] Removed ${beforeFinalFilter - finalNodes.length} nodes, ${beforeEdgeFilter - finalEdges.length} edges`);
+        }
+      }
+      // =============================================================================
       
       setNodes(finalNodes);
       setEdges(finalEdges);
@@ -2904,8 +3463,8 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       // Pick handles based purely on alignment
       const handles = pickHandle(e.source, e.target);
       
-      // Use smoothstep for all edges (creates natural flowing paths)
-      const edgeType = 'smoothstep';
+      // Use 'straight' for direct lines between handles (no routing kinks)
+      const edgeType = 'straight';
       
       return {
         ...e,
@@ -2971,7 +3530,26 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
     const normalizedFinal = normalizeGraph(fitted, laidOut.edges);
     console.log(`[Pipeline] After normalize (FINAL): ${normalizedFinal.nodes.length} nodes, ${normalizedFinal.edges.length} edges`);
     const enforcedBoundaries = enforceAccountBoundaries(normalizedFinal.nodes, normalizedFinal.edges, isDarkMode);
-    const finalNodesWithStyle = enforcedBoundaries.nodes.map((n) =>
+    
+    // CRITICAL: Enforce consistent node sizes for handle alignment (Mermaid path)
+    // All non-boundary nodes must have identical dimensions
+    const STANDARD_WIDTH_MERMAID = 150;
+    const STANDARD_HEIGHT_MERMAID = 130;
+    
+    const normalizedNodesWithSizeMermaid = enforcedBoundaries.nodes.map(n => {
+      const isBoundary = ((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary');
+      if (isBoundary) return n; // Keep boundary sizes as-is
+      return {
+        ...n,
+        style: {
+          ...(n.style || {}),
+          width: STANDARD_WIDTH_MERMAID,
+          height: STANDARD_HEIGHT_MERMAID,
+        },
+      };
+    });
+    
+    const finalNodesWithStyle = normalizedNodesWithSizeMermaid.map((n) =>
       ensureBoundaryStyle(
         n,
         (n.data as any)?.isDarkMode ?? isDarkMode
@@ -2981,12 +3559,49 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
       ...e,
       sourceHandle: e.sourceHandle || 'right-source',
       targetHandle: e.targetHandle || 'left-target',
-      type: e.type || 'smoothstep',
+      type: 'straight',  // Direct line between handles (no routing kinks)
       animated: true,
       style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2 },
     }));
-    setNodes(finalNodesWithStyle);
-    setEdges(finalEdges);
+    
+    // =============================================================================
+    // FINAL FDE GUARDRAIL (Mermaid Path): Strip AWS/external components
+    // =============================================================================
+    const userPromptFinal2 = lastUserPromptRef.current.toLowerCase();
+    const externalKeywordsFinal2 = ['s3', 'aws', 'azure', 'gcp', 'kafka', 'external', 'data lake', 'cloud storage', 'ingest from', 'load from', 'pull from'];
+    const userWantsExternalFinal2 = externalKeywordsFinal2.some(k => userPromptFinal2.includes(k));
+    
+    let filteredNodesWithStyle = finalNodesWithStyle;
+    let filteredEdges = finalEdges;
+    
+    if (!userWantsExternalFinal2) {
+      const beforeFinalFilter2 = filteredNodesWithStyle.length;
+      filteredNodesWithStyle = filteredNodesWithStyle.filter(n => {
+        const id = n.id.toLowerCase();
+        const label = ((n.data as any)?.label || '').toLowerCase();
+        const compType = ((n.data as any)?.componentType || '').toLowerCase();
+        
+        if (id === 's3' || id === 'pipe1' || id === 'snowpipe' ||
+            label.includes('s3 data lake') || label === 'snowpipe' ||
+            compType === 's3' || compType === 'snowpipe' ||
+            compType.includes('account_boundary_aws') || id.includes('aws')) {
+          console.warn(`🚫 [FINAL GUARDRAIL 2] Removing: ${id} / ${label}`);
+          return false;
+        }
+        return true;
+      });
+      
+      const validNodeIds2 = new Set(filteredNodesWithStyle.map(n => n.id));
+      filteredEdges = filteredEdges.filter(e => validNodeIds2.has(e.source) && validNodeIds2.has(e.target));
+      
+      if (beforeFinalFilter2 !== filteredNodesWithStyle.length) {
+        console.log(`[FINAL GUARDRAIL 2] Removed ${beforeFinalFilter2 - filteredNodesWithStyle.length} unwanted nodes`);
+      }
+    }
+    // =============================================================================
+    
+    setNodes(filteredNodesWithStyle);
+    setEdges(filteredEdges);
   };
 
   return (
@@ -3184,7 +3799,7 @@ const ensureMedallionCompleteness = (nodes: Node[], edges: Edge[]) => {
           selectNodesOnDrag={false}
           multiSelectionKeyCode="Shift"
           defaultEdgeOptions={{
-            type: 'smoothstep',
+            type: 'straight',  // Direct line between handles (no routing kinks)
             animated: true,
         style: { stroke: isDarkMode ? '#FFFFFF' : '#29B5E8', strokeWidth: 2 },
             deletable: true,

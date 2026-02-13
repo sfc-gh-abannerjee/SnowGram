@@ -15,18 +15,26 @@ Endpoints:
 """
 
 import os
+import sys
 import logging
 from contextlib import asynccontextmanager
 from typing import Optional
+from pathlib import Path
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(env_path)
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
-# Import database connector and Cortex Agent client
-from backend.db.connector import SnowflakeConnector
-from backend.agent.cortex_agent_client import CortexAgentClient
+# Add parent directory to path for imports when running from backend/
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from db.connector import SnowflakeConnector
+from agent.cortex_agent_client import CortexAgentClient
 
 # Setup logging
 logging.basicConfig(
@@ -49,24 +57,11 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting SnowGram application...")
     
-    # Initialize Snowflake connector (optional for testing)
+    # Initialize Snowflake connector - auto-detects SPCS vs local environment
     try:
-        account = os.getenv("SNOWFLAKE_ACCOUNT")
-        if account:
-            snowflake_connector = SnowflakeConnector(
-                account=account,
-                user=os.getenv("SNOWFLAKE_USER"),
-                password=os.getenv("SNOWFLAKE_PASSWORD"),
-                role=os.getenv("SNOWFLAKE_ROLE", "SNOWGRAM_APP_ROLE"),
-                warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "SNOWGRAM_WH"),
-                database=os.getenv("SNOWFLAKE_DATABASE", "SNOWGRAM_DB"),
-                schema=os.getenv("SNOWFLAKE_SCHEMA", "CORE")
-            )
-            await snowflake_connector.connect()
-            logger.info("✅ Snowflake connection established")
-        else:
-            logger.warning("⚠️  SNOWFLAKE_ACCOUNT not set, running in test mode (icon/health endpoints only)")
-            snowflake_connector = None
+        snowflake_connector = SnowflakeConnector.create_from_env()
+        await snowflake_connector.connect()
+        logger.info("✅ Snowflake connection established")
     except Exception as e:
         logger.error(f"❌ Failed to connect to Snowflake: {e}")
         logger.warning("⚠️  Running in degraded mode (some endpoints may not work)")
@@ -76,10 +71,7 @@ async def lifespan(app: FastAPI):
     agent_name = os.getenv("CORTEX_AGENT_NAME", "SNOWGRAM_AGENT")
     if agent_name:
         try:
-            cortex_agent_client = CortexAgentClient(
-                account=os.getenv("SNOWFLAKE_ACCOUNT"),
-                user=os.getenv("SNOWFLAKE_USER"),
-                password=os.getenv("SNOWFLAKE_PASSWORD"),
+            cortex_agent_client = CortexAgentClient.create_from_env(
                 agent_name=agent_name,
                 database=os.getenv("SNOWFLAKE_DATABASE", "SNOWGRAM_DB"),
                 schema=os.getenv("SNOWFLAKE_SCHEMA", "CORE")
@@ -212,8 +204,8 @@ async def websocket_chat(websocket: WebSocket):
 # Diagram Endpoints
 # =====================================================
 
-from backend.api.routes import diagrams, icons
-from backend.api import health
+from api.routes import diagrams, icons
+from api import health
 
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
@@ -243,9 +235,9 @@ async def root():
 
 if __name__ == "__main__":
     uvicorn.run(
-        "backend.api.main:app",
+        "api.main:app",  # Run from backend/ directory
         host="0.0.0.0",
-        port=8000,
+        port=int(os.getenv("BACKEND_PORT", "8082")),  # Default 8082 to avoid conflict with 8081
         reload=os.getenv("ENVIRONMENT") == "development",
         log_level=os.getenv("LOG_LEVEL", "info").lower()
     )

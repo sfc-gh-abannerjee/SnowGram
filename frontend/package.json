@@ -4,9 +4,9 @@
   "description": "SnowGram frontend - Cortex-powered diagram generation",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3002",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3002",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },
@@ -15,6 +15,7 @@
     "@excalidraw/mermaid-to-excalidraw": "^0.2.0",
     "axios": "^1.6.7",
     "date-fns": "^3.3.1",
+    "elkjs": "^0.11.0",
     "mermaid": "^10.8.0",
     "next": "^14.1.0",
     "react": "^18.2.0",

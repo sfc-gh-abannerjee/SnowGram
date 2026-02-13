@@ -12,6 +12,88 @@ const cleanText = (s: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// ============================================
+// MEDALLION ARCHITECTURE COLOR SCHEME
+// ============================================
+// These colors are designed for architecture diagrams
+// where visual distinction by layer is critical
+export const LAYER_COLORS = {
+  bronze: {
+    border: '#CD7F32',      // Bronze/copper color
+    background: '#FDF5E6',   // Light cream/antique white
+    backgroundDark: '#3D2B1F', // Dark bronze
+    label: 'Bronze Layer'
+  },
+  silver: {
+    border: '#C0C0C0',      // Silver
+    background: '#F5F5F5',   // Light gray
+    backgroundDark: '#2F4F4F', // Dark slate gray
+    label: 'Silver Layer'
+  },
+  gold: {
+    border: '#FFD700',      // Gold
+    background: '#FFFACD',   // Lemon chiffon
+    backgroundDark: '#4A3C00', // Dark gold/brown
+    label: 'Gold Layer'
+  },
+  external: {
+    border: '#FF9900',      // AWS Orange
+    background: '#FFF8E7',
+    backgroundDark: '#2D2D2D',
+    label: 'External Sources'
+  },
+  bi: {
+    border: '#9370DB',      // Medium purple (BI/Analytics)
+    background: '#E6E6FA',   // Lavender
+    backgroundDark: '#2E1A47',
+    label: 'BI/Analytics'
+  },
+  snowflake: {
+    border: '#29B5E8',      // Snowflake blue (default)
+    background: '#E6F7FF',
+    backgroundDark: '#1e3a4a',
+    label: 'Snowflake'
+  }
+};
+
+// Detect which medallion layer a node belongs to based on ID/label
+function detectLayer(id: string, label: string): keyof typeof LAYER_COLORS {
+  const text = `${id} ${label}`.toLowerCase();
+  
+  // Bronze layer indicators
+  if (text.includes('bronze') || text.includes('raw') || text.includes('landing') ||
+      text.includes('ingest') || text.includes('source') || text.includes('staging')) {
+    return 'bronze';
+  }
+  
+  // Silver layer indicators  
+  if (text.includes('silver') || text.includes('clean') || text.includes('conform') ||
+      text.includes('transform') || text.includes('standardize') || text.includes('validated')) {
+    return 'silver';
+  }
+  
+  // Gold layer indicators
+  if (text.includes('gold') || text.includes('curated') || text.includes('refined') ||
+      text.includes('aggregate') || text.includes('business') || text.includes('dim_') ||
+      text.includes('fact_') || text.includes('mart')) {
+    return 'gold';
+  }
+  
+  // External sources
+  if (text.includes('s3') || text.includes('aws') || text.includes('kafka') ||
+      text.includes('api') || text.includes('external') || text.includes('lake')) {
+    return 'external';
+  }
+  
+  // BI/Analytics
+  if (text.includes('analytics') || text.includes('dashboard') || text.includes('report') ||
+      text.includes('bi_') || text.includes('tableau') || text.includes('powerbi')) {
+    return 'bi';
+  }
+  
+  return 'snowflake'; // Default
+}
+
 // Map common Mermaid labels to SnowGram component names
 const LABEL_SYNONYMS: Record<string, string> = {
   database: 'Database',
@@ -125,15 +207,23 @@ export function convertMermaidToFlow(
     const label = getLabel(rawId);
     const id = normalizeBoundaryId(rawId, label);
     if (nodeMap.has(id)) return nodeMap.get(id)!;
-    const color = isDarkMode ? '#29B5E8' : '#0F4C75';
+    
     const isBoundary = id.startsWith('account_boundary');
     const componentType = isBoundary ? id : matchComponent(label, componentCatalog);
+    
+    // Detect layer and apply appropriate colors
+    const layer = detectLayer(rawId, label);
+    const layerColors = LAYER_COLORS[layer];
+    const borderColor = layerColors.border;
+    const backgroundColor = isDarkMode ? layerColors.backgroundDark : layerColors.background;
+    
     const node: Node = {
       id,
       type: 'snowflakeNode',
       data: {
         label,
         componentType,
+        layer, // Store layer info for downstream use
         labelColor: isDarkMode ? '#E5EDF5' : '#0F172A',
         isDarkMode,
         showHandles: !isBoundary,
@@ -141,9 +231,9 @@ export function convertMermaidToFlow(
       },
       position: { x: 0, y: 0 },
       style: {
-        border: `2px solid ${color}`,
+        border: `2px solid ${borderColor}`,
         borderRadius: 8,
-        background: isDarkMode ? '#1e3a4a' : '#ffffff',
+        background: backgroundColor,
         color: isDarkMode ? '#e5f2ff' : '#0F172A',
       },
     };
@@ -171,7 +261,7 @@ export function convertMermaidToFlow(
         id: `${sourceId}-${targetId}-${edges.length}`,
         source: sourceId,
         target: targetId,
-        type: 'smoothstep',
+        type: 'straight',  // Direct lines to eliminate kinks
         animated: true,
         sourceHandle: 'right-source',
         targetHandle: 'left-target',

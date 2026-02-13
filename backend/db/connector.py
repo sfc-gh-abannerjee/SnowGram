@@ -2,16 +2,24 @@
 Snowflake Database Connector
 ============================
 Manages Snowflake connections and query execution.
+Supports both local development (password/PAT) and SPCS deployment (OAuth).
+
+Environment Detection:
+- SPCS: Uses OAuth token from /snowflake/session/token
+- Local: Uses password/PAT token from environment variables
 
 Usage:
-    connector = SnowflakeConnector(account="...", user="...", password="...")
+    # Auto-detect environment
+    connector = SnowflakeConnector.create_from_env()
     await connector.connect()
     result = await connector.execute_query("SELECT * FROM table")
     await connector.close()
 """
 
+import os
 import logging
 from typing import Optional, List, Dict, Any
+from pathlib import Path
 import asyncio
 
 import snowflake.connector
@@ -20,15 +28,42 @@ from snowflake.connector.errors import Error as SnowflakeError
 
 logger = logging.getLogger(__name__)
 
+# SPCS token file path
+SPCS_TOKEN_PATH = "/snowflake/session/token"
+
+
+def is_running_in_spcs() -> bool:
+    """Detect if running inside Snowpark Container Services"""
+    # SPCS provides a token file and sets SNOWFLAKE_HOST
+    return (
+        Path(SPCS_TOKEN_PATH).exists() or 
+        os.getenv("SNOWFLAKE_HOST") is not None and 
+        os.getenv("SNOWFLAKE_ACCOUNT") is None
+    )
+
+
+def get_spcs_token() -> Optional[str]:
+    """Read OAuth token from SPCS token file"""
+    token_path = Path(SPCS_TOKEN_PATH)
+    if token_path.exists():
+        try:
+            return token_path.read_text().strip()
+        except Exception as e:
+            logger.error(f"Failed to read SPCS token: {e}")
+    return None
+
 
 class SnowflakeConnector:
-    """Async-compatible Snowflake connector"""
+    """Async-compatible Snowflake connector with SPCS support"""
     
     def __init__(
         self,
-        account: str,
-        user: str,
-        password: str,
+        account: Optional[str] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        host: Optional[str] = None,
+        authenticator: Optional[str] = None,
+        token: Optional[str] = None,
         role: str = "SNOWGRAM_APP_ROLE",
         warehouse: str = "SNOWGRAM_WH",
         database: str = "SNOWGRAM_DB",
@@ -38,9 +73,12 @@ class SnowflakeConnector:
         Initialize Snowflake connector.
         
         Args:
-            account: Snowflake account identifier
-            user: Username
-            password: Password or PAT token
+            account: Snowflake account identifier (not needed for SPCS)
+            user: Username (not needed for SPCS OAuth)
+            password: Password or PAT token (not needed for SPCS)
+            host: Snowflake host URL (required for SPCS)
+            authenticator: Authentication method ('oauth' for SPCS)
+            token: OAuth token (for SPCS)
             role: Role to use
             warehouse: Default warehouse
             database: Default database
@@ -49,12 +87,54 @@ class SnowflakeConnector:
         self.account = account
         self.user = user
         self.password = password
+        self.host = host
+        self.authenticator = authenticator
+        self.token = token
         self.role = role
         self.warehouse = warehouse
         self.database = database
         self.schema = schema
         
         self.connection: Optional[snowflake.connector.SnowflakeConnection] = None
+        self._is_spcs = is_running_in_spcs()
+    
+    @classmethod
+    def create_from_env(cls) -> "SnowflakeConnector":
+        """
+        Factory method to create connector based on environment.
+        
+        In SPCS: Uses OAuth token from /snowflake/session/token
+        Locally: Uses password/PAT from environment variables
+        
+        Returns:
+            Configured SnowflakeConnector instance
+        """
+        if is_running_in_spcs():
+            logger.info("SPCS environment detected - using OAuth authentication")
+            token = get_spcs_token()
+            if not token:
+                raise RuntimeError("SPCS token not found at /snowflake/session/token")
+            
+            return cls(
+                host=os.getenv("SNOWFLAKE_HOST"),
+                authenticator="oauth",
+                token=token,
+                role=os.getenv("SNOWFLAKE_ROLE", "SNOWGRAM_APP_ROLE"),
+                warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "SNOWGRAM_WH"),
+                database=os.getenv("SNOWFLAKE_DATABASE", "SNOWGRAM_DB"),
+                schema=os.getenv("SNOWFLAKE_SCHEMA", "CORE")
+            )
+        else:
+            logger.info("Local environment detected - using password/PAT authentication")
+            return cls(
+                account=os.getenv("SNOWFLAKE_ACCOUNT"),
+                user=os.getenv("SNOWFLAKE_USER"),
+                password=os.getenv("SNOWFLAKE_PASSWORD"),
+                role=os.getenv("SNOWFLAKE_ROLE", "SNOWGRAM_APP_ROLE"),
+                warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "SNOWGRAM_WH"),
+                database=os.getenv("SNOWFLAKE_DATABASE", "SNOWGRAM_DB"),
+                schema=os.getenv("SNOWFLAKE_SCHEMA", "CORE")
+            )
     
     async def connect(self) -> None:
         """Establish connection to Snowflake"""
@@ -65,22 +145,44 @@ class SnowflakeConnector:
                 None,
                 self._create_connection
             )
-            logger.info(f"Connected to Snowflake as {self.user}")
+            
+            # Log connection info
+            if self._is_spcs:
+                logger.info(f"Connected to Snowflake via SPCS OAuth")
+            else:
+                logger.info(f"Connected to Snowflake as {self.user}")
+                
         except SnowflakeError as e:
             logger.error(f"Failed to connect to Snowflake: {e}")
             raise
     
     def _create_connection(self) -> snowflake.connector.SnowflakeConnection:
         """Create Snowflake connection (sync operation)"""
-        return snowflake.connector.connect(
-            account=self.account,
-            user=self.user,
-            password=self.password,
-            role=self.role,
-            warehouse=self.warehouse,
-            database=self.database,
-            schema=self.schema
-        )
+        
+        if self._is_spcs or self.authenticator == "oauth":
+            # SPCS OAuth connection
+            logger.debug(f"Creating SPCS connection to host: {self.host}")
+            return snowflake.connector.connect(
+                host=self.host,
+                authenticator="oauth",
+                token=self.token,
+                role=self.role,
+                warehouse=self.warehouse,
+                database=self.database,
+                schema=self.schema
+            )
+        else:
+            # Local connection with password/PAT
+            logger.debug(f"Creating local connection to account: {self.account}")
+            return snowflake.connector.connect(
+                account=self.account,
+                user=self.user,
+                password=self.password,
+                role=self.role,
+                warehouse=self.warehouse,
+                database=self.database,
+                schema=self.schema
+            )
     
     async def is_connected(self) -> bool:
         """Check if connection is active"""
@@ -387,9 +489,3 @@ class SnowflakeConnector:
                 logger.error(f"Error closing connection: {e}")
             finally:
                 self.connection = None
-
-
-
-
-
-

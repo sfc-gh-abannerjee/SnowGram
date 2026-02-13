@@ -51,18 +51,24 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
     ? (() => {
         // Check if boundary already has proper rgba background
         const rawBg = style?.background || data.background;
-        if (rawBg && rawBg.startsWith('rgba(')) return rawBg;
+        if (rawBg && typeof rawBg === 'string' && rawBg.startsWith('rgba(')) return rawBg;
         
         // Otherwise derive from border color
-        const borderColor = extractBorderColor(style?.border);
+        const borderStr = typeof style?.border === 'string' ? style.border : undefined;
+        const borderColor = extractBorderColor(borderStr);
         return borderColor ? hexToRgba(borderColor, 0.08) : 'rgba(41, 181, 232, 0.08)';
       })()
     : null;
 
-  // For regular nodes: ALWAYS use computed backgrounds, ignore any prop backgrounds to avoid double layers
+  // For regular nodes: prefer style.background (layer colors) over defaults
+  // Only use hardcoded dark/light defaults if no background is specified
+  const hasCustomBackground = style?.background && 
+    typeof style.background === 'string' && 
+    !style.background.includes('transparent');
+  
   const nodeBackground = isBoundary
     ? boundaryBg!
-    : (data.isDarkMode ? darkModeBg : lightModeBg);
+    : (hasCustomBackground ? style.background : (data.isDarkMode ? darkModeBg : lightModeBg));
   
   const mergedStyle: React.CSSProperties = {
     ...(style || {}),
@@ -140,7 +146,8 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
         />
       )}
 
-      {/* Handles on all sides as both sources and targets for cleaner routing */}
+      {/* Handles on all sides - source and target at center positions
+          Using 'straight' edge type for aligned nodes eliminates kinks */}
       <Handle
         type="source"
         position={Position.Top}

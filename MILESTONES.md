@@ -1362,4 +1362,3 @@ AGENT_SETUP_GUIDE.md          # Step-by-step Snowsight UI instructions
 ```
 
 ***
-
