@@ -248,24 +248,39 @@ CALL VERIFY_COMPONENT('Snowflake Polaris');
 
 ---
 
-## Current State (2026-02-13)
+## Current State (2026-02-13 22:30 UTC)
 
 | Metric | Value |
 |--------|-------|
-| **Cache Size** | 73 components |
+| **Cache Size** | 75 components |
 | Pre-loaded (verified) | 70 |
-| Auto-learned (pending) | 3 |
+| Auto-learned (pending) | 5 |
 | **Default Model** | openai-gpt-5.1 |
 | **Accuracy** | 92.89% (LLM), 100% (cache) |
 | **Architecture** | Cache-first with auto-learning |
 
+### Integration Test Results ✅
+
+| Test | Status | Details |
+|------|--------|---------|
+| Cache Hit | ✅ PASS | Kafka → source=cache |
+| LLM Fallback | ✅ PASS | Redis Cache Layer → source=llm |
+| Template Generation | ✅ PASS | 1,885 chars generated |
+| Mermaid Validation | ✅ PASS | Syntax valid |
+| Component Suggestion | ✅ PASS | 10 components suggested |
+| Auto-learning | ✅ PASS | Apache Flink cached |
+| Cache Verification | ✅ PASS | New entry found |
+| Subsequent Cache Hit | ✅ PASS | source=cache on retry |
+
 ### Auto-Learned Components
 
-| Component | Stage | Verified |
-|-----------|-------|----------|
-| Snowflake Polaris | serve | No |
-| Apache Iceberg | raw | No |
-| Delta Lake | raw | No |
+| Component | Stage | Tier | Verified |
+|-----------|-------|------|----------|
+| Apache Flink | transform | external | No |
+| Databricks Unity Catalog | serve | external | No |
+| Delta Lake | raw | external | No |
+| Apache Iceberg | raw | external | No |
+| Snowflake Polaris | serve | snowflake | No |
 
 ### Recommendations
 
