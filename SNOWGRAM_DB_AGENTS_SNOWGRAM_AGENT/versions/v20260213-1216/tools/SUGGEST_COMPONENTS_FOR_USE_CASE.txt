@@ -1,0 +1,8 @@
+Tool Name: SUGGEST_COMPONENTS_FOR_USE_CASE
+Tool Type: generic
+
+================================================================================
+DESCRIPTION:
+================================================================================
+
+AI-powered component recommendations (validate with CKE)

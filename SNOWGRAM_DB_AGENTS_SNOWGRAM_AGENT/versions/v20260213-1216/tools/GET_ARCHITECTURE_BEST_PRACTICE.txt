@@ -1,0 +1,8 @@
+Tool Name: GET_ARCHITECTURE_BEST_PRACTICE
+Tool Type: generic
+
+================================================================================
+DESCRIPTION:
+================================================================================
+
+Cached best practices (CKE is primary source)

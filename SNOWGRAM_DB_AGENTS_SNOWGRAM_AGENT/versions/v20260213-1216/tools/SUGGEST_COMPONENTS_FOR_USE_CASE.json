@@ -1,0 +1,18 @@
+{
+  "tool_spec": {
+    "type": "generic",
+    "name": "SUGGEST_COMPONENTS_FOR_USE_CASE",
+    "description": "AI-powered component recommendations (validate with CKE)",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "user_description": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_description"
+      ]
+    }
+  }
+}

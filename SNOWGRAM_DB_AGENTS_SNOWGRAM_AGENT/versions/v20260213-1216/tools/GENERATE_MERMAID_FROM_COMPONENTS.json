@@ -1,0 +1,22 @@
+{
+  "tool_spec": {
+    "type": "generic",
+    "name": "GENERATE_MERMAID_FROM_COMPONENTS",
+    "description": "Generate Mermaid diagrams with Snowflake styling",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "components": {
+          "type": "array"
+        },
+        "connections": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "components",
+        "connections"
+      ]
+    }
+  }
+}

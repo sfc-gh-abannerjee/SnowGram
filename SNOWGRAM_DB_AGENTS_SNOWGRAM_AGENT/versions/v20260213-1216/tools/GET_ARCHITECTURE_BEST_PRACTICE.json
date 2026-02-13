@@ -1,0 +1,18 @@
+{
+  "tool_spec": {
+    "type": "generic",
+    "name": "GET_ARCHITECTURE_BEST_PRACTICE",
+    "description": "Cached best practices (CKE is primary source)",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "use_case_keyword": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "use_case_keyword"
+      ]
+    }
+  }
+}

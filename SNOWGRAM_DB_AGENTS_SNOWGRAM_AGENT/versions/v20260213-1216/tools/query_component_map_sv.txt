@@ -1,0 +1,8 @@
+Tool Name: query_component_map_sv
+Tool Type: generic
+
+================================================================================
+DESCRIPTION:
+================================================================================
+
+Semantic view lookup of synonyms to component_type

@@ -1,0 +1,7 @@
+{
+  "tool_spec": {
+    "type": "cortex_search",
+    "name": "SNOWFLAKE_DOCS_CKE",
+    "description": "Search official Snowflake documentation via CKE (41,000+ pages)"
+  }
+}

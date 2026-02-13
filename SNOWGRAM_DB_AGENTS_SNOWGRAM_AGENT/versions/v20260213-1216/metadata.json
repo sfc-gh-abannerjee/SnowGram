@@ -1,0 +1,7 @@
+{
+  "name": "SNOWGRAM_AGENT",
+  "database": "SNOWGRAM_DB",
+  "schema": "AGENTS",
+  "owner": "ACCOUNTADMIN",
+  "created_on": "2026-02-13T07:47:08.315+00:00"
+}

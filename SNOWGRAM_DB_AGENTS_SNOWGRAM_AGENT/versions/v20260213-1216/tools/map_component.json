@@ -1,0 +1,18 @@
+{
+  "tool_spec": {
+    "type": "generic",
+    "name": "map_component",
+    "description": "Deterministic single-term lookup via UDF - returns component_type only",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "word": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "word"
+      ]
+    }
+  }
+}

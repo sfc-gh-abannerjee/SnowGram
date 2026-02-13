@@ -1,0 +1,8 @@
+Tool Name: SNOWFLAKE_DOCS_CKE
+Tool Type: cortex_search
+
+================================================================================
+DESCRIPTION:
+================================================================================
+
+Search official Snowflake documentation via CKE (41,000+ pages)

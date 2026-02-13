@@ -1,0 +1,23 @@
+{
+  "tool_spec": {
+    "type": "generic",
+    "name": "query_component_map_sv",
+    "description": "Semantic view lookup of synonyms to component_type",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "pattern": {
+          "type": "string",
+          "description": "SQL LIKE pattern"
+        },
+        "limit": {
+          "type": "integer",
+          "default": 20
+        }
+      },
+      "required": [
+        "pattern"
+      ]
+    }
+  }
+}

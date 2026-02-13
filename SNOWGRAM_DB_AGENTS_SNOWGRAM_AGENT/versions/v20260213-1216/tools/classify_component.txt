@@ -1,0 +1,8 @@
+Tool Name: classify_component
+Tool Type: generic
+
+================================================================================
+DESCRIPTION:
+================================================================================
+
+AI-powered component classification for layout positioning. Returns flow_stage, flow_stage_order, flow_tier, suggested_icon. Use for UNKNOWN components not found in map_component. Cache-first: 75 cached components return instantly, unknown use LLM.

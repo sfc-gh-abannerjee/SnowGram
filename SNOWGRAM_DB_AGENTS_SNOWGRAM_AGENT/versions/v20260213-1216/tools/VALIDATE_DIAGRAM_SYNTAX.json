@@ -1,0 +1,18 @@
+{
+  "tool_spec": {
+    "type": "generic",
+    "name": "VALIDATE_DIAGRAM_SYNTAX",
+    "description": "Validate Mermaid syntax",
+    "input_schema": {
+      "type": "object",
+      "properties": {
+        "mermaid_code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "mermaid_code"
+      ]
+    }
+  }
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "name": "SNOWFLAKE_DOCS_CKE",
+    "type": "cortex_search",
+    "file": "SNOWFLAKE_DOCS_CKE.txt",
+    "description_length": 63
+  },
+  {
+    "name": "SUGGEST_COMPONENTS_FOR_USE_CASE",
+    "type": "generic",
+    "file": "SUGGEST_COMPONENTS_FOR_USE_CASE.txt",
+    "description_length": 56
+  },
+  {
+    "name": "GET_ARCHITECTURE_BEST_PRACTICE",
+    "type": "generic",
+    "file": "GET_ARCHITECTURE_BEST_PRACTICE.txt",
+    "description_length": 45
+  },
+  {
+    "name": "GENERATE_MERMAID_FROM_COMPONENTS",
+    "type": "generic",
+    "file": "GENERATE_MERMAID_FROM_COMPONENTS.txt",
+    "description_length": 48
+  },
+  {
+    "name": "VALIDATE_DIAGRAM_SYNTAX",
+    "type": "generic",
+    "file": "VALIDATE_DIAGRAM_SYNTAX.txt",
+    "description_length": 23
+  },
+  {
+    "name": "query_component_map_sv",
+    "type": "generic",
+    "file": "query_component_map_sv.txt",
+    "description_length": 50
+  },
+  {
+    "name": "map_component",
+    "type": "generic",
+    "file": "map_component.txt",
+    "description_length": 70
+  },
+  {
+    "name": "classify_component",
+    "type": "generic",
+    "file": "classify_component.txt",
+    "description_length": 248
+  }
+]
