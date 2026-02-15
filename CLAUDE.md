@@ -1,69 +1,79 @@
-# SnowGram Project
+# SnowGram
 
-SnowGram is a Snowflake architecture diagram generator using Cortex Agents.
+Snowflake architecture diagram generator using Cortex Agents.
 
-## Architecture
+## Quick Reference
 
-- **Backend**: Snowflake (SNOWGRAM_DB, connection: `se_demo`)
-- **Frontend**: React + TypeScript + React Flow + ELK.js (`/frontend`)
-- **Agent**: `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT`
+| Key | Value |
+|-----|-------|
+| Connection | `se_demo` |
+| Database | `SNOWGRAM_DB` |
+| Agent | `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT` |
+| Warehouse | `COMPUTE_WH` |
+| Spec | `agent_spec_v4.yaml` |
+| Frontend | v1.1.0 (Next.js 15.5.12) |
 
-## Agent Tools
-
-| Tool | Purpose |
-|------|---------|
-| `map_component` | Look up known Snowflake components |
-| `classify_component` | AI-classify unknown components via CLASSIFY_COMPONENT UDF |
-| `cortex_search` | Search documentation/best practices |
-
-## flowStage System
-
-Agent returns layout metadata for ELK.js:
-- `source` (0) → `ingest` (1) → `raw` (2) → `transform` (3) → `refined` (4) → `serve` (5) → `consume` (6)
-
-Frontend: `frontend/src/lib/elkLayout.ts` uses `flowStageOrder` for automatic layout.
-
-## Testing
+## Commands
 
 ```bash
+# Tests
 cd backend/tests/agent
+python run_tests.py                    # Smoke (~2 min)
+python run_tests.py --cached --all     # Instant validation
+python run_tests.py --all --report     # Full suite (~13 min)
 
-# Quick smoke tests (~2 min) - DEFAULT
-python run_tests.py
+# Frontend
+cd frontend && npm run dev             # Port 3002
+npm run build                          # Production build
+npm audit                              # Check vulnerabilities (should be 0)
 
-# Instant validation with cached responses
-python run_tests.py --cached --all
-
-# Test specific category
-python run_tests.py -c flowstage   # flowstage|tools|e2e|smoke|core
-
-# Re-run only failed tests
-python run_tests.py --failed
-
-# Full suite (~13 min)
-python run_tests.py --all --report
-
-# List all tests
-python run_tests.py --list
+# Deploy agent
+snow cortex agent create-spec agent_spec_v4.yaml --connection se_demo
 ```
-
-### Test Categories
-- `smoke` (3 tests, ~2 min) - Run frequently during development
-- `flowstage` (2 tests) - ELK.js layout metadata validation
-- `tools` (4 tests) - Agent tool coverage
-- `e2e` (2 tests) - Full integration
-
-### Development Workflow
-1. **Validation logic changes** → `--cached --all` (instant)
-2. **Agent changes** → smoke tests, then category
-3. **Before commit** → `--all --report`
-4. **Fix failures** → `--failed`
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `backend/tests/agent/run_tests.py` | Test harness |
-| `backend/tests/agent/test_cases.yaml` | Test definitions |
-| `frontend/src/lib/elkLayout.ts` | ELK.js automatic layout |
-| `frontend/src/App.tsx` | Main React app |
+| `agent_spec_v4.yaml` | Agent definition with tools |
+| `backend/snowgram/core/suggest.py` | Component suggestion UDF |
+| `frontend/src/lib/snowgram-agent-client.ts` | Cortex agent API client |
+| `frontend/src/lib/elkLayout.ts` | ELK auto-layout engine |
+| `frontend/src/App.tsx` | Main React app (4,600+ LOC) |
+| `frontend/BUG_AUDIT.md` | Bug fixes and security audit |
+| `frontend/DEPENDENCIES.md` | npm overrides documentation |
+| `CHANGELOG.md` | Version history |
+
+## Layout Rules
+
+```
+flowStageOrder: source(0) → ingest(1) → raw(2) → transform(3) → refined(4) → serve(5) → consume(6)
+```
+
+- External sources (Kafka, S3) render LEFT of Snowflake boundary
+- Nodes partition by `cloudProvider`: `snowflake` vs `aws`/`kafka`
+
+## Gotchas
+
+1. **UDTFs + Cortex Agents** — `system_execute_sql` with `:param` binding fails silently. Wrap UDTFs in scalar UDFs returning JSON.
+
+2. **Frontend prompts override tools** — System prompts with example diagrams cause agent to copy templates. Only specify output format, not examples.
+
+3. **Tests pass when tools fail** — Agent falls back to training data. Add `tool_succeeded` validation to tests.
+
+4. **Agent tool type** — Use `type: "function"` (not `cortex_tool`) for custom SQL-based tools.
+
+5. **App.tsx stale closures** — Fixed in v1.1.0. All `useCallback` dependencies are now correct. See `frontend/BUG_AUDIT.md` for details.
+
+6. **npm race conditions** — Never run multiple `npm install` in parallel (e.g., via background agents). Causes ENOTEMPTY errors.
+
+## Recent Changes (v1.1.0 - 2026-02-15)
+
+- **17 bugs fixed** - Stale closures, race conditions, SVG export, duplicate nodes
+- **8 vulnerabilities → 0** - Next.js 15, mermaid 11, npm overrides
+- **~400 LOC removed** - Dead code cleanup
+- **Docs added** - CHANGELOG, BUG_AUDIT, DEPENDENCIES
+
+---
+
+**Detailed docs**: See `docs/AI_POWERED_DIAGRAM_ARCHITECTURE.md` for system design, `frontend/BUG_AUDIT.md` for bug details.

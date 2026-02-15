@@ -14,13 +14,20 @@
 #     - json_flowstage_ordered: Edges flow from lower to higher flowStageOrder
 #     - no_external_sources: Should NOT contain S3/Kafka/Azure (for internal-only requests)
 #     - has_external_sources: Should contain external sources
+#     - exact_component_names: Verify exact names used (no "Gold Tables", only "Gold Layer")
+#     - correct_external_source: Verify the correct external source appears (not substituted)
 #     - contains: List of strings that must appear in response
 #     - not_contains: List of strings that must NOT appear in response
 #     - expected_tools_called: Verify specific tools were used
+#
+# Updated: Feb 15, 2026 - Truly Dynamic Architecture
+# - SUGGEST_COMPONENTS_FOR_USE_CASE is now the primary tool
+# - AI entity extraction for external sources (no hardcoded patterns)
+# - Exact component naming validation
 
 test_suite:
   name: "SnowGram Agent Regression Suite"
-  version: "2.0"
+  version: "3.0"
   agent:
     name: "SNOWGRAM_AGENT"
     database: "SNOWGRAM_DB"
@@ -28,6 +35,108 @@ test_suite:
     connection: "se_demo"
 
 test_cases:
+  # ===========================================
+  # DYNAMIC EXTERNAL SOURCE TESTS (NEW)
+  # ===========================================
+  
+  - name: "dynamic_kafka_only"
+    description: "Kafka request should return Kafka, NOT S3"
+    query: "Build a medallion architecture connected to a kafka stream"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+      - correct_external_source:
+          expected: "Kafka"
+          not_expected: ["S3", "AWS S3", "Azure"]
+      - contains:
+          - "Kafka"
+      - not_contains:
+          - "S3"
+          - "AWS S3"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "dynamic_s3_only"
+    description: "S3 request should return S3, NOT Kafka"
+    query: "Create a medallion architecture with S3 data lake ingestion"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+      - correct_external_source:
+          expected: "S3"
+          not_expected: ["Kafka"]
+      - contains:
+          - "S3"
+      - not_contains:
+          - "Kafka"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "dynamic_multiple_sources"
+    description: "Multiple sources should all appear"
+    query: "Build a data pipeline from both Kafka and S3 to Snowflake"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+      - contains:
+          - "Kafka"
+          - "S3"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "dynamic_no_external"
+    description: "No external sources when not mentioned"
+    query: "Create a simple medallion architecture"
+    validations:
+      - has_json
+      - json_has_nodes
+      - no_external_sources
+      - not_contains:
+          - "Kafka"
+          - "S3"
+          - "AWS S3"
+          - "Azure"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # EXACT COMPONENT NAMING TESTS (NEW)
+  # ===========================================
+
+  - name: "exact_names_medallion"
+    description: "Verify exact component names (no hallucination)"
+    query: "Create a medallion architecture with bronze, silver, gold layers"
+    validations:
+      - has_json
+      - json_has_nodes
+      - exact_component_names:
+          valid_names:
+            - "Bronze Layer"
+            - "Silver Layer"
+            - "Gold Layer"
+            - "CDC Stream"
+            - "Transform Task"
+            - "Analytics Views"
+          invalid_names:
+            - "Gold Tables"
+            - "Bronze Tables"
+            - "Silver Tables"
+            - "Gold"
+            - "Bronze"
+            - "Silver"
+      - contains:
+          - "Bronze Layer"
+          - "Silver Layer"
+          - "Gold Layer"
+      - not_contains:
+          - "Gold Tables"
+          - "Bronze Tables"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
   # ===========================================
   # MEDALLION ARCHITECTURE TESTS
   # ===========================================
@@ -41,8 +150,11 @@ test_cases:
       - json_has_nodes
       - json_has_edges
       - no_external_sources
+      - exact_component_names:
+          invalid_names:
+            - "Gold Tables"
     expected_tools:
-      - map_component
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   - name: "medallion_with_s3"
     description: "Medallion architecture with S3 ingestion"
@@ -52,8 +164,12 @@ test_cases:
       - has_mermaid
       - json_has_nodes
       - has_external_sources
+      - correct_external_source:
+          expected: "S3"
       - contains:
           - "S3"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   - name: "medallion_bi"
     description: "Medallion for BI workload"
@@ -62,6 +178,8 @@ test_cases:
       - has_json
       - has_mermaid
       - no_external_sources
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   # ===========================================
   # STREAMING & IOT TESTS
@@ -74,18 +192,24 @@ test_cases:
       - has_json
       - has_mermaid
       - has_external_sources
+      - correct_external_source:
+          expected: "Kafka"
       - contains:
           - "Kafka"
           - "Stream"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   - name: "streaming_snowpipe"
     description: "Streaming with Snowpipe"
-    query: "Create a streaming data pipeline using Snowpipe Streaming"
+    query: "Create a streaming data pipeline using Snowpipe Streaming from S3"
     validations:
       - has_json
       - has_mermaid
       - contains:
           - "Snowpipe"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   # ===========================================
   # COMPONENT VALIDATION TESTS
@@ -98,7 +222,7 @@ test_cases:
       - has_json
       - json_has_nodes
     expected_tools:
-      - map_component
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   - name: "dynamic_tables"
     description: "Dynamic tables pipeline"
@@ -108,6 +232,8 @@ test_cases:
       - has_mermaid
       - contains:
           - "Dynamic"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   # ===========================================
   # DOCUMENTATION SEARCH TESTS
@@ -121,7 +247,7 @@ test_cases:
           - "Stream"
           - "Task"
     expected_tools:
-      - cortex_search
+      - SNOWFLAKE_DOCS_CKE
 
   - name: "best_practices"
     description: "Ask about best practices"
@@ -131,6 +257,22 @@ test_cases:
           - "bronze"
           - "silver"
           - "gold"
+    expected_tools:
+      - SNOWFLAKE_DOCS_CKE
+
+  # ===========================================
+  # WEB SEARCH TESTS (NEW)
+  # ===========================================
+
+  - name: "web_search_external_tool"
+    description: "Test web search for external tool documentation"
+    query: "Show me how to integrate dbt with a Snowflake medallion architecture"
+    validations:
+      - has_json
+      - contains:
+          - "dbt"
+    expected_tools:
+      - WEB_SEARCH
 
   # ===========================================
   # EDGE CASES & NEGATIVE TESTS
@@ -142,6 +284,8 @@ test_cases:
     validations:
       - has_json
       - json_has_nodes
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   - name: "complex_request"
     description: "Complex multi-system architecture"
@@ -151,6 +295,8 @@ test_cases:
       - has_mermaid
       - json_has_nodes
       - json_has_edges
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   # ===========================================
   # LAYOUT & POSITIONING TESTS
@@ -164,9 +310,11 @@ test_cases:
       - json_has_nodes
       - contains:
           - "position"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   # ===========================================
-  # FLOWSTAGE METADATA TESTS (NEW)
+  # FLOWSTAGE METADATA TESTS
   # ===========================================
 
   - name: "flowstage_all_nodes"
@@ -177,71 +325,56 @@ test_cases:
       - json_has_nodes
       - json_has_flowstage
       - has_external_sources
+      - correct_external_source:
+          expected: "Kafka"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   - name: "flowstage_ordering"
     description: "Verify edges flow from lower to higher flowStageOrder"
-    query: "Create a pipeline: S3 -> Snowpipe -> Bronze Table -> Stream -> Task -> Silver Table -> Gold View -> Tableau"
+    query: "Create a pipeline: S3 -> Snowpipe -> Bronze Layer -> Stream -> Task -> Silver Layer -> Gold Layer -> Tableau"
     validations:
       - has_json
       - json_has_edges
       - json_has_flowstage
       - json_flowstage_ordered
-
-  # ===========================================
-  # TOOL COVERAGE TESTS (NEW)
-  # ===========================================
-
-  - name: "tool_classify_unknown"
-    description: "Test classify_component for unknown components"
-    query: "Create a diagram with Apache Flink for stream processing connected to Snowflake"
+      - correct_external_source:
+          expected: "S3"
     expected_tools:
-      - classify_component
-    validations:
-      - has_json
-      - contains:
-          - "Flink"
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
-  - name: "tool_map_known"
-    description: "Test map_component for known Snowflake components"
+  # ===========================================
+  # TOOL COVERAGE TESTS
+  # ===========================================
+
+  - name: "tool_suggest_components"
+    description: "Test SUGGEST_COMPONENTS_FOR_USE_CASE as primary tool"
     query: "Create a simple pipeline with Stream, Task, and Table"
     expected_tools:
-      - map_component
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
     validations:
       - has_json
       - json_has_nodes
       - contains:
           - "Stream"
           - "Task"
-          - "Table"
 
   - name: "tool_docs_search"
-    description: "Test documentation search via cortex_search"
+    description: "Test documentation search via SNOWFLAKE_DOCS_CKE"
     query: "What is the best practice for using Dynamic Tables in Snowflake? Show me an example architecture."
     expected_tools:
-      - cortex_search
+      - SNOWFLAKE_DOCS_CKE
     validations:
       - contains:
           - "Dynamic"
 
-  - name: "tool_best_practice"
-    description: "Test architecture best practices lookup"
-    query: "What are the best practices for building a medallion architecture? Create a diagram following them."
-    expected_tools:
-      - cortex_search
-    validations:
-      - has_json
-      - contains:
-          - "bronze"
-          - "silver"
-          - "gold"
-
   # ===========================================
-  # END-TO-END TESTS (NEW)
+  # END-TO-END TESTS
   # ===========================================
 
   - name: "e2e_full_pipeline"
     description: "Full pipeline with all flow stages"
-    query: "Create: Kafka -> Snowpipe -> Bronze DB -> Stream -> Task -> Silver DB -> dbt -> Gold DB -> Tableau"
+    query: "Create: Kafka -> Snowpipe -> Bronze Layer -> Stream -> Task -> Silver Layer -> dbt -> Gold Layer -> Tableau"
     validations:
       - has_json
       - has_mermaid
@@ -249,6 +382,8 @@ test_cases:
       - json_has_edges
       - json_has_flowstage
       - has_external_sources
+      - correct_external_source:
+          expected: "Kafka"
       - contains:
           - "Kafka"
           - "Snowpipe"
@@ -256,6 +391,8 @@ test_cases:
           - "Silver"
           - "Gold"
           - "Tableau"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
 
   - name: "e2e_internal_only"
     description: "Complete internal architecture without external sources"
@@ -267,3 +404,305 @@ test_cases:
       - json_has_edges
       - json_has_flowstage
       - no_external_sources
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # NODE COUNT VALIDATION TESTS (NEW)
+  # ===========================================
+
+  - name: "node_count_medallion"
+    description: "Medallion should have 9-12 nodes, not 15+"
+    query: "Create a medallion architecture"
+    validations:
+      - has_json
+      - json_has_nodes
+      - node_count:
+          min: 6
+          max: 12
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # DIAGRAM QUALITY TESTS (NEW)
+  # ===========================================
+
+  - name: "diagram_no_orphans"
+    description: "All nodes should be connected (no orphan nodes)"
+    query: "Create a medallion architecture with Kafka ingestion and Tableau output"
+    validations:
+      - has_json
+      - json_has_nodes
+      - json_has_edges
+      - no_orphan_nodes
+      - edges_valid
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "diagram_required_fields"
+    description: "All nodes have required fields for rendering"
+    query: "Create a simple bronze-silver-gold pipeline"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_required_fields:
+          fields:
+            - id
+            - label
+            - position
+            - flowStageOrder
+            - flowStage
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "diagram_edges_valid"
+    description: "All edges reference existing nodes"
+    query: "Build: S3 -> Snowpipe -> Bronze -> Stream -> Task -> Silver -> Gold -> PowerBI"
+    validations:
+      - has_json
+      - json_has_nodes
+      - json_has_edges
+      - edges_valid
+      - correct_external_source:
+          expected: "S3"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # AZURE BLOB TEST (MISSING COVERAGE)
+  # ===========================================
+
+  - name: "dynamic_azure_only"
+    description: "Azure request should return Azure, NOT S3 or Kafka"
+    query: "Create a data pipeline from Azure Blob Storage to Snowflake with medallion layers"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+      - correct_external_source:
+          expected: "Azure"
+          not_expected: ["S3", "AWS S3", "Kafka"]
+      - contains:
+          - "Azure"
+      - not_contains:
+          - "S3"
+          - "Kafka"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # EDGE CASE: UNKNOWN EXTERNAL SOURCE
+  # ===========================================
+
+  - name: "dynamic_gcs_fallback"
+    description: "GCS (not in COMPONENTS) should be handled gracefully"
+    query: "Create a pipeline from Google Cloud Storage to Snowflake"
+    validations:
+      - has_json
+      - json_has_nodes
+      - not_contains:
+          - "S3"
+          - "Kafka"
+          - "Azure"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # COMPLEX MULTI-SOURCE TESTS
+  # ===========================================
+
+  - name: "dynamic_all_three_sources"
+    description: "All three external sources when mentioned"
+    query: "Build a data lake that ingests from Kafka streams, S3 buckets, and Azure Blob"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+      - contains:
+          - "Kafka"
+          - "S3"
+          - "Azure"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # NEGATIVE/EDGE CASE TESTS
+  # ===========================================
+
+  - name: "source_in_middle_ignored"
+    description: "External source mentioned mid-sentence should still be detected"
+    query: "I want to build a real-time analytics pipeline, maybe using kafka for streaming, with medallion layers"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+      - correct_external_source:
+          expected: "Kafka"
+          not_expected: ["S3"]
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "plural_sources"
+    description: "Plural form 'kafka streams' should match"
+    query: "Ingest data from kafka streams into a bronze-silver-gold architecture"
+    validations:
+      - has_json
+      - correct_external_source:
+          expected: "Kafka"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "case_insensitive_source"
+    description: "Mixed case 'KAFKA' or 'kafka' should both work"
+    query: "Build a pipeline from KAFKA to Snowflake with data transformation"
+    validations:
+      - has_json
+      - correct_external_source:
+          expected: "Kafka"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # BOUNDARY TESTS - Account Boundary Nodes
+  # ===========================================
+
+  - name: "boundary_kafka_streaming"
+    id: boundary_kafka_streaming
+    description: "Kafka streaming pipeline with account boundaries"
+    query: "Show a Kafka streaming pipeline with topics flowing into Snowflake bronze layer"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+    expected_nodes:
+      - "ext_kafka"
+      - "bronze_layer"
+    expected_boundaries:
+      - "account_boundary_kafka"
+      - "account_boundary_snowflake"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "boundary_multi_cloud"
+    id: boundary_multi_cloud
+    description: "Multi-cloud data architecture with multiple account boundaries"
+    query: "Design a multi-cloud data architecture with AWS S3, Azure ADLS, and GCP GCS all feeding into Snowflake"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+    expected_boundaries:
+      - "account_boundary_aws"
+      - "account_boundary_azure"
+      - "account_boundary_gcp"
+      - "account_boundary_snowflake"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "boundary_aws_ingest"
+    id: boundary_aws_ingest
+    description: "AWS data ingestion pipeline with S3 and Snowpipe"
+    query: "Create an AWS data ingestion pipeline using S3 and Snowpipe into Snowflake staging"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+      - correct_external_source:
+          expected: "S3"
+    expected_boundaries:
+      - "account_boundary_aws"
+      - "account_boundary_snowflake"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # ICONS TESTS - Icon Resolution
+  # ===========================================
+
+  - name: "icon_kafka_component"
+    id: icon_kafka_component
+    description: "Validate Kafka component icon resolution"
+    query: "Show external Kafka sources feeding real-time data"
+    validations:
+      - has_json
+      - json_has_nodes
+      - has_external_sources
+    validate_icons: true
+    expected_component_types:
+      - "ext_kafka"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "icon_medallion_layers"
+    id: icon_medallion_layers
+    description: "Validate medallion layer icon resolution"
+    query: "Create a medallion architecture with bronze, silver, gold layers"
+    validations:
+      - has_json
+      - json_has_nodes
+      - exact_component_names:
+          valid_names:
+            - "Bronze Layer"
+            - "Silver Layer"
+            - "Gold Layer"
+    validate_icons: true
+    expected_component_types:
+      - "bronze_layer"
+      - "silver_layer"
+      - "gold_layer"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "icon_streaming_components"
+    id: icon_streaming_components
+    description: "Validate streaming component icon resolution"
+    query: "Design a CDC pipeline with streams and tasks"
+    validations:
+      - has_json
+      - json_has_nodes
+      - contains:
+          - "Stream"
+          - "Task"
+    validate_icons: true
+    expected_component_types:
+      - "stream"
+      - "task"
+      - "cdc_pipeline"
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  # ===========================================
+  # DIAGRAM QUALITY TESTS - Overall Quality
+  # ===========================================
+
+  - name: "quality_medallion_complete"
+    id: quality_medallion_complete
+    description: "Complete medallion architecture quality validation"
+    query: "Build a complete medallion architecture from source to analytics"
+    validations:
+      - has_json
+      - json_has_nodes
+      - json_has_edges
+      - json_has_flowstage
+      - no_orphan_nodes
+      - edges_valid
+    min_nodes: 5
+    require_connections: true
+    require_boundaries: true
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE
+
+  - name: "quality_real_time_pipeline"
+    id: quality_real_time_pipeline
+    description: "Real-time streaming analytics pipeline quality validation"
+    query: "Create a real-time streaming analytics pipeline"
+    validations:
+      - has_json
+      - json_has_nodes
+      - json_has_edges
+      - json_has_flowstage
+      - json_flowstage_ordered
+    min_nodes: 4
+    require_flowstage_order: true
+    expected_tools:
+      - SUGGEST_COMPONENTS_FOR_USE_CASE

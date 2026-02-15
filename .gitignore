@@ -109,6 +109,22 @@ backend/tests/agent/results/
 # Local setup helpers
 setup_user_access.sql
 
+# Cortex Code (CoCo) local config
+.cortex/
+
+# Debug/temp JSON files
+**/debug_*.json
+**/current_agent_config.json
+
+# Test results output
+test_results_*/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Agent version snapshots (local only)
+SNOWGRAM_DB_AGENTS_SNOWGRAM_AGENT/versions/
+
 
 
 

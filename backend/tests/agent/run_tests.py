@@ -1,18 +1,24 @@
 #!/usr/bin/env python3
 """
-SnowGram Agent Test Harness (Optimized)
+SnowGram Agent Test Harness (v3.0 - Truly Dynamic Architecture)
 
 Fast, modular test execution for iterative development.
 
 Usage:
     python run_tests.py                      # Run smoke tests (fast ~2min)
     python run_tests.py --all                # Run all tests
-    python run_tests.py --category flowstage # Run specific category
+    python run_tests.py --category dynamic   # Run dynamic architecture tests
+    python run_tests.py --category naming    # Run component naming validation
     python run_tests.py --cached             # Validate against cached responses (instant)
     python run_tests.py --failed             # Re-run only previously failed tests
     python run_tests.py --parallel 3         # Run 3 tests concurrently
 
-Categories: smoke, core, flowstage, tools, e2e, layout
+Categories: smoke, dynamic, naming, core, flowstage, tools, e2e, layout, validation
+
+Key validations (v3.0):
+    - correct_external_source: Verify Kafka request returns Kafka (not S3)
+    - exact_component_names: Verify "Gold Layer" not "Gold Tables"
+    - node_count: Verify diagram complexity is reasonable (6-12 nodes)
 """
 
 import argparse
@@ -23,6 +29,15 @@ import sys
 import time
 import concurrent.futures
 from dataclasses import dataclass, field
+
+# Tool name mapping: test expected names -> actual API return values
+# Cortex Agents return tool type (cortex_search, generic) not custom names
+TOOL_NAME_MAP = {
+    'SNOWFLAKE_DOCS_CKE': ['cortex_search', 'SNOWFLAKE_DOCS_CKE'],
+    'WEB_SEARCH': ['generic', 'WEB_SEARCH'],
+    'SUGGEST_COMPONENTS_FOR_USE_CASE': ['generic', 'SUGGEST_COMPONENTS_FOR_USE_CASE'],
+    'GET_ARCHITECTURE_BEST_PRACTICE': ['generic', 'GET_ARCHITECTURE_BEST_PRACTICE'],
+}
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
@@ -41,12 +56,19 @@ except ImportError:
 
 
 # Test categories for modular execution
+# Updated: Feb 15, 2026 - Added dynamic architecture tests
 CATEGORIES = {
-    'smoke': ['medallion_internal', 'iot_kafka', 'component_types'],  # ~2 min
+    'smoke': ['medallion_internal', 'dynamic_kafka_only', 'exact_names_medallion'],  # Quick validation
+    'dynamic': ['dynamic_kafka_only', 'dynamic_s3_only', 'dynamic_azure_only',
+                'dynamic_multiple_sources', 'dynamic_no_external', 'dynamic_all_three_sources'],
+    'naming': ['exact_names_medallion', 'node_count_medallion'],  # Component naming validation
+    'quality': ['diagram_no_orphans', 'diagram_required_fields', 'diagram_edges_valid'],  # NEW: Diagram quality
+    'edge_cases': ['dynamic_gcs_fallback', 'source_in_middle_ignored', 'plural_sources', 
+                   'case_insensitive_source'],  # NEW: Edge cases
     'core': ['medallion_internal', 'medallion_with_s3', 'medallion_bi', 'iot_kafka', 
              'streaming_snowpipe', 'component_types', 'dynamic_tables'],
     'flowstage': ['flowstage_all_nodes', 'flowstage_ordering'],
-    'tools': ['tool_classify_unknown', 'tool_map_known', 'tool_docs_search', 'tool_best_practice'],
+    'tools': ['tool_suggest_components', 'tool_docs_search', 'web_search_external_tool'],
     'e2e': ['e2e_full_pipeline', 'e2e_internal_only'],
     'layout': ['layout_grid'],
     'validation': ['component_recommendations', 'best_practices', 'ambiguous_request', 'complex_request'],
@@ -371,6 +393,175 @@ def validate_response(response: str, validations: list, tools_used: list = None)
                 for tool in check_params:
                     key = f'tool_called_{tool}'
                     results[key] = False  # No tools tracked
+        
+        elif check_name == 'correct_external_source':
+            # NEW: Verify correct external source appears (not substituted)
+            # This is the key validation for truly dynamic architecture
+            if check_params:
+                expected = check_params.get('expected', '')
+                not_expected = check_params.get('not_expected', [])
+                
+                # Check expected source is present
+                has_expected = expected.lower() in response.lower() if expected else True
+                results[f'has_expected_source_{expected}'] = has_expected
+                
+                # Check unwanted sources are NOT present
+                for unwanted in not_expected:
+                    key = f'no_unwanted_source_{unwanted}'
+                    results[key] = unwanted.lower() not in response.lower()
+        
+        elif check_name == 'exact_component_names':
+            # NEW: Verify exact component names are used (no hallucination)
+            # Extracts node labels from JSON and validates against allowed/disallowed names
+            if check_params:
+                valid_names = check_params.get('valid_names', [])
+                invalid_names = check_params.get('invalid_names', [])
+                
+                json_match = re.search(r'```json\s*([\s\S]*?)\s*```', response)
+                if json_match:
+                    try:
+                        data = json.loads(json_match.group(1))
+                        nodes = data.get('nodes', [])
+                        node_labels = []
+                        for node in nodes:
+                            # Get label from node or node.data
+                            label = node.get('label') or node.get('data', {}).get('label', '')
+                            if label:
+                                node_labels.append(label)
+                        
+                        # Check no invalid names appear in node labels
+                        for invalid in invalid_names:
+                            key = f'no_invalid_name_{invalid.replace(" ", "_")}'
+                            # Check if invalid name appears as a label
+                            found_invalid = any(invalid.lower() == label.lower() for label in node_labels)
+                            results[key] = not found_invalid
+                        
+                        # Optionally check valid names appear (if specified)
+                        # This is informational - we mainly care about invalid names
+                        if valid_names:
+                            found_valid = sum(1 for v in valid_names if any(v.lower() == l.lower() for l in node_labels))
+                            results['exact_names_valid_count'] = found_valid > 0
+                    except json.JSONDecodeError:
+                        results['exact_component_names_parse_error'] = False
+                else:
+                    results['exact_component_names_no_json'] = False
+        
+        elif check_name == 'node_count':
+            # NEW: Verify node count is within expected range
+            # Prevents over-complex diagrams (15+ nodes when 9 expected)
+            if check_params:
+                min_nodes = check_params.get('min', 1)
+                max_nodes = check_params.get('max', 50)
+                
+                json_match = re.search(r'```json\s*([\s\S]*?)\s*```', response)
+                if json_match:
+                    try:
+                        data = json.loads(json_match.group(1))
+                        nodes = data.get('nodes', [])
+                        node_count = len(nodes)
+                        results['node_count_in_range'] = min_nodes <= node_count <= max_nodes
+                        results['node_count_actual'] = node_count  # For debugging
+                    except json.JSONDecodeError:
+                        results['node_count_in_range'] = False
+                else:
+                    results['node_count_in_range'] = False
+        
+        elif check_name == 'no_orphan_nodes':
+            # NEW: Verify all nodes are connected (no orphans)
+            json_match = re.search(r'```json\s*([\s\S]*?)\s*```', response)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group(1))
+                    nodes = data.get('nodes', [])
+                    edges = data.get('edges', [])
+                    
+                    if not nodes:
+                        results['no_orphan_nodes'] = True  # No nodes = no orphans
+                    else:
+                        node_ids = {n.get('id') for n in nodes}
+                        connected_ids = set()
+                        for edge in edges:
+                            connected_ids.add(edge.get('source'))
+                            connected_ids.add(edge.get('target'))
+                        
+                        # Allow warehouse/compute nodes to be standalone
+                        orphans = []
+                        for node in nodes:
+                            node_id = node.get('id')
+                            node_type = node.get('componentType', '').lower()
+                            if node_id not in connected_ids and 'warehouse' not in node_type:
+                                orphans.append(node_id)
+                        
+                        results['no_orphan_nodes'] = len(orphans) == 0
+                        if orphans:
+                            results['orphan_node_ids'] = orphans[:5]  # First 5 for debugging
+                except json.JSONDecodeError:
+                    results['no_orphan_nodes'] = False
+            else:
+                results['no_orphan_nodes'] = False
+        
+        elif check_name == 'edges_valid':
+            # NEW: Verify all edges reference existing nodes
+            json_match = re.search(r'```json\s*([\s\S]*?)\s*```', response)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group(1))
+                    nodes = data.get('nodes', [])
+                    edges = data.get('edges', [])
+                    
+                    node_ids = {n.get('id') for n in nodes}
+                    invalid_edges = []
+                    for edge in edges:
+                        source = edge.get('source')
+                        target = edge.get('target')
+                        if source not in node_ids or target not in node_ids:
+                            invalid_edges.append(f"{source}->{target}")
+                    
+                    results['edges_valid'] = len(invalid_edges) == 0
+                    if invalid_edges:
+                        results['invalid_edges'] = invalid_edges[:5]
+                except json.JSONDecodeError:
+                    results['edges_valid'] = False
+            else:
+                results['edges_valid'] = False
+        
+        elif check_name == 'has_required_fields':
+            # NEW: Verify nodes have all required fields
+            required_fields = check_params.get('fields', ['id', 'label', 'position', 'flowStageOrder']) if check_params else ['id', 'label', 'position', 'flowStageOrder']
+            json_match = re.search(r'```json\s*([\s\S]*?)\s*```', response)
+            if json_match:
+                try:
+                    data = json.loads(json_match.group(1))
+                    nodes = data.get('nodes', [])
+                    
+                    if not nodes:
+                        results['has_required_fields'] = False
+                    else:
+                        missing = []
+                        for node in nodes:
+                            for field in required_fields:
+                                if field not in node and field not in node.get('data', {}):
+                                    missing.append(f"{node.get('id', 'unknown')}:{field}")
+                        
+                        results['has_required_fields'] = len(missing) == 0
+                        if missing:
+                            results['missing_fields'] = missing[:10]
+                except json.JSONDecodeError:
+                    results['has_required_fields'] = False
+            else:
+                results['has_required_fields'] = False
+        
+        elif check_name == 'tool_succeeded':
+            # NEW: CRITICAL - Verify tool actually succeeded (not just called)
+            # Detects when tools return errors but agent falls back to training
+            # This catches the SUGGEST_COMPONENTS_FOR_USE_CASE error bug!
+            if check_params:
+                tool_name = check_params.get('tool_name', '')
+                # This requires raw response data with tool_result status
+                # For now, check if "status": "error" appears near the tool name
+                tool_error_pattern = rf'"name":\s*"{tool_name}"[^}}]*"status":\s*"error"'
+                has_error = bool(re.search(tool_error_pattern, response, re.IGNORECASE | re.DOTALL))
+                results[f'tool_succeeded_{tool_name}'] = not has_error
     
     return results
 
@@ -429,8 +620,10 @@ def run_test(test_case: dict, agent_config: dict, output_dir: Path,
         if expected_tools:
             for tool in expected_tools:
                 key = f'expected_tool_{tool}'
+                # Get all aliases for this tool (handles API returning type vs name)
+                tool_aliases = TOOL_NAME_MAP.get(tool, [tool])
                 tool_was_called = any(
-                    tool.lower() in t.lower() 
+                    any(alias.lower() in t.lower() for alias in tool_aliases)
                     for t in (result.tools_used or [])
                 )
                 result.validation_results[key] = tool_was_called

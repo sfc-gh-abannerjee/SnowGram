@@ -1,208 +1,222 @@
 # AI-Powered Dynamic Diagram Generation Architecture
 
-## Implementation Status: ✅ Phase 1 Complete
+## Implementation Status: ✅ Phase 4 Complete - Production Ready
 
-### Completed
-- [x] Created CLASSIFY_COMPONENT UDF using AI_COMPLETE
+### Phase 4: Production Hardening (2026-02-15)
+- [x] **17 frontend bugs fixed** - Stale closures, race conditions, SVG export
+- [x] **8 npm vulnerabilities resolved** - All HIGH severity eliminated
+- [x] **Dependency upgrades** - Next.js 15, mermaid 11, ESLint 9
+- [x] **Dead code removal** - ~400 LOC removed
+- [x] **Documentation** - CHANGELOG, BUG_AUDIT, DEPENDENCIES docs added
+
+### Phase 3: Truly Dynamic Architecture
+- [x] **AI-powered entity extraction** - No hardcoded external source patterns
+- [x] **Dynamic component matching** - Matches against COMPONENTS table automatically
+- [x] **Web search integration** - WEB_SEARCH UDF for external tool documentation
+- [x] **Expanded learning cache** - 131+ components in KNOWN_COMPONENT_CLASSIFICATIONS
+- [x] **Enhanced agent instructions** - Exact component naming, linear layout rules
+
+### Phase 2: Completed
+- [x] Created CLASSIFY_COMPONENT UDF using CORTEX.COMPLETE
 - [x] Added ELK.js package to frontend
 - [x] Created elkLayout.ts with layered layout algorithm
-- [x] Integrated ELK into App.tsx parseMermaidAndCreateDiagram
-- [x] Fixed pickHandle logic (magnitude comparison vs absolute threshold)
-- [x] Build passes successfully
+- [x] Agent returns flowStage/flowStageOrder metadata in every node
+- [x] End-to-end testing with test harness
 
 ### Pending
-- [ ] Update agent instructions to call CLASSIFY_COMPONENT for unknown components
-- [ ] Add flowStage metadata to agent response
-- [ ] End-to-end testing with real prompts
-- [ ] Optimize AI classification latency (caching)
+- [ ] Performance monitoring for LLM latency
+- [ ] Auto-learning feedback loop from production usage
 
 ---
 
 ## Overview
 
-This document describes the architecture for making SnowGram intelligently handle ANY tool, service, or component mentioned by users - without requiring code changes or manual registry updates.
+SnowGram is a **truly dynamic** architecture diagram generator. The key principle: **No hardcoded patterns** for external sources or component recognition.
 
-## Problem Statement
+## Architecture Evolution
 
-The current SnowGram implementation has fundamental limitations:
-1. **Hardcoded component positions** - Medallion layout expects specific IDs (bronze_db, silver_db)
-2. **Limited tool support** - Only Tableau and Streamlit are handled; PowerBI, Looker, etc. fail
-3. **Discards unknown components** - "Extras" are thrown away as hallucinations
-4. **Pixel-based edge handles** - Creates diagonal/kinked edges
+### ❌ Old Approach (Hardcoded)
+```sql
+-- Anti-pattern: Hardcoded external source detection
+CASE WHEN LOWER(user_description) LIKE '%kafka%' THEN TRUE END AS wants_kafka
+CASE WHEN LOWER(user_description) LIKE '%s3%' THEN TRUE END AS wants_s3
+-- Every new source required code changes!
+```
 
-**FDE Requirement**: Handle ANY component dynamically for diverse customer demos.
+### ✅ New Approach (AI-Powered Dynamic)
+```
+User Request → AI Entity Extraction → Dynamic COMPONENTS Matching
+                     ↓
+              ["kafka", "s3"]
+                     ↓
+              SELECT * FROM COMPONENTS WHERE type_category = 'external'
+              AND (name LIKE '%kafka%' OR name LIKE '%s3%')
+```
 
-## Solution Architecture
+**Adding a new external source = just add a row to COMPONENTS table**
 
-### Three-Layer Approach
+## Three-Layer Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│  Layer 1: AI-POWERED COMPONENT CLASSIFICATION (Snowflake UDF)          │
-│  - Uses AI_COMPLETE with structured output                              │
-│  - Classifies ANY component into data flow stages                       │
-│  - Returns: flowStage, flowStageOrder, flowTier, suggestedIcon         │
+│  Layer 1: AI-POWERED ENTITY EXTRACTION & COMPONENT SUGGESTION          │
+│  - SUGGEST_COMPONENTS_FOR_USE_CASE UDF                                 │
+│  - AI extracts external sources mentioned by user                      │
+│  - Dynamic matching against COMPONENTS table (no hardcoding!)          │
+│  - Returns: component_id, component_name, confidence_score, reasoning  │
 └─────────────────────────────────────────────────────────────────────────┘
                                      ↓
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Layer 2: CORTEX AGENT (Enhanced)                                       │
-│  - Extracts component mentions from user prompt                         │
-│  - Calls CLASSIFY_COMPONENT for each unknown component                  │
-│  - Returns nodes with enriched metadata                                 │
+│  - Uses SUGGEST_COMPONENTS_FOR_USE_CASE as primary tool                │
+│  - WEB_SEARCH for external tool documentation                          │
+│  - SNOWFLAKE_DOCS_CKE for official Snowflake docs                      │
+│  - Returns ReactFlow-ready JSON with exact component names             │
 └─────────────────────────────────────────────────────────────────────────┘
                                      ↓
 ┌─────────────────────────────────────────────────────────────────────────┐
 │  Layer 3: ELK.js LAYOUT ENGINE (Frontend)                               │
-│  - Professional graph layout algorithm                                   │
-│  - Uses flowStage as layer assignment                                   │
-│  - Automatic edge routing and port (handle) assignment                  │
+│  - Uses flowStageOrder for automatic layered layout                    │
+│  - Orthogonal edge routing                                             │
+│  - Clean left-to-right data flow                                       │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Component Classification
+## Dynamic Entity Extraction
 
-### Flow Stages (Data Pipeline Layers)
+The `SUGGEST_COMPONENTS_FOR_USE_CASE` UDF uses AI to extract external sources:
+
+```sql
+-- Step 1: AI extracts entities from user request
+SELECT SNOWFLAKE.CORTEX.COMPLETE('claude-sonnet-4-5',
+  'Extract external sources from: "Build medallion with kafka and S3"
+   Return JSON array: ["kafka", "s3"]'
+) AS extracted_sources;
+
+-- Step 2: Dynamic matching against COMPONENTS table
+SELECT * FROM COMPONENTS c
+WHERE c.type_category = 'external'
+AND EXISTS (
+  SELECT 1 FROM LATERAL FLATTEN(extracted_sources) f
+  WHERE LOWER(c.component_name) LIKE '%' || f.value || '%'
+);
+```
+
+## Flow Stages (Data Pipeline Layers)
 
 | Order | Stage     | Description                          | Examples                           |
 |-------|-----------|--------------------------------------|------------------------------------|
 | 0     | source    | External data origins                | Kafka, S3, Azure Blob, APIs       |
 | 1     | ingest    | Data ingestion mechanisms            | Snowpipe, Fivetran, Airbyte       |
-| 2     | raw       | Raw/landing data storage             | Bronze tables, landing schemas     |
-| 3     | transform | Data transformation                  | Silver layer, dbt, Spark          |
-| 4     | refined   | Business-ready data                  | Gold layer, data marts            |
-| 5     | serve     | Data serving layer                   | Warehouses, views, APIs           |
-| 6     | consume   | Data consumption                     | PowerBI, Tableau, Looker, apps    |
+| 2     | raw       | Raw/landing data storage             | Bronze Layer                       |
+| 3     | transform | Data transformation                  | CDC Stream, Transform Task, Silver Layer |
+| 4     | refined   | Business-ready data                  | Gold Layer                         |
+| 5     | serve     | Data serving layer                   | Analytics Views, Warehouse        |
+| 6     | consume   | Data consumption                     | PowerBI, Tableau, Looker          |
 
-### Flow Tiers
+## Key UDFs
 
-| Tier      | Description                    | Examples                          |
-|-----------|--------------------------------|-----------------------------------|
-| external  | Outside Snowflake              | S3, Kafka, PowerBI                |
-| snowflake | Native Snowflake components    | Tables, Streams, Warehouses       |
-| hybrid    | Operates across boundaries     | Snowpipe, external functions      |
-
-## Implementation Details
-
-### 1. Snowflake UDF: CLASSIFY_COMPONENT
+### SUGGEST_COMPONENTS_FOR_USE_CASE
 
 ```sql
-CREATE OR REPLACE FUNCTION SNOWGRAM_DB.CORE.CLASSIFY_COMPONENT(component_name VARCHAR)
-RETURNS OBJECT
-AS
-$$
-SELECT AI_COMPLETE(
-  model => 'claude-sonnet-4',
-  prompt => 'Classify "' || component_name || '" for a data architecture diagram.
-    
-Determine where this component fits in a data pipeline:
-- source: External data origins (Kafka, S3, databases)
-- ingest: Data loading mechanisms (Snowpipe, ETL tools)
-- raw: Raw data storage (bronze/landing layer)
-- transform: Data transformation (silver layer, processing)
-- refined: Business-ready data (gold layer, marts)
-- serve: Data serving (warehouses, views)
-- consume: End-user tools (BI, dashboards, reports)',
-  response_format => TYPE OBJECT(
-    flow_stage VARCHAR,
-    flow_stage_order NUMBER,
-    flow_tier VARCHAR,
-    component_category VARCHAR,
-    typical_upstream ARRAY(VARCHAR),
-    typical_downstream ARRAY(VARCHAR),
-    suggested_icon VARCHAR,
-    display_color VARCHAR
-  )
-)
-$$;
+SELECT * FROM TABLE(SNOWGRAM_DB.CORE.SUGGEST_COMPONENTS_FOR_USE_CASE(
+  'medallion architecture connected to kafka stream'
+));
+-- Returns: Kafka, Bronze Layer, CDC Stream, Transform Task, Silver Layer, Gold Layer, etc.
+-- S3 is NOT returned because user didn't mention it (dynamic filtering!)
 ```
 
-### 2. ELK.js Configuration
+### WEB_SEARCH (External Tool Documentation)
 
-```typescript
-const elkOptions = {
-  'elk.algorithm': 'layered',
-  'elk.direction': 'RIGHT',
-  'elk.layered.spacing.nodeNodeBetweenLayers': '200',
-  'elk.layered.spacing.nodeNode': '80',
-  'elk.edgeRouting': 'ORTHOGONAL',
-  'elk.portConstraints': 'FIXED_SIDE',
-  'elk.layered.crossingMinimization.strategy': 'LAYER_SWEEP'
-};
-```
-
-### 3. Port-to-Handle Mapping
-
-| ELK Port Side | ReactFlow Handle   |
-|---------------|--------------------|
-| EAST          | right-source       |
-| WEST          | left-target        |
-| SOUTH         | bottom-source      |
-| NORTH         | top-target         |
-
-## Testing Strategy
-
-### Test 1: Component Classification Accuracy
 ```sql
--- Test various component types
-SELECT CLASSIFY_COMPONENT('PowerBI');
-SELECT CLASSIFY_COMPONENT('Kafka');
-SELECT CLASSIFY_COMPONENT('Fivetran');
-SELECT CLASSIFY_COMPONENT('dbt');
-SELECT CLASSIFY_COMPONENT('ThoughtSpot');
-SELECT CLASSIFY_COMPONENT('Azure Data Lake');
+SELECT * FROM TABLE(SNOWGRAM_DB.CORE.WEB_SEARCH('dbt medallion architecture best practices'));
+-- Returns: title, snippet, url from DuckDuckGo
 ```
 
-**Expected Results**:
-- PowerBI: flowStage='consume', flowStageOrder=6
-- Kafka: flowStage='source', flowStageOrder=0
-- Fivetran: flowStage='ingest', flowStageOrder=1
-- dbt: flowStage='transform', flowStageOrder=3
+### CLASSIFY_AND_CACHE (Auto-Learning)
 
-### Test 2: ELK Layout Quality
-- Input: Medallion architecture nodes with correct flowStageOrder
-- Expected: Clean left-to-right flow, no overlapping nodes
+```sql
+SELECT SNOWGRAM_DB.CORE.CLASSIFY_AND_CACHE('Databricks');
+-- Classifies the component AND adds to KNOWN_COMPONENT_CLASSIFICATIONS cache
+```
 
-### Test 3: Edge Handle Assignment
-- Verify horizontal edges use right→left handles
-- Verify vertical edges use bottom→top handles
-- Verify no diagonal kinks in rendered diagram
+## Agent Instructions - Key Sections
 
-### Test 4: End-to-End Integration
-User prompt: "Build a medallion architecture with Kafka ingestion and PowerBI reports"
-Expected:
-1. Agent extracts: Kafka, medallion components, PowerBI
-2. Classification assigns: Kafka=source(0), Bronze=raw(2), PowerBI=consume(6)
-3. ELK positions nodes in correct layer order
-4. Rendered diagram shows clean flow with no kinks
+### Component Naming (Critical)
+```yaml
+**CRITICAL - USE EXACT COMPONENT NAMES:**
+Use ONLY these exact names from SUGGEST_COMPONENTS_FOR_USE_CASE:
+- "Bronze Layer" (NOT "Bronze Tables" or "Bronze")
+- "Silver Layer" (NOT "Silver Tables" or "Silver")  
+- "Gold Layer" (NOT "Gold Tables" or "Gold")
+- "CDC Stream" (NOT "Stream" or "Change Stream")
 
-## Files to Create/Modify
+NEVER create component names that don't exist in SUGGEST_COMPONENTS_FOR_USE_CASE output.
+```
 
-### New Files
-1. `backend/sql/classify_component_udf.sql` - AI classification UDF
-2. `frontend/src/lib/elkLayout.ts` - ELK.js integration
+### External Source Handling
+```yaml
+**EXTERNAL SOURCES:**
+Only include external sources that user EXPLICITLY mentions:
+- "kafka" → Use "Kafka" component (NOT S3)
+- "s3" or "aws" → Use "AWS S3" component
+- "azure" → Use "Azure Blob" component
 
-### Modified Files
-1. `backend/agent/update_agent_instructions.py` - Add classification tool usage
-2. `frontend/src/App.tsx` - Replace hardcoded layouts with ELK
-3. `frontend/package.json` - Add elkjs dependency
-4. `frontend/src/components/iconMap.ts` - Intelligent fallbacks
+Do NOT substitute one external source for another.
+```
+
+## Database Schema
+
+### COMPONENTS Table (Core Definitions)
+| Column | Type | Description |
+|--------|------|-------------|
+| component_id | VARCHAR | Unique ID (e.g., ext_kafka) |
+| component_name | VARCHAR | Display name (e.g., Kafka) |
+| component_type | VARCHAR | Type (e.g., KAFKA_TOPIC) |
+| type_category | VARCHAR | Category (external, medallion, storage) |
+| description | VARCHAR | Component description |
+
+### KNOWN_COMPONENT_CLASSIFICATIONS (Learning Cache)
+| Column | Type | Description |
+|--------|------|-------------|
+| user_term | VARCHAR | User input term |
+| component_type | VARCHAR | Resolved component type |
+| classification | VARIANT | Full AI classification result |
+
+## Testing
+
+### Test Component Suggestions
+```sql
+-- Should include Kafka, exclude S3
+SELECT COMPONENT_ID, COMPONENT_NAME 
+FROM TABLE(SNOWGRAM_DB.CORE.SUGGEST_COMPONENTS_FOR_USE_CASE('medallion with kafka'));
+
+-- Should include both
+SELECT COMPONENT_ID, COMPONENT_NAME 
+FROM TABLE(SNOWGRAM_DB.CORE.SUGGEST_COMPONENTS_FOR_USE_CASE('pipeline from S3 and Kafka'));
+
+-- Should include neither
+SELECT COMPONENT_ID, COMPONENT_NAME 
+FROM TABLE(SNOWGRAM_DB.CORE.SUGGEST_COMPONENTS_FOR_USE_CASE('simple medallion'));
+```
+
+### Test Harness
+```bash
+cd backend/tests/agent
+python run_tests.py           # Smoke tests (~2 min)
+python run_tests.py --all     # Full suite (~13 min)
+```
 
 ## Success Criteria
 
-1. **Any BI Tool**: PowerBI, Looker, Metabase, ThoughtSpot all position correctly
-2. **Any Data Source**: Kafka, Azure Blob, GCS, Fivetran all position correctly
-3. **Clean Edges**: No diagonal kinks, proper orthogonal routing
-4. **Zero Code Changes**: New tools work automatically via AI classification
-5. **Manual Mode Preserved**: Users can still manually adjust diagrams
+1. **Dynamic External Sources**: Any source in COMPONENTS table works without code changes
+2. **Exact Component Names**: Agent uses names from SUGGEST_COMPONENTS, not hallucinated variants
+3. **Linear Layout**: Clean left-to-right flow using flowStageOrder
+4. **No Source Substitution**: Kafka request shows Kafka, not S3
+5. **Auto-Learning**: New components can be classified and cached automatically
 
-## Rollback Plan
+## Files Reference
 
-If issues arise:
-1. ELK.js can be disabled via feature flag
-2. Fall back to existing layoutMedallionDeterministic
-3. AI classification cached to reduce latency
-
----
-
-*Last Updated: February 2026*
-*Author: Cortex Code (FDE Architecture Session)*
+| File | Purpose |
+|------|---------|
+| `agent_spec_v4.yam                                                                                                                                                                                                                                                                                                                           

@@ -248,16 +248,55 @@ CALL VERIFY_COMPONENT('Snowflake Polaris');
 
 ---
 
-## Current State (2026-02-13 22:30 UTC)
+## Agent Integration ✅ (2026-02-13)
+
+The SNOWGRAM_AGENT (v4) now includes `classify_component` as a tool, enabling automatic flowStage metadata in diagram responses.
+
+### Agent Tools for Component Lookup
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `map_component` | Static synonym lookup | Known Snowflake components |
+| `query_component_map_sv` | Semantic view search | Pattern matching |
+| `classify_component` | **AI classification** | Unknown components |
+
+### Response Format with flowStage
+
+Every node in the agent response now includes layout metadata:
+
+```json
+{
+  "id": "s3_bucket",
+  "label": "S3 Data Lake",
+  "componentType": "S3",
+  "flowStage": "source",
+  "flowStageOrder": 0,
+  "position": {"x": 100, "y": 180}
+}
+```
+
+### Test Results (Agent v4)
+
+| Test | Status | classify_component Calls |
+|------|--------|--------------------------|
+| medallion_internal | ✅ PASS | 0 (all cached via map_component) |
+| medallion_with_s3 | ✅ PASS | 1 (S3 classified) |
+| medallion_bi | ✅ PASS | 0 (no external tools) |
+
+---
+
+## Current State (2026-02-15)
 
 | Metric | Value |
 |--------|-------|
-| **Cache Size** | 75 components |
+| **Cache Size** | 75+ components |
 | Pre-loaded (verified) | 70 |
-| Auto-learned (pending) | 5 |
+| Auto-learned (pending) | 5+ |
 | **Default Model** | openai-gpt-5.1 |
 | **Accuracy** | 92.89% (LLM), 100% (cache) |
 | **Architecture** | Cache-first with auto-learning |
+| **Agent Version** | v4 (with classify_component) |
+| **Frontend Version** | 1.1.0 (17 bugs fixed, 0 vulnerabilities) |
 
 ### Integration Test Results ✅
 
