@@ -240,6 +240,29 @@ docker-compose -f docker-compose.test.yml up
 - `MULTI_CLOUD_DATA_MESH`
 - `SECURE_DATA_SHARING_HUB`
 
+## 🔒 Security
+
+All HIGH severity npm vulnerabilities have been addressed. The frontend uses npm overrides for transitive dependency fixes:
+
+| Override | Version | Reason |
+|----------|---------|--------|
+| `lodash-es` | 4.17.23 | Prototype pollution fix |
+| `nanoid` | ^5.0.9 | Predictable ID generation fix |
+
+See `frontend/DEPENDENCIES.md` for full details on dependency management.
+
+**Requirements:**
+- Node.js 18.0.0+ (20.x LTS recommended)
+
+## 📦 Key Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| Next.js | 15.5.12 | React framework |
+| React | 18.2.0 | UI library |
+| mermaid | 11.12.2 | Diagram syntax |
+| ESLint | 9.x | Code quality |
+
 ## 🤝 Contributing
 
 1. Create a feature branch: `git checkout -b feature/new-component-block`

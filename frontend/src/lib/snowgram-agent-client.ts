@@ -57,134 +57,53 @@ export interface Citation {
 // 2. Agent System Prompt (Comprehensive)
 // ==================================================================
 
-const SNOWGRAM_SYSTEM_PROMPT = `You are the SnowGram Architecture Agent - an expert Snowflake architect that generates complete, professional architecture diagrams.
+// ==================================================================
+// SYSTEM PROMPT: Let the agent USE ITS TOOLS - do NOT override with hardcoded templates
+// The agent has access to SUGGEST_COMPONENTS_JSON tool that returns proper components
+// based on use case. We just need to guide the OUTPUT FORMAT.
+// ==================================================================
+const SNOWGRAM_SYSTEM_PROMPT = `You are the SnowGram Architecture Agent. Generate Snowflake architecture diagrams.
 
-**AVAILABLE TOOLS & DATA SOURCES:**
-- Query SNOWFLAKE_DOCUMENTATION via Cortex Knowledge Extension (CKE) for official Snowflake best practices
-- Use semantic view SNOWGRAM_DB.CORE.COMPONENT_MAP_SV to map user terminology to correct componentTypes
-- Call UDF SNOWGRAM_DB.CORE.MAP_COMPONENT(word) for direct component lookups
-- ALWAYS validate component names against the semantic model before using them
+**CRITICAL: USE YOUR TOOLS FIRST**
+Call SUGGEST_COMPONENTS_FOR_USE_CASE to get the correct components, then use EXACTLY what it returns.
 
-**COMPONENT LIBRARY (150+ available components):**
-Core: Database, Schema, Table, View, Warehouse, Task, Stream, Snowpipe
-Warehouses: Virtual WH, Snowpark WH, Data WH, Adaptive WH, Gen2 WH
-Tables: Table, Dynamic Table, Iceberg Table, Hybrid Table, External Table, Directory Table
-Views: View, Materialized View, Secure View
-Functions: Stored Proc, UDF, External Function, Aggregate Function, Window Function
-Data Sources: S3, Kafka, Hadoop, Spark, IoT, API, External Stage, Internal Stage
-ML & AI: Cortex, Cortex Search, Cortex Analyst, ML Model, Notebook, Document AI
-Apps: Snowpark Container (SPCS), Streamlit, Native App, Marketplace
-Workloads: Data Warehouse, Data Lake, Data Engineering, AI/ML, Cybersecurity, Unistore
-Analytics: Analytics, Data Analytics, Embedded Analytics, Geospatial Analytics
-Data Sharing: Share, Private Exchange, Public Exchange
-Security: Policy, Masking Policy, Row Access Policy, Network Policy, Horizon
-Roles: Role, ACCOUNTADMIN, SECURITYADMIN, SYSADMIN, USERADMIN
-Users: User, Users, Access, Tag
-DR: Failover Group, Backup
-File Formats: CSV, JSON, Parquet, Avro, XML, Text, Excel, Image, Video, Audio
-Account Boundaries: Snowflake Account, AWS Account, Azure Subscription, GCP Project
+**EXACT COMPONENT NAMES (MANDATORY):**
+- "Bronze Layer" (NOT "Bronze Tables" or "Bronze")
+- "Silver Layer" (NOT "Silver Tables" or "Silver")  
+- "Gold Layer" (NOT "Gold Tables" or "Gold")
+- "CDC Stream" (NOT "Stream" or "Change Stream")
+- "Transform Task" (NOT "Task" or "ETL Task")
+- "Analytics Views" (NOT "Views" or "Gold Views")
 
-**QUALITY REQUIREMENTS:**
-1. **Completeness**: Include ALL components needed for the pattern
-2. **Connectivity**: Every node MUST connect to at least one other node (no orphans)
-3. **Flow**: Clear left-to-right OR top-down data flow
-4. **Naming**: Use descriptive labels (e.g., "User Data DB" not "DB1")
-5. **Grouping**: Use account boundaries for cross-cloud architectures
-6. **Real-world**: Match production patterns, not toy examples
+NEVER invent component names. Use ONLY what SUGGEST_COMPONENTS_FOR_USE_CASE returns.
 
-**ARCHITECTURE PATTERNS:**
-
-**Medallion (Bronze/Silver/Gold):**
-- MUST include: S3 → Snowpipe → Bronze DB/Schema/Tables → Stream → Silver DB/Schema/Tables → Stream → Gold DB/Schema/Tables → Analytics Views
-- Total: 14+ nodes, 13+ edges
-
-**IoT:**
-- MUST include: IoT Devices → Kafka/Snowpipe Streaming → Raw Tables → Stream → Enrichment Task → Aggregated Tables → Real-time Dashboard
-- Add: Time-series tables, windowed aggregations
-- Total: 10+ nodes, 9+ edges
-
-**AI/ML Pipeline:**
-- MUST include: Raw Data → Feature Store Tables → Snowpark Notebook → ML Model → Model Registry → Inference UDF → Application
-- Add: Cortex LLM calls, vector embeddings
-- Total: 10+ nodes, 9+ edges
-
-**CDC (Change Data Capture):**
-- MUST include: Source DB → Stream → Task → Transform → Target Tables
-- Add: Multiple streams for different tables
-- Total: 8+ nodes, 7+ edges
-
-**Data Sharing:**
-- MUST include: Provider DB → Share → Consumer Account → Secure Views
-- Add: Data governance (masking, row access policies)
-- Total: 8+ nodes, 6+ edges
-
-**Real-time Analytics:**
-- MUST include: Event Source → Snowpipe Streaming → Dynamic Tables → Materialized Views → Streamlit Dashboard
-- Add: Hybrid tables for low-latency writes
-- Total: 8+ nodes, 7+ edges
-
-**OUTPUT FORMAT (ALWAYS RETURN BOTH):**
+**OUTPUT FORMAT:**
 
 1. **SnowGram JSON** (inside \`\`\`json\`\`\` block):
 {
   "nodes": [
-    { "id": "unique_id", "label": "Descriptive Name", "componentType": "Database" },
-    ...
+    { 
+      "id": "unique_id", 
+      "label": "EXACT name from tool",
+      "componentType": "component_type",
+      "flowStage": "source|ingest|raw|transform|refined|serve|consume",
+      "flowStageOrder": 0-6,
+      "position": {"x": number, "y": number}
+    }
   ],
   "edges": [
-    { "source": "id1", "target": "id2" },
-    ...
+    { "source": "source_id", "target": "target_id", "sourceHandle": "right-source", "targetHandle": "left-target" }
   ]
 }
 
-2. **Mermaid Fallback** (inside \`\`\`mermaid\`\`\` block):
-flowchart LR
-    node1[Label 1] --> node2[Label 2]
+2. **Mermaid Fallback** (inside \`\`\`mermaid\`\`\` block)
 
-VALIDATION CHECKLIST (RUN BEFORE RESPONDING):
-- All nodes have unique IDs and valid componentTypes from the SnowGram catalog/semantic view
-- All edges reference valid node IDs; no orphan nodes
-- Clear L->R / top-down flow; minimum pattern node/edge counts met
-- Boundaries present for clouds; boundary nodes named account_boundary_* and only one per provider
-- Medallion: S3->Snowpipe->Bronze DB/Schema/Tables->Stream->Silver DB/Schema/Tables->Stream->Gold DB/Schema/Tables->Analytics Views (+ warehouse/reporting if present)
+**LAYOUT - LEFT TO RIGHT:**
+- flowStageOrder: source(0) → ingest(1) → raw(2) → transform(3) → refined(4) → serve(5) → consume(6)
+- Position x: 100 + (flowStageOrder * 200), y: 180 for main flow
 
-CRITICAL RULES:
-- NEVER omit intermediate components (schemas between DBs and tables)
-- NEVER return orphan nodes or edges to missing IDs
-- ALWAYS remap boundaries to account_boundary_snowflake / account_boundary_aws / account_boundary_azure / account_boundary_gcp
-- ALWAYS validate componentTypes via semantic view/UDF/CKE before sending
-- ALWAYS provide accurate, production-ready architectures based on Snowflake documentation
-- NEVER place icons/text inside account boundary shapes; boundaries are containers only
-
-EXAMPLE MERMAID THAT RENDERS CORRECTLY IN SNOWGRAM (MEDALLION):
-flowchart LR
-  account_boundary_aws[AWS Account]
-  account_boundary_snowflake[Snowflake Account]
-  s3[S3 Data Lake]
-  pipe1[Snowpipe]
-  bronze_db[Bronze DB]
-  bronze_schema[Bronze Schema]
-  bronze_tables[Bronze Tables]
-  stream_bronze_silver[Bronze→Silver Stream]
-  silver_db[Silver DB]
-  silver_schema[Silver Schema]
-  silver_tables[Silver Tables]
-  stream_silver_gold[Silver→Gold Stream]
-  gold_db[Gold DB]
-  gold_schema[Gold Schema]
-  gold_tables[Gold Tables]
-  analytics_views[Analytics Views]
-  compute_wh[Compute Warehouse]
-  bronze_tables --> stream_bronze_silver
-  stream_bronze_silver --> silver_db
-  silver_tables --> stream_silver_gold
-  stream_silver_gold --> gold_db
-  gold_tables --> analytics_views
-  analytics_views --> compute_wh
-  s3 --> pipe1 --> bronze_db --> bronze_schema --> bronze_tables
-  silver_db --> silver_schema --> silver_tables
-  gold_db --> gold_schema --> gold_tables
-RETURN BOTH JSON spec and mermaid.`;
+**MEDALLION PATTERN:**
+[Source] → Stage → Bronze Layer → CDC Stream → Transform Task → Silver Layer → CDC Stream → Transform Task → Gold Layer → Analytics Views`;
 
 // ==================================================================
 // 3. Agent Client (Enhanced Implementation)
@@ -244,7 +163,7 @@ Begin your response with the JSON spec, then provide the Mermaid code.`;
         agent: {
           name: 'SNOWGRAM_AGENT',
           database: 'SNOWGRAM_DB',
-          schema: 'CORE',
+          schema: 'AGENTS',
         },
         thread_id,
         parent_message_id: 0,
@@ -353,7 +272,14 @@ Begin your response with the JSON spec, then provide the Mermaid code.`;
     try {
       const parsed = JSON.parse(jsonMatch[1]);
       if (parsed?.nodes && parsed?.edges) {
-        console.log('[SnowgramAgent] Extracted spec:', { nodeCount: parsed.nodes.length, edgeCount: parsed.edges.length });
+        // Debug: Log node positions to verify they're being extracted
+        const nodesWithPositions = parsed.nodes.filter((n: any) => n.position?.x !== undefined);
+        console.log('[SnowgramAgent] Extracted spec:', { 
+          nodeCount: parsed.nodes.length, 
+          edgeCount: parsed.edges.length,
+          nodesWithPositions: nodesWithPositions.length,
+          sampleNode: parsed.nodes[0] // Log first node to verify structure
+        });
         return {
           nodes: parsed.nodes,
           edges: parsed.edges,
@@ -473,130 +399,4 @@ Begin your response with the JSON spec, then provide the Mermaid code.`;
 
     return this.parseResponse(fullResponse);
   }
-}
-
-// ==================================================================
-// 4. React Hooks (Easy Integration)
-// ==================================================================
-
-import { useState, useCallback } from 'react';
-
-export function useSnowgramAgent(pat: string) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AgentResponse | null>(null);
-  
-  const client = new SnowgramAgentClient(pat);
-
-  const generate = useCallback(async (query: string) => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await client.generateArchitecture(query);
-      setResult(response);
-      return response;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      setError(errorMessage);
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, [client]);
-
-  return { generate, loading, error, result };
-}
-
-// ==================================================================
-// 5. Example Queries for Testing
-// ==================================================================
-
-export const EXAMPLE_QUERIES = [
-  {
-    category: "Medallion Architecture",
-    examples: [
-      "Design a Snowflake medallion architecture fed from an S3 data lake with Bronze, Silver, Gold layers",
-      "Create a medallion pipeline with CDC streams between layers",
-      "Build a lakehouse architecture with Iceberg tables in each medallion layer"
-    ]
-  },
-  {
-    category: "Real-time Streaming",
-    examples: [
-      "Design a real-time IoT data pipeline with Kafka and Snowpipe Streaming",
-      "Create a CDC pipeline using Streams and Tasks for real-time replication",
-      "Build a streaming analytics platform with Dynamic Tables and sub-second latency"
-    ]
-  },
-  {
-    category: "Batch Processing",
-    examples: [
-      "Design a batch ETL pipeline loading data from S3 into data warehouse",
-      "Create a nightly data processing workflow with incremental loads and Tasks",
-      "Build a data lake architecture with partitioned Iceberg tables"
-    ]
-  },
-  {
-    category: "Machine Learning",
-    examples: [
-      "Design an ML training pipeline with Snowpark, feature store, and Model Registry",
-      "Create a feature engineering pipeline for real-time predictions with Cortex",
-      "Build an ML inference architecture using UDFs and Snowpark Container Services"
-    ]
-  },
-  {
-    category: "Data Sharing",
-    examples: [
-      "Design a secure data sharing architecture with external partners using Shares",
-      "Create a data marketplace listing with reader accounts and governance",
-      "Build a data mesh with cross-account sharing and row-level security"
-    ]
-  }
-];
-
-// ==================================================================
-// 6. Utilities
-// ==================================================================
-
-export async function renderMermaidToSvg(mermaidCode: string): Promise<string> {
-  const mermaidLib = await import('mermaid');
-  const render =
-    (mermaidLib as any).render ||
-    (mermaidLib as any).default?.render ||
-    (mermaidLib as any).mermaidAPI?.render;
-
-  if (!render) {
-    throw new Error('Mermaid render function not available');
-  }
-
-  const { svg } = await render('snowgram-mermaid', mermaidCode);
-  return svg;
-}
-
-export function downloadFile(filename: string, content: string, type = 'text/plain') {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-export async function testAgentConnection(pat: string): Promise<boolean> {
-  try {
-    const client = new SnowgramAgentClient(pat);
-    await client.generateArchitecture('Ping');
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export async function benchmarkAgent(pat: string, query: string): Promise<number> {
-  const start = performance.now();
-  const client = new SnowgramAgentClient(pat);
-  await client.generateArchitecture(query);
-  return performance.now() - start;
 }
