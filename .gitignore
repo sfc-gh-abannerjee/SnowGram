@@ -10,8 +10,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -109,8 +109,10 @@ backend/tests/agent/results/
 # Local setup helpers
 setup_user_access.sql
 
-# Cortex Code (CoCo) local config
-.cortex/
+# Cortex Code (CoCo) - track skills, ignore user-specific files
+.cortex/MEMORY.md
+.cortex/.DS_Store
+.cortex/skills/.DS_Store
 
 # Debug/temp JSON files
 **/debug_*.json
