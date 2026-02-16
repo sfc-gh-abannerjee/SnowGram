@@ -38,7 +38,7 @@ const KEYWORD_MAP: KeywordMapping[] = [
   { keywords: ['cdc_stream', 'change_stream'],                                            iconKey: 'stream' },
   { keywords: ['analytics_views', 'analytics_view'],                                      iconKey: 'analytics' },
   { keywords: ['bronze_layer'],                                                           iconKey: 'workload_data_lake' },
-  { keywords: ['silver_layer'],                                                           iconKey: 'workload_data_eng' },
+  { keywords: ['silver_layer'],                                                           iconKey: 'database' },
   { keywords: ['gold_layer'],                                                             iconKey: 'workload_data_warehouse' },
 
   // ── External Data Sources ─────────────────────────────────────────────
@@ -113,7 +113,7 @@ const KEYWORD_MAP: KeywordMapping[] = [
 
   // ── Medallion Architecture ────────────────────────────────────────────
   { keywords: ['bronze', 'raw', 'landing'],                                              iconKey: 'workload_data_lake' },
-  { keywords: ['silver', 'clean', 'transform', 'conform'],                               iconKey: 'workload_data_eng' },
+  { keywords: ['silver', 'clean', 'conform'],                                              iconKey: 'database' },
   { keywords: ['gold', 'curated', 'mart', 'business', 'presentation'],                   iconKey: 'workload_data_warehouse' },
 
   // ── File Formats ──────────────────────────────────────────────────────
@@ -205,8 +205,11 @@ export function resolveIcon(
   const raw = componentType || label || '';
   if (!raw) {
     // Nothing to match – use stage fallback or generic
-    if (flowStageOrder != null && STAGE_DEFAULTS[flowStageOrder]) {
-      return SNOWFLAKE_ICONS[STAGE_DEFAULTS[flowStageOrder]];
+    if (flowStageOrder != null) {
+      const stageKey = STAGE_DEFAULTS[Math.floor(flowStageOrder)];
+      if (stageKey) {
+        return SNOWFLAKE_ICONS[stageKey];
+      }
     }
     return GENERIC_FALLBACK;
   }
@@ -217,6 +220,14 @@ export function resolveIcon(
   // normalise() strips sf_/ext_ prefixes, so "sf_warehouse" → "warehouse"
   if (normalised in SNOWFLAKE_ICONS) {
     return SNOWFLAKE_ICONS[normalised as keyof typeof SNOWFLAKE_ICONS];
+  }
+
+  // Also try Tier 1 on the label (e.g. label "Snowpipe" → "snowpipe" → exact match)
+  if (label && label !== componentType) {
+    const normLabel = normalise(label);
+    if (normLabel in SNOWFLAKE_ICONS) {
+      return SNOWFLAKE_ICONS[normLabel as keyof typeof SNOWFLAKE_ICONS];
+    }
   }
 
   // ── Tier 2: Keyword scoring ───────────────────────────────────────
@@ -237,8 +248,12 @@ export function resolveIcon(
   }
 
   // ── Tier 3: Semantic fallback by flowStageOrder ────────────────────
-  if (flowStageOrder != null && STAGE_DEFAULTS[flowStageOrder]) {
-    return SNOWFLAKE_ICONS[STAGE_DEFAULTS[flowStageOrder]];
+  // Use Math.floor so fractional stages (e.g. 2.5 for CDC) inherit the nearest lower stage icon
+  if (flowStageOrder != null) {
+    const stageKey = STAGE_DEFAULTS[Math.floor(flowStageOrder)];
+    if (stageKey) {
+      return SNOWFLAKE_ICONS[stageKey];
+    }
   }
 
   // ── Tier 4: Generic fallback ──────────────────────────────────────
