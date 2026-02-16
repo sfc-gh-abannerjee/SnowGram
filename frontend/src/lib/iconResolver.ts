@@ -2,10 +2,15 @@
  * Scored keyword-based icon resolver for SnowGram architecture diagrams.
  *
  * 4-tier resolution:
- *   1. Exact match against SNOWFLAKE_ICONS keys (score 100)
- *   2. Keyword scoring across KEYWORD_MAP (prefix 80, contains 60)
- *   3. Semantic fallback by flowStageOrder (score 40)
+ *   1. Exact match against SNOWFLAKE_ICONS keys (after normalisation)
+ *   2. Keyword scoring across KEYWORD_MAP (prefix 80pts, contains 60pts)
+ *   3. Semantic fallback by flowStageOrder
  *   4. Generic data icon fallback
+ *
+ * normalise() lowercases, converts separators to underscores, and strips
+ * agent prefixes (sf_, ext_) so "sf_warehouse" → "warehouse" hits Tier 1.
+ * Compound keywords ("transform_task", "analytics_views") are placed first
+ * in KEYWORD_MAP so they win over partial matches in Tier 2.
  */
 import { SNOWFLAKE_ICONS } from '../components/iconMap';
 
@@ -20,9 +25,22 @@ interface KeywordMapping {
 
 // ---------------------------------------------------------------------------
 // Keyword map – ordered by specificity (most specific first within groups)
+// Compound names (e.g. "transform_task") MUST appear before their individual
+// parts so they are scored with a single, unambiguous prefix match.
 // ---------------------------------------------------------------------------
 
 const KEYWORD_MAP: KeywordMapping[] = [
+  // ── Compound agent names (from SUGGEST_COMPONENTS_FOR_USE_CASE) ────
+  // These MUST come first so "transform_task" scores as task (160pts)
+  // rather than being split into "transform" (80pts workload_data_eng)
+  // vs "task" (60pts task).
+  { keywords: ['transform_task'],                                                         iconKey: 'task' },
+  { keywords: ['cdc_stream', 'change_stream'],                                            iconKey: 'stream' },
+  { keywords: ['analytics_views', 'analytics_view'],                                      iconKey: 'analytics' },
+  { keywords: ['bronze_layer'],                                                           iconKey: 'workload_data_lake' },
+  { keywords: ['silver_layer'],                                                           iconKey: 'workload_data_eng' },
+  { keywords: ['gold_layer'],                                                             iconKey: 'workload_data_warehouse' },
+
   // ── External Data Sources ─────────────────────────────────────────────
   { keywords: ['kafka', 'confluent', 'kinesis', 'event_hub', 'eventgrid', 'msk'],       iconKey: 'kafka' },
   { keywords: ['s3', 'aws', 'amazon', 'bucket'],                                         iconKey: 's3' },
@@ -129,7 +147,8 @@ function normalise(input: string): string {
   return input
     .toLowerCase()
     .replace(/[-\s/\\]+/g, '_')  // dashes, spaces, slashes → underscore
-    .replace(/[^a-z0-9_]/g, ''); // strip non-alphanumeric
+    .replace(/[^a-z0-9_]/g, '') // strip non-alphanumeric
+    .replace(/^(sf|ext|src|tgt)_/, ''); // strip SUGGEST_COMPONENTS prefixes
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +214,7 @@ export function resolveIcon(
   const normalised = normalise(raw);
 
   // ── Tier 1: Exact match against SNOWFLAKE_ICONS keys ──────────────
+  // normalise() strips sf_/ext_ prefixes, so "sf_warehouse" → "warehouse"
   if (normalised in SNOWFLAKE_ICONS) {
     return SNOWFLAKE_ICONS[normalised as keyof typeof SNOWFLAKE_ICONS];
   }
@@ -216,7 +236,7 @@ export function resolveIcon(
     return bestKeyword.icon;
   }
 
-  // ── Tier 3: Semantic fallback by flowStageOrder ───────────────────
+  // ── Tier 3: Semantic fallback by flowStageOrder ────────────────────
   if (flowStageOrder != null && STAGE_DEFAULTS[flowStageOrder]) {
     return SNOWFLAKE_ICONS[STAGE_DEFAULTS[flowStageOrder]];
   }
