@@ -71,13 +71,18 @@ export const STAGE_COLORS: Record<number, { border: string; bg: string; bgDark: 
   6: { border: '#F59E0B', bg: '#FFFBEB', bgDark: '#78350F' },  // consume (amber)
 };
 
+// Neutral fallback when flowStageOrder is unknown (Snowflake brand blue)
+const NEUTRAL_STAGE = { border: '#29B5E8', bg: '#EBF8FF', bgDark: '#0C4A6E' };
+
 // Helper to get color by flowStageOrder with fallback
+// Uses Math.floor so fractional stages (e.g. 2.5 for CDC) inherit the nearest lower stage color
 export const getStageColor = (flowStageOrder: number | undefined, isDark = false) => {
-  const stage = STAGE_COLORS[flowStageOrder ?? -1] || STAGE_COLORS[5]; // default to serve
-  return {
-    border: stage.border,
-    background: isDark ? stage.bgDark : stage.bg,
-  };
+  const stage = typeof flowStageOrder === 'number' ? STAGE_COLORS[Math.floor(flowStageOrder)] : undefined;
+  if (stage) {
+    return { border: stage.border, background: isDark ? stage.bgDark : stage.bg };
+  }
+  // Unknown or missing stage → neutral Snowflake blue
+  return { border: NEUTRAL_STAGE.border, background: isDark ? NEUTRAL_STAGE.bgDark : NEUTRAL_STAGE.bg };
 };
 
 // Detect which medallion layer a node belongs to based on ID/label

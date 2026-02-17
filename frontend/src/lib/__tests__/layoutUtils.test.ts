@@ -12,6 +12,7 @@ import {
   fitAllBoundaries,
   LAYOUT_CONSTANTS,
   PROVIDER_KEYWORDS,
+  EXTERNAL_PROVIDERS,
 } from '../layoutUtils';
 
 // ---------------------------------------------------------------------------
@@ -336,10 +337,15 @@ describe('PROVIDER_KEYWORDS', () => {
     });
   });
 
-  it('snowpipe is in snowflake keywords (it is a Snowflake feature)', () => {
-    expect(PROVIDER_KEYWORDS.snowflake).toContain('snowpipe');
-    expect(PROVIDER_KEYWORDS.snowflake).toContain('pipe');
-    expect(PROVIDER_KEYWORDS.snowflake).toContain('ingest');
+  it('snowpipe/pipe/ingest are NOT in snowflake keywords (they match Snowpipe Streaming which belongs in kafka)', () => {
+    // These generic terms were removed because they match "Snowpipe Streaming"
+    // which belongs in the kafka/streaming source boundary. Including them in
+    // snowflake keywords causes the Snowflake boundary to extend and overlap
+    // with external boundaries.
+    expect(PROVIDER_KEYWORDS.snowflake).not.toContain('snowpipe');
+    expect(PROVIDER_KEYWORDS.snowflake).not.toContain('pipe');
+    expect(PROVIDER_KEYWORDS.snowflake).not.toContain('ingest');
+    expect(PROVIDER_KEYWORDS.snowflake).not.toContain('streaming');
   });
 
   it('snowpipe is NOT in aws keywords (Snowpipe works with any external stage)', () => {
@@ -347,9 +353,12 @@ describe('PROVIDER_KEYWORDS', () => {
     expect(PROVIDER_KEYWORDS.aws).not.toContain('pipe');
   });
 
-  it('snowpipe_streaming is in kafka keywords (bridges Kafka and Snowflake)', () => {
+  it('snowpipe_streaming is in KAFKA keywords (it is the ingestion bridge from external streaming sources)', () => {
+    // Snowpipe Streaming is the ingestion point FROM Kafka INTO Snowflake.
+    // Visually, it belongs in the external/streaming source boundary to prevent
+    // the Snowflake boundary from extending leftward and overlapping with Kafka.
     expect(PROVIDER_KEYWORDS.kafka).toContain('snowpipe_streaming');
-    expect(PROVIDER_KEYWORDS.kafka).toContain('snowpipe streaming');
+    expect(PROVIDER_KEYWORDS.snowflake).not.toContain('snowpipe_streaming');
   });
 
   it('stream is NOT in snowflake keywords (prevents Kafka Stream from being included in Snowflake boundary)', () => {
@@ -358,6 +367,16 @@ describe('PROVIDER_KEYWORDS', () => {
     // Use 'cdc' for CDC streams instead.
     expect(PROVIDER_KEYWORDS.snowflake).not.toContain('stream');
     expect(PROVIDER_KEYWORDS.snowflake).toContain('cdc'); // CDC streams still work
+  });
+
+  it('EXTERNAL_PROVIDERS contains all non-snowflake providers for correct processing order', () => {
+    // External providers are processed BEFORE snowflake to ensure their nodes
+    // aren't claimed by the Snowflake boundary. This prevents boundary overlap.
+    expect(EXTERNAL_PROVIDERS).toContain('aws');
+    expect(EXTERNAL_PROVIDERS).toContain('azure');
+    expect(EXTERNAL_PROVIDERS).toContain('gcp');
+    expect(EXTERNAL_PROVIDERS).toContain('kafka');
+    expect(EXTERNAL_PROVIDERS).not.toContain('snowflake');
   });
 });
 

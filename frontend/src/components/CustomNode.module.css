@@ -196,19 +196,19 @@
 }
 
 /* Position handles at the edge of nodes (not inside) */
-.handle[id="top"] {
+.handle[id^="top"] {
   top: -7px !important; /* Half of handle height (14px / 2) */
 }
 
-.handle[id="bottom"] {
+.handle[id^="bottom"] {
   bottom: -7px !important;
 }
 
-.handle[id="left"] {
+.handle[id^="left"] {
   left: -7px !important;
 }
 
-.handle[id="right"] {
+.handle[id^="right"] {
   right: -7px !important;
 }
 

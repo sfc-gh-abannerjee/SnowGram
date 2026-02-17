@@ -190,7 +190,7 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
           ×
         </button>
         
-        {!isBoundary && (
+        {!isBoundary && data.icon && (
           <div className={styles.iconContainer}>
             <img src={data.icon} alt={data.label} className={styles.icon} />
           </div>

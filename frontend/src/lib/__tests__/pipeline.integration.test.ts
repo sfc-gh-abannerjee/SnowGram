@@ -116,41 +116,42 @@ describe('Kafka Medallion Pipeline Integration', () => {
     expect(yValues.length).toBeGreaterThan(1);
   });
 
-  it('Step 2b: single-node stages are vertically centered (no staircase)', async () => {
+  it('Step 2b: edge-aware layout places CDC after Silver correctly', async () => {
     const enriched = enrichNodesWithFlowOrder(specNodes);
     const result = await layoutWithELK(enriched, specEdges);
+    
+    // With edge-aware stage propagation:
+    // Pipeline: kafka → bronze → cdc_1 → transform_1 → silver → cdc_2 → transform_2 → gold
+    // 
+    // Initial stages: cdc_1=2.5, cdc_2=2.5 (both from keyword)
+    // After propagation: cdc_2 gets pushed to 4 because silver (3.5) → cdc_2
+    //
+    // So CDC1 stays in Processing column, CDC2 moves to Post-Silver column
 
-    // Stages with 1 node (e.g. kafka=0, bronze=2, silver=3.5, gold=4)
-    // should be vertically centered relative to stages with 2 nodes
-    // (e.g. cdc_stream at 2.5, transform at 3).
-    // Before the fix, single-node stages all started at y=rowY (top-aligned),
-    // creating a staircase pattern.
+    // Find nodes by ID for precise checking
+    const bronze = result.nodes.find(n => n.id === 'bronze_layer')!;
+    const cdc1 = result.nodes.find(n => n.id === 'cdc_stream_1')!;
+    const cdc2 = result.nodes.find(n => n.id === 'cdc_stream_2')!;
+    const silver = result.nodes.find(n => n.id === 'silver_layer')!;
 
-    // Group by stage to find single-node vs multi-node stages in row 0
-    const nodesByStage = new Map<number, typeof result.nodes>();
-    result.nodes.forEach(n => {
-      const stage = (n.data as any).flowStageOrder as number;
-      if (!nodesByStage.has(stage)) nodesByStage.set(stage, []);
-      nodesByStage.get(stage)!.push(n);
-    });
+    const bronzeX = Math.round(bronze.position.x);
+    const cdc1X = Math.round(cdc1.position.x);
+    const cdc2X = Math.round(cdc2.position.x);
+    const silverX = Math.round(silver.position.x);
 
-    // Find a single-node stage and a multi-node stage in the same row (row 0)
-    // CDC streams (stage 2.5) have 2 nodes; bronze (stage 2) has 1 node
-    const bronzeNodes = nodesByStage.get(2) || [];
-    const cdcNodes = nodesByStage.get(2.5) || [];
-    expect(bronzeNodes.length).toBe(1);
-    expect(cdcNodes.length).toBe(2);
+    console.log(`Bronze X=${bronzeX}, CDC1 X=${cdc1X}, Silver X=${silverX}, CDC2 X=${cdc2X}`);
 
-    // Bronze (single node) should be vertically centered between the two CDC nodes
-    const bronzeY = Math.round(bronzeNodes[0].position.y);
-    const cdcY0 = Math.round(cdcNodes[0].position.y);
-    const cdcY1 = Math.round(cdcNodes[1].position.y);
-    const cdcMidpoint = Math.round((cdcY0 + cdcY1) / 2);
-
-    console.log(`Bronze Y=${bronzeY}, CDC Y0=${cdcY0}, CDC Y1=${cdcY1}, CDC midpoint=${cdcMidpoint}`);
-
-    // Bronze should be at or near the midpoint of the CDC stack (within half a node height)
-    expect(Math.abs(bronzeY - cdcMidpoint)).toBeLessThanOrEqual(65);
+    // Bronze should be LEFT of CDC1 (Bronze col 1, CDC1 col 2)
+    expect(bronzeX).toBeLessThan(cdc1X);
+    
+    // CDC1 should be LEFT of Silver (CDC1 col 2, Silver col 3)
+    expect(cdc1X).toBeLessThan(silverX);
+    
+    // CDC2 should be RIGHT of Silver (Silver col 3, CDC2 col 4 after propagation)
+    expect(cdc2X).toBeGreaterThan(silverX);
+    
+    // CDC1 and CDC2 should be in DIFFERENT columns (propagation moved CDC2)
+    expect(cdc1X).not.toBe(cdc2X);
   });
 
   it('Step 3: normalizeGraph preserves all edges when node IDs match', async () => {

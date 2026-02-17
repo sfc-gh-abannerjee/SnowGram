@@ -23,19 +23,22 @@ import CustomNode from './components/CustomNode';
 import { convertMermaidToFlow, LAYER_COLORS, getStageColor } from './lib/mermaidToReactFlow';
 import { layoutWithELK, enrichNodesWithFlowOrder } from './lib/elkLayout';
 import { resolveIcon } from './lib/iconResolver';
+import { canonicalizeComponentType, keyForNode, normalizeBoundaryType, isMedallion, normalizeGraph } from './lib/graphNormalize';
+import { hexToRgb as hexToRgbUtil, getLabelColor } from './lib/colorUtils';
+import { generateMermaidFromDiagram } from './lib/mermaidExport';
+import { boundingBox, layoutDAG, fitAllBoundaries, LAYOUT_CONSTANTS } from './lib/layoutUtils';
+import { getFlowStageOrder } from './lib/elkLayoutUtils';
 
-// ============================================
-// CONSTANTS (BUG-015 Fix: Extract magic numbers)
-// ============================================
-const DEFAULT_NODE_WIDTH = 180;
-const DEFAULT_NODE_HEIGHT = 140;
-const STANDARD_NODE_WIDTH = 150;
-const STANDARD_NODE_HEIGHT = 130;
-const BOUNDARY_PADDING_X = 24;
-const BOUNDARY_PADDING_Y_TOP = 70;
-const BOUNDARY_PADDING_Y_BOTTOM = 24;
-const BOUNDARY_PADDING_Y = 30;
-const BOUNDARY_GAP = 40;
+// Re-export constants for backward-compat with inline usage throughout this file
+const DEFAULT_NODE_WIDTH = LAYOUT_CONSTANTS.DEFAULT_NODE_WIDTH;
+const DEFAULT_NODE_HEIGHT = LAYOUT_CONSTANTS.DEFAULT_NODE_HEIGHT;
+const STANDARD_NODE_WIDTH = LAYOUT_CONSTANTS.STANDARD_NODE_WIDTH;
+const STANDARD_NODE_HEIGHT = LAYOUT_CONSTANTS.STANDARD_NODE_HEIGHT;
+const BOUNDARY_PADDING_X = LAYOUT_CONSTANTS.BOUNDARY_PADDING_X;
+const BOUNDARY_PADDING_Y_TOP = LAYOUT_CONSTANTS.BOUNDARY_PADDING_Y_TOP;
+const BOUNDARY_PADDING_Y_BOTTOM = LAYOUT_CONSTANTS.BOUNDARY_PADDING_Y_BOTTOM;
+const BOUNDARY_PADDING_Y = LAYOUT_CONSTANTS.BOUNDARY_PADDING_Y;
+const BOUNDARY_GAP = LAYOUT_CONSTANTS.BOUNDARY_GAP;
 
 // ============================================
 // DEBUG LOGGING UTILITY (BUG-014 Fix)
@@ -101,29 +104,6 @@ const boundaryCallbacks = {
   onCopy: (_id: string) => {},
 };
 
-const normalizeBoundaryType = (raw?: string, label?: string, id?: string) => {
-  const rawLower = (raw || '').toLowerCase();
-  const idLower = (id || '').toLowerCase();
-  
-  // Check if this is explicitly a boundary node (by ID or componentType)
-  const isBoundaryNode = idLower.startsWith('account_boundary_') || 
-                         rawLower.includes('boundary') || 
-                         rawLower.startsWith('account_');
-  
-  if (!isBoundaryNode) {
-    return raw; // Regular component, don't convert
-  }
-  
-  // Normalize to canonical boundary type
-  const text = `${rawLower} ${(label || '').toLowerCase()} ${idLower}`;
-  if (text.includes('snowflake')) return 'account_boundary_snowflake';
-  if (text.includes('aws') || text.includes('amazon')) return 'account_boundary_aws';
-  if (text.includes('azure')) return 'account_boundary_azure';
-  if (text.includes('gcp') || text.includes('google')) return 'account_boundary_gcp';
-  if (text.includes('kafka') || text.includes('streaming') || text.includes('confluent')) return 'account_boundary_kafka';
-  
-  return raw;
-};
 
 // Enforce single boundary per provider; remap edges to canonical boundary ids; restyle boundaries
 const enforceAccountBoundaries = (nodes: Node[], edges: Edge[], isDark: boolean) => {
@@ -248,8 +228,11 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
     aws: ['s3', 'aws', 's3_bucket', 'aws_'],
     azure: ['azure', 'adls', 'blob'],
     gcp: ['gcp', 'gcs', 'google', 'bigquery', 'bq'],
-    // Kafka is an external streaming source - should be outside Snowflake boundary
-    kafka: ['kafka', 'kinesis', 'event_hub', 'confluent'],
+    // Streaming/ingest sources — Snowpipe Streaming is the bridge between
+    // external sources (Kafka) and Snowflake. Placing it inside the Streaming
+    // Source boundary prevents the Snowflake boundary from extending leftward
+    // and overlapping with the Kafka boundary.
+    kafka: ['kafka', 'kinesis', 'event_hub', 'confluent', 'snowpipe_streaming', 'snowpipe streaming'],
   };
 
   const existingBoundary = (nodes || []).reduce<Record<string, boolean>>((acc, n) => {
@@ -276,18 +259,7 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   
   debugLog(`[addAccountBoundaries] AWS: ${awsNodes.length}, Kafka: ${kafkaNodes.length}, Snowflake: ${snowflakeNodes.length}, Azure: ${azureNodes.length}, GCP: ${gcpNodes.length}`);
 
-  const bbox = (list: Node[]) => {
-    if (!list.length) return null;
-    const xs = list.map((n) => n.position.x);
-    const ys = list.map((n) => n.position.y);
-    const widths = list.map((n) => ((n.style as any)?.width as number) || DEFAULT_NODE_WIDTH);
-    const heights = list.map((n) => ((n.style as any)?.height as number) || DEFAULT_NODE_HEIGHT);
-    const minX = Math.min(...xs);
-    const minY = Math.min(...ys);
-    const maxX = Math.max(...list.map((n, i) => xs[i] + widths[i]));
-    const maxY = Math.max(...list.map((n, i) => ys[i] + heights[i]));
-    return { minX, minY, maxX, maxY };
-  };
+  const bbox = boundingBox;
 
   // Padding for boundaries - TOP needs extra space for label
   const padX = BOUNDARY_PADDING_X;
@@ -354,6 +326,10 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
     debugLog(`[addAccountBoundaries] ⏭️  Skipping Snowflake boundary (already exists from agent)`);
   }
 
+  // Track repositioning offsets for external node groups
+  // When a boundary is placed to the left of Snowflake, we must also move its contained nodes
+  const nodeOffsets = new Map<string, { dx: number; dy: number }>(); // nodeId → offset
+
   const awsBoxRaw = bbox(awsNodes);
   debugLog(`[addAccountBoundaries] AWS box:`, awsBoxRaw, `existing:`, existingBoundary['account_boundary_aws']);
   if (awsBoxRaw && !existingBoundary['account_boundary_aws']) {
@@ -366,6 +342,11 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
       ? { minX: leftX, minY: awsBoxRaw.minY - padY, maxX: leftX + width, maxY: awsBoxRaw.maxY + padY }
       : awsBoxRaw;
     boundaries.push(makeBoundary('account_boundary_aws', 'AWS Account', '#FF9900', box, isDark));
+    // Reposition AWS nodes into the new boundary position
+    if (snowBox) {
+      const dx = (box.minX + padX) - awsBoxRaw.minX;
+      awsNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
+    }
   } else if (existingBoundary['account_boundary_aws']) {
     debugLog(`[addAccountBoundaries] ⏭️  Skipping AWS boundary (already exists from agent)`);
   }
@@ -400,6 +381,11 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
       ? { minX: leftX, minY: kafkaBox.minY - padY, maxX: leftX + width, maxY: kafkaBox.maxY + padY }
       : kafkaBox;
     boundaries.push(makeBoundary('account_boundary_kafka', 'Streaming Source', '#E01E5A', box, isDark));
+    // Reposition Kafka nodes into the new boundary position
+    if (snowBoxForKafka) {
+      const dx = (box.minX + padX) - kafkaBox.minX;
+      kafkaNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
+    }
   } else if (existingBoundary['account_boundary_kafka']) {
     debugLog(`[addAccountBoundaries] ⏭️  Skipping Kafka boundary (already exists from agent)`);
   }
@@ -492,85 +478,28 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   
   debugLog(`[addAccountBoundaries] Total boundaries: ${allBoundaries.length} (${boundaries.length} new + ${recalculatedBoundaries.length} recalculated)`);
   
+  // Apply repositioning offsets to external nodes that were moved with their boundary
+  const repositionedNodes = nonBoundaryNodes.map(n => {
+    const offset = nodeOffsets.get(n.id);
+    if (offset) {
+      debugLog(`[addAccountBoundaries] Repositioning node ${n.id} by dx=${offset.dx}`);
+      return {
+        ...n,
+        position: {
+          x: n.position.x + offset.dx,
+          y: n.position.y + offset.dy,
+        },
+      };
+    }
+    return n;
+  });
+  
   // Push boundaries behind everything else
-  return [...allBoundaries, ...nonBoundaryNodes];
+  return [...allBoundaries, ...repositionedNodes];
 };
 
-// Compact DAG layout: layers by dependency, wrapped columns to avoid extreme width/height
-const layoutNodes = (nodes: Node[], edges: Edge[]) => {
-  const nodeMap = new Map<string, Node>();
-  const indegree = new Map<string, number>();
-  const children = new Map<string, string[]>();
-
-  nodes.forEach((n) => {
-    nodeMap.set(n.id, n);
-    indegree.set(n.id, 0);
-  });
-
-  edges.forEach((e) => {
-    if (!nodeMap.has(e.source) || !nodeMap.has(e.target)) return;
-    indegree.set(e.target, (indegree.get(e.target) || 0) + 1);
-    if (!children.has(e.source)) children.set(e.source, []);
-    children.get(e.source)!.push(e.target);
-  });
-
-  const queue: string[] = [];
-  indegree.forEach((v, k) => {
-    if (v === 0) queue.push(k);
-  });
-  // Fallback if cycle: start with all nodes
-  if (queue.length === 0) queue.push(...nodes.map((n) => n.id));
-
-  const level = new Map<string, number>();
-  queue.forEach((id) => level.set(id, 0));
-
-  while (queue.length) {
-    const cur = queue.shift()!;
-    const curLevel = level.get(cur) ?? 0;
-    const kids = children.get(cur) || [];
-    kids.forEach((kid) => {
-      const next = indegree.get(kid) || 0;
-      indegree.set(kid, next - 1);
-      if (next - 1 === 0) {
-        queue.push(kid);
-        level.set(kid, Math.max(level.get(kid) ?? 0, curLevel + 1));
-      } else {
-        // For cycles, still try to increase depth
-        level.set(kid, Math.max(level.get(kid) ?? 0, curLevel + 1));
-      }
-    });
-  }
-
-  // Group by level
-  const grouped = new Map<number, string[]>();
-  nodes.forEach((n) => {
-    const l = level.get(n.id) ?? 0;
-    if (!grouped.has(l)) grouped.set(l, []);
-    grouped.get(l)!.push(n.id);
-  });
-
-  const X_SPACING = 200;
-  const Y_SPACING = 150;
-  const MAX_COLS = 4;
-  const ROW_HEIGHT = Y_SPACING * 6; // allows up to ~6 rows per block before overlap
-
-  const laidOut = nodes.map((n) => {
-    const l = level.get(n.id) ?? 0;
-    const siblings = grouped.get(l) || [];
-    const idx = siblings.indexOf(n.id);
-    const col = l % MAX_COLS;
-    const blockRow = Math.floor(l / MAX_COLS);
-    return {
-      ...n,
-      position: {
-        x: col * X_SPACING,
-        y: blockRow * ROW_HEIGHT + idx * Y_SPACING,
-      },
-    };
-  });
-
-  return laidOut;
-};
+// Compact DAG layout: imported from layoutUtils, aliased for call-site compat
+const layoutNodes = layoutDAG;
 
 // Deterministic medallion layout: fixed slots + minimal edges + non-overlapping boundaries
 const layoutMedallionDeterministic = (nodes: Node[]) => {
@@ -861,71 +790,6 @@ const layoutMedallionDeterministic = (nodes: Node[]) => {
   // Don't create boundaries here - let addAccountBoundaries handle it after layout
   debugLog(`[layoutMedallionDeterministic] Returning ${positioned.length} positioned nodes`);
   return { nodes: positioned, edges: newEdges };
-};
-
-const isMedallion = (nodes: Node[]) =>
-  nodes.some((n) => {
-    const lbl = ((n.data as any)?.label || '').toLowerCase();
-    const ct = ((n.data as any)?.componentType || '').toLowerCase();
-    return ['bronze', 'silver', 'gold'].some((k) => lbl.includes(k) || ct.includes(k));
-  });
-
-// Generate Mermaid code from current diagram
-function generateMermaidFromDiagram(currentNodes: Node[], currentEdges: Edge[]): string {
-  let mermaid = 'flowchart LR\n';
-
-  // Add node definitions
-  currentNodes.forEach((node) => {
-    const label = node.data.label || node.id;
-    const sanitizedLabel = label.replace(/[[\]()]/g, '');
-    mermaid += `    ${node.id}[${sanitizedLabel}]\n`;
-  });
-
-  mermaid += '\n';
-
-  // Add connections
-  currentEdges.forEach((edge) => {
-    mermaid += `    ${edge.source} --> ${edge.target}\n`;
-  });
-
-  return mermaid;
-}
-
-// Helper: hex -> rgb (module-level utility)
-const hexToRgbUtil = (hex: string): { r: number; g: number; b: number } | null => {
-  const m = hex.replace('#', '');
-  if (m.length === 3) {
-    const r = parseInt(m[0] + m[0], 16);
-    const g = parseInt(m[1] + m[1], 16);
-    const b = parseInt(m[2] + m[2], 16);
-    return { r, g, b };
-  }
-  if (m.length === 6) {
-    const r = parseInt(m.slice(0, 2), 16);
-    const g = parseInt(m.slice(2, 4), 16);
-    const b = parseInt(m.slice(4, 6), 16);
-    return { r, g, b };
-  }
-  return null;
-};
-
-// Helpers: contrast-aware label color (module-level utilities)
-const srgbToLinear = (c: number) => {
-  const cS = c / 255;
-  return cS <= 0.04045 ? cS / 12.92 : Math.pow((cS + 0.055) / 1.055, 2.4);
-};
-
-const luminance = (r: number, g: number, b: number) =>
-  0.2126 * srgbToLinear(r) + 0.7152 * srgbToLinear(g) + 0.0722 * srgbToLinear(b);
-
-const getLabelColor = (fill: string, alpha: number, isDark: boolean) => {
-  // In dark mode, always use light text for better contrast
-  if (isDark) return '#e5f2ff';
-  // In light mode, calculate based on luminance
-  const base = { r: 247, g: 251, b: 255 }; // light mode background
-  const { r, g, b } = hexToRgbUtil(fill) || { r: 41, g: 181, b: 232 };
-  const effLum = alpha * luminance(r, g, b) + (1 - alpha) * luminance(base.r, base.g, base.b);
-  return effLum > 0.5 ? '#0F172A' : '#1a1a1a';
 };
 
 const App: React.FC = () => {
@@ -2049,244 +1913,8 @@ const App: React.FC = () => {
     return parts.join('\n\n');
   };
 
-// Normalize nodes/edges: dedupe nodes by componentType/label, drop orphan/duplicate edges, keep single boundaries
-const normalizeGraph = (nodes: Node[], edges: Edge[]) => {
-  // Canonical medallion IDs that should NEVER be collapsed
-  const canonicalMedallionIds = new Set([
-    's3', 'pipe1', 'bronze_db', 'bronze_schema', 'bronze_tables',
-    'stream_bronze_silver', 'silver_db', 'silver_schema', 'silver_tables',
-    'stream_silver_gold', 'gold_db', 'gold_schema', 'gold_tables', 'analytics_views',
-    'transform_task', 'compute_wh', 'bronze_stream', 'secure_views'
-  ]);
-  
-  const keyForNode = (n: Node) => {
-    const d: any = n.data || {};
-    const rawComp = (d.componentType || '').toString().toLowerCase().trim();
-    const label = (d.label || '').toString().toLowerCase().trim();
-    const nodeId = n.id.toLowerCase();
-    
-    // ALWAYS preserve canonical medallion IDs by their exact ID
-    if (canonicalMedallionIds.has(n.id)) {
-      return n.id;
-    }
-    
-    if (rawComp.startsWith('account_boundary')) {
-      // Normalize boundary key to provider (aws|azure|gcp|snowflake|other)
-      const provider =
-        rawComp.includes('aws') ? 'aws' :
-        rawComp.includes('azure') ? 'azure' :
-        rawComp.includes('gcp') ? 'gcp' :
-        rawComp.includes('snowflake') ? 'snowflake' :
-        rawComp.replace(/account_boundary[_-]?/, '') || label || 'boundary';
-      return `account_boundary_${provider}`;
-    }
-    // Preserve medallion-specific components (don't collapse bronze/silver/gold)
-    if (rawComp.match(/^(bronze|silver|gold)_(db|schema|tables?)$/)) {
-      return rawComp;
-    }
-    if (rawComp === 'stream_bronze_silver' || rawComp === 'stream_silver_gold') {
-      return rawComp;
-    }
-    if (rawComp === 'analytics_views') {
-      return rawComp;
-    }
-    const comp = rawComp.replace(/_[0-9]+$/, ''); // strip timestamp suffixes
-    return comp || label || n.id;
-  };
-
-  const dedupedNodes: Node[] = [];
-  const seenKeys = new Set<string>();
-  const keyToNode = new Map<string, Node>();
-  const duplicates: string[] = [];
-  
-  // First pass: collect all nodes by key
-  nodes.forEach((n) => {
-    const k = keyForNode(n);
-    const existing = keyToNode.get(k);
-    
-    // Prioritize canonical medallion IDs over agent-generated custom IDs
-    if (!existing || canonicalMedallionIds.has(n.id)) {
-      keyToNode.set(k, n);
-      if (existing) {
-        duplicates.push(`${existing.id}(${k}) replaced by ${n.id}`);
-      }
-    } else {
-      duplicates.push(`${n.id}(${k}) replaced by ${existing.id}`);
-    }
-  });
-  
-  // Second pass: add unique nodes
-  keyToNode.forEach((n, k) => {
-    // normalize componentType for icons
-    const d: any = n.data || {};
-    const canonical = canonicalizeComponentType(d.componentType);
-    dedupedNodes.push({
-      ...n,
-      data: { ...d, componentType: canonical },
-    });
-  });
-  if (duplicates.length > 0) {
-    debugWarn('🗑️ [Normalize] Removed duplicates:', duplicates);
-    duplicates.forEach(d => debugLog('   - ' + d));
-  }
-
-  const nodeIds = new Set(dedupedNodes.map((n) => n.id));
-  const edgeKey = (e: Edge) => `${e.source}->${e.target}`;
-  const seenEdges = new Set<string>();
-  const dedupedEdges: Edge[] = [];
-  const orphanedEdges: string[] = [];
-  edges.forEach((e) => {
-    if (!e.source || !e.target) return;
-    if (!nodeIds.has(e.source) || !nodeIds.has(e.target)) {
-      orphanedEdges.push(`${e.source}->${e.target}`);
-      return;
-    }
-    if (e.source === e.target) return;
-    const k = edgeKey(e);
-    if (seenEdges.has(k)) return;
-    seenEdges.add(k);
-    dedupedEdges.push(e);
-  });
-  
-  if (orphanedEdges.length > 0) {
-    debugLog('[Normalize] Removed orphaned edges:', orphanedEdges);
-  }
-  debugLog('[Normalize] Result:', { nodeCount: dedupedNodes.length, edgeCount: dedupedEdges.length });
-
-  return { nodes: dedupedNodes, edges: dedupedEdges };
-};
-
-// Canonicalize component types for icons/layout (reuse core Snowflake icons)
-const canonicalizeComponentType = (comp?: string) => {
-  const c = (comp || '').toLowerCase();
-  
-  // ALWAYS preserve boundary types unchanged
-  if (c.startsWith('account_boundary')) {
-    return comp; // Return original casing
-  }
-  
-  // Preserve medallion-specific types
-  if (c === 'bronze_db' || c === 'silver_db' || c === 'gold_db') return 'database';
-  if (c === 'bronze_schema' || c === 'silver_schema' || c === 'gold_schema') return 'schema';
-  if (c === 'bronze_tables' || c === 'silver_tables' || c === 'gold_tables') return 'table';
-  if (c === 'analytics_views') return 'view';
-  // Generic matching
-  if (c.includes('stream')) return 'stream';
-  if (c.includes('snowpipe') || c.includes('pipe')) return 'snowpipe';
-  if (c.includes('task')) return 'task';
-  if (c.includes('schema')) return 'schema';
-  if (c.includes('table')) return 'table';
-  if (c.includes('view') || c.includes('analytic')) return 'view';
-  if (c.includes('warehouse') || c.includes('wh')) return 'warehouse';
-  if (c.includes('db') || c.includes('database')) return 'database';
-  if (c.includes('s3') || c.includes('lake')) return 'database';
-  return comp || 'table';
-};
-
 // Ensure CSP resources stay inside their provider boundary
-const fitCspNodesIntoBoundaries = (nodes: Node[]) => {
-  const result = [...nodes];
-  const boundaries: Record<string, Node> = {};
-  result.forEach((n) => {
-    const comp = ((n.data as any)?.componentType || '').toString().toLowerCase();
-    if (comp.startsWith('account_boundary')) {
-      const key =
-        comp.includes('aws') ? 'aws' :
-        comp.includes('azure') ? 'azure' :
-        comp.includes('gcp') ? 'gcp' :
-        comp.includes('kafka') ? 'kafka' :
-        comp.includes('snowflake') ? 'snowflake' : comp;
-      boundaries[key] = n;
-    }
-  });
-
-  const keywords: Record<string, string[]> = {
-    aws: ['aws', 's3', 'lake', 'snowpipe'],
-    azure: ['azure', 'adls', 'blob'],
-    gcp: ['gcp', 'gcs', 'bigquery', 'bq'],
-    kafka: ['kafka', 'confluent', 'kinesis', 'event_hub', 'ext_kafka'],
-    // Snowflake boundary contains ALL Snowflake components (layers, streams, tasks, views, warehouses)
-    snowflake: ['bronze', 'silver', 'gold', 'layer', 'stream', 'task', 'cdc', 'transform', 'warehouse', 'analytics', 'view', 'table', 'database', 'schema'],
-  };
-
-  Object.entries(keywords).forEach(([provider, keys]) => {
-    const boundary = boundaries[provider];
-    if (!boundary) return;
-    const padding = 32;
-    const titlePad = 32; // keep content clear of boundary title
-    const rowHeight = 170; // match medallion vertical spacing and give more breathing room
-
-    // For Snowflake boundary: just SIZE to fit existing node positions (don't move nodes)
-    // For external providers (kafka, aws, azure, gcp): reposition nodes into boundary
-    const repositionNodes = provider !== 'snowflake';
-    
-    const bx = boundary.position.x + padding;
-    const by = boundary.position.y + padding + titlePad;
-
-    let index = 0;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    
-    // Find matching child nodes
-    const matchingNodes: Node[] = [];
-    result.forEach((n) => {
-      const d: any = n.data || {};
-      const text = `${(d.label || '').toString().toLowerCase()} ${(d.componentType || '').toString().toLowerCase()}`;
-      const matches = keys.some((k) => text.includes(k));
-      if (matches && !((d.componentType || '').toString().toLowerCase().startsWith('account_boundary'))) {
-        matchingNodes.push(n);
-      }
-    });
-    
-    if (matchingNodes.length === 0) return;
-    
-    matchingNodes.forEach((n) => {
-      const nodeWidth = ((n.style as any)?.width as number) || DEFAULT_NODE_WIDTH;
-      const nodeHeight = ((n.style as any)?.height as number) || DEFAULT_NODE_HEIGHT;
-      
-      if (repositionNodes) {
-        // External providers: reposition nodes into a vertical stack inside boundary
-        const newPos = { x: bx, y: by + index * rowHeight };
-        result[result.findIndex((x) => x.id === n.id)] = {
-          ...n,
-          position: newPos,
-        };
-        debugLog(`[fitCspNodes] Repositioning ${provider} node ${n.id} (${nodeWidth}x${nodeHeight}) to (${newPos.x}, ${newPos.y}) - single column layout`);
-        minX = Math.min(minX, newPos.x);
-        minY = Math.min(minY, newPos.y);
-        maxX = Math.max(maxX, newPos.x + nodeWidth);
-        maxY = Math.max(maxY, newPos.y + nodeHeight);
-        index += 1;
-      } else {
-        // Snowflake: just measure existing positions (ELK already laid out)
-        minX = Math.min(minX, n.position.x);
-        minY = Math.min(minY, n.position.y);
-        maxX = Math.max(maxX, n.position.x + nodeWidth);
-        maxY = Math.max(maxY, n.position.y + nodeHeight);
-        debugLog(`[fitCspNodes] Measuring ${provider} node ${n.id} at (${n.position.x}, ${n.position.y}) size ${nodeWidth}x${nodeHeight}`);
-      }
-    });
-    
-    // Position and resize boundary to encompass all matched nodes
-    const boundaryPadding = 40;
-    const titleHeight = 50;
-    const newBoundaryX = minX - boundaryPadding;
-    const newBoundaryY = minY - boundaryPadding - titleHeight;
-    const width = (maxX - minX) + boundaryPadding * 2;
-    const height = (maxY - minY) + boundaryPadding * 2 + titleHeight;
-    
-    const idx = result.findIndex((b) => b.id === boundary.id);
-    if (idx >= 0) {
-      result[idx] = {
-        ...boundary,
-        position: { x: newBoundaryX, y: newBoundaryY },
-        style: { ...(boundary.style || {}), width, height },
-      };
-      debugLog(`[fitCspNodes] Sized ${provider} boundary to (${newBoundaryX}, ${newBoundaryY}) size ${width}x${height}`);
-    }
-  });
-
-  return result;
-};
+const fitCspNodesIntoBoundaries = (nodes: Node[]) => fitAllBoundaries(nodes);
 
 // Ensure core medallion nodes and edges exist (Bronze/Silver/Gold + streams + Analytics)
 // BUG-002 FIX: Work with local copies to avoid mutating input arrays (React immutability)
@@ -3037,7 +2665,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           data: {
             label: n.label || n.componentType || n.id,
             componentType: compType,
-            icon: isBoundary ? undefined : getIconForComponentType(compType),
+            icon: isBoundary ? undefined : getIconForComponentType(compType, n.label, n.flowStageOrder),
             labelColor: getLabelColor(fillColor, fillAlpha, isDarkMode),
             isDarkMode,
             showHandles: !isBoundary,
@@ -3046,7 +2674,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             cornerRadius,
             hideBorder,
             layer: n.layer, // Preserve layer info from backend
-            // background handled by CustomNode.tsx based on isDarkMode
+            flowStageOrder: n.flowStageOrder, // Preserve for ELK layout + stage coloring
             onRename: renameNode,
             onDelete: deleteNode,
             onCopy: copyNode,
@@ -3194,7 +2822,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           data: {
             ...(n.data as any),
             componentType: normalizedType,
-            icon: isBoundary ? undefined : getIconForComponentType(normalizedType || (n.data as any)?.label),
+            icon: isBoundary ? undefined : getIconForComponentType(normalizedType, (n.data as any)?.label, (n.data as any)?.flowStageOrder),
             showHandles: isBoundary ? false : (n.data as any)?.showHandles,
             onRename: renameNode,
             onDelete: deleteNode,
@@ -3206,66 +2834,60 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
 
       // Separate boundaries from regular nodes before layout
       // Boundaries stay as-is from agent, regular nodes go through layout
-      const boundariesForLater = specNodes.filter((n) => {
-        const compType = ((n.data as any)?.componentType || '').toString().toLowerCase();
-        return compType.startsWith('account_boundary_');
-      });
-      // Double-check boundaries have proper styling with no icons
-      const properlyStyledBoundaries = boundariesForLater.map(b => {
-        const styled = ensureBoundaryStyle(b, isDarkMode);
-        debugLog(`[Pipeline] Boundary ${b.id} icon:`, (styled.data as any)?.icon, 'showHandles:', (styled.data as any)?.showHandles);
-        return styled;
-      });
+      // Filter out agent boundary nodes — they have placeholder positions.
+      // addAccountBoundaries will create properly positioned boundaries after ELK layout.
       specNodes = specNodes.filter((n) => {
         const compType = ((n.data as any)?.componentType || '').toString().toLowerCase();
         return !compType.startsWith('account_boundary_');
       });
-      debugLog(`[Pipeline] Separated ${properlyStyledBoundaries.length} boundaries for preservation, ${specNodes.length} nodes for layout`);
+      debugLog(`[Pipeline] Filtered agent boundaries, ${specNodes.length} nodes for layout`);
 
       // ================================================================
-      // ELK-BASED LAYOUT: Use professional graph layout algorithm
-      // ELK.js provides automatic positioning based on flowStageOrder
-      // This works for ANY architecture pattern and ANY component
+      // STAGE-BASED GRID LAYOUT: Groups nodes by flowStageOrder into
+      // neat rows and columns. Wraps long pipelines into multiple rows.
       // Manual dragging still works after render (ReactFlow handles it)
       // ================================================================
       let laidOut: { nodes: Node[]; edges: Edge[] };
       
-      if (hasBackendPositions) {
-        // Backend provided explicit positions - use them directly
-        debugLog(`[Backend Layout] Using agent-provided positions`);
-        laidOut = { nodes: specNodes, edges: cleanedSpecEdges };
-      } else {
-        // Use ELK.js for automatic layout based on flowStageOrder
-        debugLog(`[ELK Layout] Using ELK.js for automatic positioning`);
-        
-        // Enrich nodes with flowStageOrder if not provided by agent
-        const enrichedNodes = enrichNodesWithFlowOrder(specNodes);
-        
-        // Apply ELK layout (async but we'll handle it)
-        try {
-          const elkResult = await layoutWithELK(enrichedNodes, cleanedSpecEdges);
-          laidOut = elkResult;
-          debugLog(`[ELK Layout] Successfully positioned ${elkResult.nodes.length} nodes`);
-        } catch (elkError) {
-          debugWarn(`[ELK Layout] Error, falling back to deterministic:`, elkError);
-          // Fallback to existing layout if ELK fails
-          laidOut = isMedallion(specNodes)
-            ? layoutMedallionDeterministic(specNodes)
-            : { nodes: layoutNodes(specNodes, cleanedSpecEdges), edges: cleanedSpecEdges };
+      // Always use grid layout — agent positions are simplistic grid hints.
+      // Stage-based layout produces neat rows/columns using flowStageOrder values.
+      debugLog(`[Layout] Using stage-based grid for automatic positioning`);
+      
+      // Enrich nodes with flowStageOrder if not provided by agent
+      const enrichedNodes = enrichNodesWithFlowOrder(specNodes);
+      
+      try {
+        const elkResult = await layoutWithELK(enrichedNodes, cleanedSpecEdges);
+        laidOut = elkResult;
+        debugLog(`[Layout] Positioned ${elkResult.nodes.length} nodes, ${elkResult.edges.length} edges`);
+        if (elkResult.edges.length !== cleanedSpecEdges.length) {
+          debugWarn(`[Layout] Edge count changed: ${cleanedSpecEdges.length} → ${elkResult.edges.length}`);
         }
+      } catch (elkError) {
+        debugWarn(`[Layout] Error, falling back to deterministic:`, elkError);
+        // Fallback to existing layout if ELK fails
+        laidOut = isMedallion(specNodes)
+          ? layoutMedallionDeterministic(specNodes)
+          : { nodes: layoutNodes(specNodes, cleanedSpecEdges), edges: cleanedSpecEdges };
       }
-      // Add back agent-provided boundaries (properly styled)
-      // AGENT-FIRST: Don't auto-create boundaries - trust agent to provide them
-      const nodesWithAgentBoundaries = [...properlyStyledBoundaries, ...laidOut.nodes];
-      debugLog(`[Pipeline] Agent-first mode: ${nodesWithAgentBoundaries.length} nodes (${properlyStyledBoundaries.length} boundaries from agent, no auto-generation)`);
-      // Previously: addAccountBoundaries auto-created boundaries based on keyword matching
-      // Now: Skip it - agent controls what boundaries exist
-      const withBoundaries = nodesWithAgentBoundaries; // Direct passthrough
-      debugLog(`[Pipeline] After boundaries (spec): ${withBoundaries.length} nodes`);
+      // Always auto-create boundaries from node keywords.
+      // Agent boundaries have placeholder positions {x:0, y:0} — addAccountBoundaries
+      // produces properly positioned/sized boundaries with external nodes (Kafka/AWS)
+      // placed OUTSIDE the Snowflake boundary.
+      const withBoundaries = addAccountBoundaries(laidOut.nodes);
+      debugLog(`[Pipeline] After boundaries: ${withBoundaries.length} nodes`);
       const fitted = fitCspNodesIntoBoundaries(withBoundaries);
-      debugLog(`[Pipeline] After fitting (spec): ${fitted.length} nodes`);
+      debugLog(`[Pipeline] After fitting: ${fitted.length} nodes`);
       const normalizedFinal = normalizeGraph(fitted, laidOut.edges);
+      debugLog(`[Pipeline] After normalize: ${normalizedFinal.nodes.length} nodes, ${normalizedFinal.edges.length} edges`);
+      if (normalizedFinal.edges.length !== laidOut.edges.length) {
+        debugWarn(`[Pipeline] Edge loss in normalizeGraph: ${laidOut.edges.length} → ${normalizedFinal.edges.length}`);
+      }
       const enforcedBoundaries = enforceAccountBoundaries(normalizedFinal.nodes, normalizedFinal.edges, isDarkMode);
+      debugLog(`[Pipeline] After enforce: ${enforcedBoundaries.nodes.length} nodes, ${enforcedBoundaries.edges.length} edges`);
+      if (enforcedBoundaries.edges.length !== normalizedFinal.edges.length) {
+        debugWarn(`[Pipeline] Edge loss in enforceAccountBoundaries: ${normalizedFinal.edges.length} → ${enforcedBoundaries.edges.length}`);
+      }
       
       // CRITICAL: Enforce consistent node sizes for handle alignment
       // All non-boundary nodes must have identical dimensions
@@ -3293,14 +2915,6 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         };
       });
       
-      const finalNodesWithStyle = normalizedNodesWithSize
-        .map((n) =>
-          ensureBoundaryStyle(
-            n,
-            (n.data as any)?.isDarkMode ?? isDarkMode
-          )
-        )
-        .map(applyThemeToNode);
       const nodeMap = new Map<string, Node>(normalizedNodesWithSize.map(n => [n.id, n]));
       
       const pickHandle = (fromId: string, toId: string) => {
@@ -3336,27 +2950,26 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       };
 
       let finalEdges = enforcedBoundaries.edges.map((e) => {
-        // PRESERVE handles from layoutMedallionDeterministic if they exist
+        // PRESERVE handles from ELK layout if they exist
         // Only use pickHandle as fallback for edges without handles
         const hasExistingHandles = e.sourceHandle && e.targetHandle;
         const handles = hasExistingHandles 
           ? { sourceHandle: e.sourceHandle, targetHandle: e.targetHandle }
           : pickHandle(e.source, e.target);
         
-        // Use 'straight' edges - they draw direct lines between handles without any routing
-        // 'step' edges use a routing algorithm that creates intermediate waypoints (kinks)
-        // For clean connections, we rely on proper handle selection (right->left, bottom->top)
-        const edgeType = 'straight';
+        // Use 'step' edges — right-angle orthogonal routing with sharp corners.
+        // 'smoothstep' rounds corners; 'straight' draws diagonals.
+        const edgeType = 'step';
         
         return {
           ...e,
           ...handles,
           type: edgeType,
           animated: true,
-          style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth
+          style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },
         };
       });
-      let finalNodes = enforcedBoundaries.nodes
+      let finalNodes = normalizedNodesWithSize
         .map((n) =>
           ensureBoundaryStyle(
             n,
@@ -3434,6 +3047,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         return;
       }
       
+      debugLog(`[Pipeline] Final render: ${finalNodes.length} nodes, ${finalEdges.length} edges`);
       setNodes(finalNodes);
       setEdges(finalEdges);
       return;
@@ -3507,7 +3121,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         data: {
           ...(n.data as any),
           componentType: normalizedType,
-          icon: isBoundary ? undefined : getIconForComponentType(normalizedType || (n.data as any)?.label),
+          icon: isBoundary ? undefined : getIconForComponentType(normalizedType, (n.data as any)?.label, (n.data as any)?.flowStageOrder),
           showHandles: isBoundary ? false : (n.data as any)?.showHandles,
           onRename: renameNode,
           onDelete: deleteNode,

@@ -191,17 +191,27 @@ export const PROVIDER_KEYWORDS: Record<string, string[]> = {
   aws: ['aws', 's3', 'lake'],
   azure: ['azure', 'adls', 'blob'],
   gcp: ['gcp', 'gcs', 'bigquery', 'bq'],
+  // Kafka/streaming sources - external systems that send data TO Snowflake
+  // Includes 'snowpipe_streaming' and 'snowpipe streaming' because Snowpipe Streaming
+  // is the ingestion bridge FROM external streaming sources INTO Snowflake.
+  // Visually, it belongs in the external boundary to prevent overlap.
   kafka: ['kafka', 'confluent', 'kinesis', 'event_hub', 'ext_kafka', 'snowpipe_streaming', 'snowpipe streaming'],
-  // Snowflake features: includes Snowpipe (ingestion), layers, tasks, etc.
-  // NOTE: 'stream' was removed because it matches "Kafka Stream" labels, causing
-  // the Snowflake boundary to incorrectly include Kafka nodes. Use 'cdc' for
-  // CDC streams and 'task' for Snowflake tasks instead.
+  // Snowflake-internal features: medallion layers, tasks, CDC streams, etc.
+  // NOTE: Generic terms like 'streaming', 'snowpipe', 'pipe' were removed because they
+  // match "Snowpipe Streaming" which belongs in the kafka/streaming source boundary.
+  // This prevents the Snowflake boundary from extending to encompass external nodes.
   snowflake: [
     'bronze', 'silver', 'gold', 'layer', 'task', 'cdc',
     'transform', 'warehouse', 'analytics', 'view', 'table', 'database', 'schema',
-    'snowpipe', 'pipe', 'ingest',
   ],
 };
+
+/**
+ * EXTERNAL_PROVIDERS defines which providers represent external data sources.
+ * These are processed BEFORE snowflake to ensure their nodes aren't claimed
+ * by the snowflake boundary.
+ */
+export const EXTERNAL_PROVIDERS = ['aws', 'azure', 'gcp', 'kafka'] as const;
 
 /**
  * Fit child nodes into their provider boundary.
@@ -301,15 +311,21 @@ export function fitNodesIntoBoundary<N extends NodeLike>(
 /**
  * Fit nodes into ALL detected provider boundaries in a single pass.
  *
- * Iterates over every provider in PROVIDER_KEYWORDS, calling
- * fitNodesIntoBoundary for each. Returns the final nodes array with all
- * boundaries sized/positioned and child nodes placed.
+ * IMPORTANT: Processes EXTERNAL_PROVIDERS first (aws, azure, gcp, kafka),
+ * then snowflake. This ensures external boundaries are sized and positioned
+ * BEFORE the Snowflake boundary is calculated, preventing the Snowflake
+ * boundary from extending to encompass external nodes.
  */
 export function fitAllBoundaries<N extends NodeLike>(nodes: N[]): N[] {
   let current = nodes;
-  for (const provider of Object.keys(PROVIDER_KEYWORDS)) {
+  
+  // Process external providers FIRST
+  for (const provider of EXTERNAL_PROVIDERS) {
     const { nodes: updated } = fitNodesIntoBoundary(current, provider);
     current = updated;
   }
-  return current;
+  
+  // Process snowflake LAST (after external boundaries are established)
+  const { nodes: final } = fitNodesIntoBoundary(current, 'snowflake');
+  return final;
 }
