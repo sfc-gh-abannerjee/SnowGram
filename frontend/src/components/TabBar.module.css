@@ -1,0 +1,293 @@
+/* TabBar Styles - Balto Design System */
+
+.tabBar {
+  height: 42px;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(to bottom, #F1F5F9, #E2E8F0);
+  border-bottom: 1px solid #CBD5E1;
+  padding: 0 8px;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  flex-shrink: 0;
+}
+
+.tabBar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+/* Individual Tab */
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  max-width: 200px;
+  min-width: 100px;
+  position: relative;
+  user-select: none;
+}
+
+.tab:hover {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+}
+
+.tab.active {
+  background: #FFFFFF;
+  border-color: #CBD5E1;
+  box-shadow: 0 -2px 0 #29B5E8 inset;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: #FFFFFF;
+}
+
+/* Tab Name */
+.tabName {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #475569;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab.active .tabName {
+  color: #0F172A;
+}
+
+/* Inline Edit Input */
+.tabNameInput {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #0F172A;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 0;
+  min-width: 60px;
+}
+
+.tabNameInput:focus {
+  background: rgba(41, 181, 232, 0.1);
+  border-radius: 2px;
+  padding: 0 4px;
+  margin: 0 -4px;
+}
+
+/* Dirty Indicator */
+.dirtyIndicator {
+  color: #F59E0B;
+  font-size: 18px;
+  line-height: 1;
+  margin-left: -2px;
+}
+
+/* Close Button */
+.closeBtn {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: #94A3B8;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.tab:hover .closeBtn {
+  opacity: 0.6;
+}
+
+.closeBtn:hover {
+  opacity: 1 !important;
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+}
+
+/* Add Tab Button */
+.addTab {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px dashed #CBD5E1;
+  border-radius: 6px;
+  color: #64748B;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.addTab:hover {
+  background: rgba(41, 181, 232, 0.1);
+  border-color: #29B5E8;
+  color: #29B5E8;
+}
+
+/* Context Menu */
+.contextMenu {
+  position: fixed;
+  background: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  z-index: 9999;
+  min-width: 160px;
+}
+
+.contextMenuItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  width: 100%;
+  font-size: 13px;
+  color: #475569;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.contextMenuItem:hover {
+  background: #F1F5F9;
+  color: #0F172A;
+}
+
+.contextMenuDivider {
+  height: 1px;
+  background: #E2E8F0;
+  margin: 4px 0;
+}
+
+.contextMenuIcon {
+  width: 16px;
+  height: 16px;
+  opacity: 0.7;
+}
+
+/* ===== DARK MODE ===== */
+
+.tabBar.darkMode {
+  background: linear-gradient(to bottom, #1E293B, #0F172A);
+  border-bottom-color: #334155;
+}
+
+.tabBar.darkMode .tab {
+  background: #1E293B;
+  border-color: #334155;
+}
+
+.tabBar.darkMode .tab:hover {
+  background: #0F172A;
+  border-color: #475569;
+}
+
+.tabBar.darkMode .tab.active {
+  background: #0F172A;
+  border-color: #475569;
+  box-shadow: 0 -2px 0 #29B5E8 inset;
+}
+
+.tabBar.darkMode .tab.active::after {
+  background: #0F172A;
+}
+
+.tabBar.darkMode .tabName {
+  color: #94A3B8;
+}
+
+.tabBar.darkMode .tab.active .tabName {
+  color: #E2E8F0;
+}
+
+.tabBar.darkMode .tabNameInput {
+  color: #E2E8F0;
+}
+
+.tabBar.darkMode .tabNameInput:focus {
+  background: rgba(41, 181, 232, 0.15);
+}
+
+.tabBar.darkMode .closeBtn {
+  color: #64748B;
+}
+
+.tabBar.darkMode .closeBtn:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.tabBar.darkMode .addTab {
+  border-color: #475569;
+  color: #64748B;
+}
+
+.tabBar.darkMode .addTab:hover {
+  background: rgba(41, 181, 232, 0.15);
+  border-color: #29B5E8;
+  color: #29B5E8;
+}
+
+.contextMenu.darkMode {
+  background: #1E293B;
+  border-color: #334155;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.contextMenu.darkMode .contextMenuItem {
+  color: #94A3B8;
+}
+
+.contextMenu.darkMode .contextMenuItem:hover {
+  background: #0F172A;
+  color: #E2E8F0;
+}
+
+.contextMenu.darkMode .contextMenuDivider {
+  background: #334155;
+}
+
+/* ===== DRAG AND DROP ===== */
+
+.tab.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.tab.dragOver {
+  border-left: 2px solid #29B5E8;
+}
+
+.tab.dragOverRight {
+  border-right: 2px solid #29B5E8;
+}

@@ -23,11 +23,26 @@ import CustomNode from './components/CustomNode';
 import { convertMermaidToFlow, LAYER_COLORS, getStageColor } from './lib/mermaidToReactFlow';
 import { layoutWithELK, enrichNodesWithFlowOrder } from './lib/elkLayout';
 import { resolveIcon } from './lib/iconResolver';
-import { canonicalizeComponentType, keyForNode, normalizeBoundaryType, isMedallion, normalizeGraph } from './lib/graphNormalize';
+import { canonicalizeComponentType, keyForNode, normalizeBoundaryType, normalizeGraph } from './lib/graphNormalize';
 import { hexToRgb as hexToRgbUtil, getLabelColor } from './lib/colorUtils';
 import { generateMermaidFromDiagram } from './lib/mermaidExport';
 import { boundingBox, layoutDAG, fitAllBoundaries, LAYOUT_CONSTANTS } from './lib/layoutUtils';
 import { getFlowStageOrder } from './lib/elkLayoutUtils';
+import ReactMarkdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+import { useSessionStorage, type ChatMessage, type SavedSession, type ToolResult } from './hooks/useSessionStorage';
+// Material Icons for professional UI
+import PsychologyIcon from '@mui/icons-material/Psychology';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import CheckIcon from '@mui/icons-material/Check';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import DataObjectIcon from '@mui/icons-material/DataObject';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import AutorenewIcon from '@mui/icons-material/Autorenew';
+// Multi-tab support
+import { TabBar } from './components/TabBar';
+import { useDiagramTabsStore, type DiagramTab } from './store/diagramTabsStore';
 
 // Re-export constants for backward-compat with inline usage throughout this file
 const DEFAULT_NODE_WIDTH = LAYOUT_CONSTANTS.DEFAULT_NODE_WIDTH;
@@ -77,6 +92,9 @@ type AgentResult = {
   antiPatterns?: string[];
   components?: Array<{ name: string; purpose: string; configuration: string; bestPractice: string; source?: string }>;
   rawResponse?: string;
+  // Conversation persistence - enables multi-turn dialogue
+  threadId?: number;
+  messageId?: number;
 };
 
 const nodeTypes: NodeTypes = {
@@ -224,15 +242,15 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   const isBoundary = (n: Node) => lowered((n.data as any)?.componentType).startsWith('account_boundary');
 
   const cloudSets = {
-    // Only match truly AWS-specific keywords (NOT 'lake' which could mean lakehouse)
-    aws: ['s3', 'aws', 's3_bucket', 'aws_'],
-    azure: ['azure', 'adls', 'blob'],
-    gcp: ['gcp', 'gcs', 'google', 'bigquery', 'bq'],
-    // Streaming/ingest sources — Snowpipe Streaming is the bridge between
-    // external sources (Kafka) and Snowflake. Placing it inside the Streaming
-    // Source boundary prevents the Snowflake boundary from extending leftward
-    // and overlapping with the Kafka boundary.
-    kafka: ['kafka', 'kinesis', 'event_hub', 'confluent', 'snowpipe_streaming', 'snowpipe streaming'],
+    // AWS-specific services (including Kinesis which is an AWS streaming service)
+    aws: ['s3', 'aws', 's3_bucket', 'aws_', 'kinesis', 'amazon_kinesis', 'ext_kinesis'],
+    // Azure-specific services (including Event Hubs which is an Azure streaming service)
+    azure: ['azure', 'adls', 'blob', 'event_hub', 'event_hubs', 'eventhub', 'ext_event_hub'],
+    gcp: ['gcp', 'gcs', 'google', 'bigquery', 'bq', 'pub_sub', 'pubsub'],
+    // Kafka boundary: ONLY for self-hosted Kafka or Confluent Cloud
+    // NOT for cloud-native streaming services (Kinesis→AWS, EventHubs→Azure)
+    // NOT for Snowpipe Streaming (it's a Snowflake service)
+    kafka: ['kafka', 'confluent', 'ext_kafka'],
   };
 
   const existingBoundary = (nodes || []).reduce<Record<string, boolean>>((acc, n) => {
@@ -403,6 +421,7 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   const kafkaBoxCalc = bbox(kafkaNodes);
   
   // Recalculate positions for agent-provided boundaries based on actual node positions
+  // Also track node repositioning for boundaries that need to move
   const recalculatedBoundaries = existingBoundaryNodes.map(boundary => {
     const compType = lowered((boundary.data as any)?.componentType);
     
@@ -435,10 +454,10 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
     debugLog(`[addAccountBoundaries] Recalculating ${compType} boundary from ${containedNodes.length} nodes`);
     
     // Apply spacing logic: AWS should be positioned to the left of Snowflake with 40px gap
-    let finalPosition = { x: rawBox.minX - padX, y: rawBox.minY - padY };
+    let finalPosition = { x: rawBox.minX - padX, y: rawBox.minY - padYTop };
     const finalSize = {
       width: (rawBox.maxX - rawBox.minX) + padX * 2,
-      height: (rawBox.maxY - rawBox.minY) + padY * 2
+      height: (rawBox.maxY - rawBox.minY) + padYTop + padYBottom
     };
     
     if (compType === 'account_boundary_aws' && snowBoxCalc) {
@@ -448,8 +467,11 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
       const snowflakeBoundaryLeft = snowBoxCalc.minX - padX;
       // Position AWS to the left of Snowflake boundary with BOUNDARY_GAP gap
       const leftX = snowflakeBoundaryLeft - awsWidth - BOUNDARY_GAP;
-      finalPosition = { x: leftX, y: rawBox.minY - padY };
-      debugLog(`[addAccountBoundaries] Repositioning AWS: snowflake nodes minX=${snowBoxCalc.minX}, snowflake boundary left=${snowflakeBoundaryLeft}, awsWidth=${awsWidth}, final leftX=${leftX}`);
+      finalPosition = { x: leftX, y: rawBox.minY - padYTop };
+      // Calculate offset for AWS nodes so they move with the boundary
+      const dx = (leftX + padX) - rawBox.minX;
+      containedNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
+      debugLog(`[addAccountBoundaries] Repositioning AWS: snowflake nodes minX=${snowBoxCalc.minX}, snowflake boundary left=${snowflakeBoundaryLeft}, awsWidth=${awsWidth}, final leftX=${leftX}, node dx=${dx}`);
     }
     
     // Position Kafka boundary to the left of Snowflake (similar to AWS)
@@ -457,8 +479,11 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
       const kafkaWidth = (rawBox.maxX - rawBox.minX) + padX * 2;
       const snowflakeBoundaryLeft = snowBoxCalc.minX - padX;
       const leftX = snowflakeBoundaryLeft - kafkaWidth - BOUNDARY_GAP;
-      finalPosition = { x: leftX, y: rawBox.minY - padY };
-      debugLog(`[addAccountBoundaries] Repositioning Kafka: final leftX=${leftX}`);
+      finalPosition = { x: leftX, y: rawBox.minY - padYTop };
+      // Calculate offset for Kafka nodes so they move with the boundary
+      const dx = (leftX + padX) - rawBox.minX;
+      containedNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
+      debugLog(`[addAccountBoundaries] Repositioning Kafka: final leftX=${leftX}, node dx=${dx}`);
     }
     
     // Update boundary position and size
@@ -501,296 +526,9 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
 // Compact DAG layout: imported from layoutUtils, aliased for call-site compat
 const layoutNodes = layoutDAG;
 
-// Deterministic medallion layout: fixed slots + minimal edges + non-overlapping boundaries
-const layoutMedallionDeterministic = (nodes: Node[]) => {
-  const isBoundary = (n: Node) => (((n.data as any)?.componentType || '') as string).toLowerCase().startsWith('account_boundary');
-  const nonBoundary = nodes.filter((n) => !isBoundary(n));
-  const boundaries = nodes.filter((n) => isBoundary(n));
-
-  // BUG-005 FIX: Track which nodes have been picked to prevent duplicates
-  const usedNodeIds = new Set<string>();
-
-  // Exact ID picker - tries to find node by exact ID match first
-  const pickById = (id: string): Node | null => {
-    // BUG-005 FIX: Skip already-used nodes
-    const node = nonBoundary.find(n => n.id === id && !usedNodeIds.has(n.id));
-    return node || null;
-  };
-
-  // Score-based node picker - matches against id, label, and componentType
-  const pick = (keywords: string[], preferredId?: string): Node | null => {
-    // FIRST: Try exact ID match if provided (most reliable)
-    if (preferredId) {
-      const exact = pickById(preferredId);
-      if (exact) {
-        // BUG-005 FIX: Mark as used
-        usedNodeIds.add(exact.id);
-        return exact;
-      }
-    }
-    
-    const score = (n: Node) => {
-      // Check against node id, label, AND componentType for best matching
-      const s = `${n.id} ${((n.data as any)?.label || '')} ${((n.data as any)?.componentType || '')}`.toLowerCase();
-      return keywords.reduce((acc, k) => (s.includes(k) ? acc + 1 : acc), 0);
-    };
-    // BUG-005 FIX: Filter out already-used nodes before scoring
-    const availableNodes = nonBoundary.filter(n => !usedNodeIds.has(n.id));
-    const result = availableNodes.reduce<{ best: Node | null; sc: number }>(
-      (acc, n) => {
-        const sc = score(n);
-        if (sc > acc.sc) return { best: n, sc };
-        return acc;
-      },
-      { best: null, sc: 0 }
-    ).best;
-    // BUG-005 FIX: Mark the picked node as used
-    if (result) {
-      usedNodeIds.add(result.id);
-    }
-    return result;
-  };
-
-  // === SOURCE LAYER (External) ===
-  const cloud = pick(['s3', 'lake', 'aws', 'data lake'], 's3');
-  const snowpipe = pick(['snowpipe', 'ingest', 'pipe'], 'pipe1');
-  
-  // === BRONZE LAYER (Raw Data) ===
-  const bronzeDb = pick(['bronze db', 'bronze database'], 'bronze_db');
-  const bronzeSchema = pick(['raw schema', 'bronze schema', 'raw_schema'], 'bronze_schema');
-  const bronzeTables = pick(['raw table', 'bronze table', 'raw tables', 'raw_tables'], 'bronze_tables');
-  
-  // === SILVER LAYER (Cleaned Data) ===
-  const silverDb = pick(['silver db', 'silver database'], 'silver_db');
-  const silverSchema = pick(['cleansed schema', 'silver schema', 'clean schema', 'silver_schema'], 'silver_schema');
-  const silverTables = pick(['cleansed table', 'silver table', 'cleansed tables', 'silver_tables'], 'silver_tables');
-  
-  // === GOLD LAYER (Business Ready) ===
-  const goldDb = pick(['gold db', 'gold database'], 'gold_db');
-  const goldSchema = pick(['curated schema', 'refined schema', 'gold schema', 'gold_schema'], 'gold_schema');
-  const goldTables = pick(['curated tables', 'refined tables', 'gold tables', 'gold_tables'], 'gold_tables');
-  
-  // === CONSUMPTION LAYER (BI & Analytics) - MINIMAL ===
-  const analyticsViews = pick(['analytics view', 'analytics_views', 'bi_views', 'reporting_views'], 'analytics_views');
-  const computeWarehouse = pick(['compute warehouse', 'compute wh', 'warehouse'], 'compute_wh');
-  
-  // Optional BI Tools (only if agent provides them) - no preferredId since these are optional
-  const tableau = pick(['tableau', 'tableau dashboard', 'tableau integration']);
-  const streamlit = pick(['streamlit', 'streamlit dashboard', 'streamlit app']);
-
-  // DEBUG: Log picked nodes to help diagnose layout issues
-  debugLog('[layoutMedallionDeterministic] Picked nodes:', {
-    bronzeDb: bronzeDb?.id,
-    bronzeSchema: bronzeSchema?.id,
-    bronzeTables: bronzeTables?.id,
-    silverDb: silverDb?.id,
-    silverSchema: silverSchema?.id,
-    silverTables: silverTables?.id,
-    goldDb: goldDb?.id,
-    goldSchema: goldSchema?.id,
-    goldTables: goldTables?.id,
-    analyticsViews: analyticsViews?.id,
-    computeWarehouse: computeWarehouse?.id,
-    tableau: tableau?.id,
-    streamlit: streamlit?.id,
-  });
-  debugLog('[layoutMedallionDeterministic] Available non-boundary nodes:', nonBoundary.map(n => `${n.id}/${(n.data as any)?.label}`));
-
-  // Fixed grid slots with GENEROUS spacing for cleaner connections
-  // SIMPLIFIED LAYOUT: Bronze → Silver → Gold → Analytics
-  const baseX = 100;   // Start closer to left edge
-  const baseY = 180;   // INCREASED: More room at top for "Snowflake Account" boundary label
-  
-  // CRITICAL: All nodes must have IDENTICAL dimensions for handles to align
-  // This ensures right-edge handle of node A aligns with left-edge handle of node B
-  const nodeWidth = 150;   // Fixed width for all medallion nodes
-  const nodeHeight = 130;  // Fixed height for all medallion nodes
-  
-  // Spacing should account for node dimensions to align handle centers
-  const colWidth = 200;   // Horizontal spacing between columns (node centers)
-  const rowHeight = 160;  // Vertical spacing between rows (node centers)
-  
-  const X = (c: number) => baseX + c * colWidth;
-  const Y = (r: number) => baseY + r * rowHeight;
-  
-  // Place function enforces consistent node dimensions
-  const place = (n: Node | null, c: number, r: number) =>
-    n
-      ? {
-          ...n,
-          position: { x: X(c), y: Y(r) },
-          // Force consistent width/height so handles align perfectly
-          style: {
-            ...(n.style || {}),
-            width: nodeWidth,
-            height: nodeHeight,
-          },
-        }
-      : null;
-  const placeAt = (n: Node | null, x: number, y: number) =>
-    n
-      ? {
-          ...n,
-          position: { x, y },
-          // Force consistent width/height
-          style: {
-            ...(n.style || {}),
-            width: nodeWidth,
-            height: nodeHeight,
-          },
-        }
-      : null;
-
-  // ===============================
-  // SIMPLIFIED GRID LAYOUT - Medallion Architecture
-  // ===============================
-  // Row 0: Databases (Bronze DB → Silver DB → Gold DB → Analytics Views)
-  // Row 1: Schemas (Bronze Schema → Silver Schema → Gold Schema → Compute WH)
-  // Row 2: Tables (Bronze Tables → Silver Tables → Gold Tables)
-  // ===============================
-
-  const positioned: Node[] = [
-    // External Sources (left of Snowflake boundary, only if present)
-    placeAt(cloud, -150, baseY),
-    placeAt(snowpipe, -150, baseY + rowHeight),
-    
-    // === MEDALLION CORE: Bronze → Silver → Gold ===
-    // Row 0: Databases
-    place(bronzeDb, 0, 0),
-    place(silverDb, 1, 0),
-    place(goldDb, 2, 0),
-    place(analyticsViews, 3, 0),
-    
-    // Row 1: Schemas
-    place(bronzeSchema, 0, 1),
-    place(silverSchema, 1, 1),
-    place(goldSchema, 2, 1),
-    place(computeWarehouse, 3, 1),
-    
-    // Row 2: Tables
-    place(bronzeTables, 0, 2),
-    place(silverTables, 1, 2),
-    place(goldTables, 2, 2),
-    
-    // Optional BI Tools (col 4)
-    place(tableau, 4, 0),
-    place(streamlit, 4, 1),
-  ].filter(Boolean) as Node[];
-
-  // Deduplicate positioned array (in case of any duplicates in the manual placement list)
-  const seenIds = new Set<string>();
-  const dedupedPositioned = positioned.filter(n => {
-    if (seenIds.has(n.id)) {
-      debugWarn(`[layoutMedallionDeterministic] Skipping duplicate node: ${n.id}`);
-      return false;
-    }
-    seenIds.add(n.id);
-    return true;
-  });
-  positioned.length = 0;
-  positioned.push(...dedupedPositioned);
-
-  // DO NOT place extras - filter them out completely
-  // Any node not in the core layout is a hallucination and should not appear
-  const placedIds = new Set(positioned.map((n) => n.id));
-  const extras = nonBoundary.filter((n) => !placedIds.has(n.id));
-  if (extras.length > 0) {
-    debugWarn(`[layoutMedallionDeterministic] DISCARDING ${extras.length} extra nodes:`, 
-      extras.map(n => `${n.id}/${(n.data as any)?.label}`));
-  }
-  // NOTE: We do NOT add extras to positioned array - they are filtered out
-
-  // Minimal edges - PROPERLY CONNECT ALL LAYERS
-  // Create edges with proper handle selection based on node positions
-  const makeEdge = (a: Node | null, b: Node | null, idx: number) => {
-    if (!a || !b) return null;
-    
-    // Determine handle selection based on relative positions
-    const dx = b.position.x - a.position.x;
-    const dy = b.position.y - a.position.y;
-    
-    let sourceHandle: string;
-    let targetHandle: string;
-    
-    // Use 'straight' edges ALWAYS to eliminate kinks
-    // Straight edges draw direct lines between handles - no orthogonal routing
-    const edgeType = 'straight';
-    
-    // If target is primarily below source (vertical flow within a layer)
-    if (Math.abs(dy) > Math.abs(dx) && dy > 0) {
-      sourceHandle = 'bottom-source';
-      targetHandle = 'top-target';
-    }
-    // If target is primarily above source (shouldn't happen in medallion but handle it)
-    else if (Math.abs(dy) > Math.abs(dx) && dy < 0) {
-      sourceHandle = 'top-source';
-      targetHandle = 'bottom-target';
-    }
-    // If target is primarily to the right (horizontal flow between layers)
-    else if (dx > 0) {
-      sourceHandle = 'right-source';
-      targetHandle = 'left-target';
-    }
-    // If target is primarily to the left (shouldn't happen much)
-    else {
-      sourceHandle = 'left-source';
-      targetHandle = 'right-target';
-    }
-    
-    return {
-      id: `d-${a.id}-${b.id}-${idx}`,
-      source: a.id,
-      target: b.id,
-      sourceHandle,
-      targetHandle,
-      // 'straight' for aligned connections (no kinks), 'step' for diagonal
-      type: edgeType,
-      animated: true,
-      style: { stroke: '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth
-      deletable: true,
-    } as Edge;
-  };
-
-  // SIMPLIFIED edges - clean medallion flow
-  // FLOW: Horizontal at each row (DB→DB, Schema→Schema, Tables→Tables)
-  // This creates a clean grid pattern instead of diagonal lines
-  const newEdges: Edge[] = [
-    // === SOURCE TO BRONZE (only if external sources present) ===
-    makeEdge(cloud, snowpipe, 0),
-    makeEdge(snowpipe, bronzeDb, 1),
-    
-    // === ROW 0: Database layer (horizontal flow) ===
-    makeEdge(bronzeDb, silverDb, 2),
-    makeEdge(silverDb, goldDb, 3),
-    makeEdge(goldDb, analyticsViews, 4),
-    
-    // === ROW 1: Schema layer (horizontal flow) ===
-    makeEdge(bronzeSchema, silverSchema, 5),
-    makeEdge(silverSchema, goldSchema, 6),
-    makeEdge(goldSchema, computeWarehouse, 7),
-    
-    // === ROW 2: Tables layer (horizontal flow) ===
-    makeEdge(bronzeTables, silverTables, 8),
-    makeEdge(silverTables, goldTables, 9),
-    
-    // === VERTICAL: Within each layer ===
-    makeEdge(bronzeDb, bronzeSchema, 10),
-    makeEdge(bronzeSchema, bronzeTables, 11),
-    makeEdge(silverDb, silverSchema, 12),
-    makeEdge(silverSchema, silverTables, 13),
-    makeEdge(goldDb, goldSchema, 14),
-    makeEdge(goldSchema, goldTables, 15),
-    makeEdge(analyticsViews, computeWarehouse, 16),
-    
-    // Optional BI tool connections
-    makeEdge(computeWarehouse, tableau, 17),
-    makeEdge(computeWarehouse, streamlit, 18),
-  ].filter(Boolean) as Edge[];
-
-  // Don't create boundaries here - let addAccountBoundaries handle it after layout
-  debugLog(`[layoutMedallionDeterministic] Returning ${positioned.length} positioned nodes`);
-  return { nodes: positioned, edges: newEdges };
-};
+// REMOVED: layoutMedallionDeterministic - hardcoded medallion layout
+// Now using edge-based layout for ALL architectures (layoutWithELK)
+// This enables truly agentic diagram generation where any pattern works
 
 const App: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -833,16 +571,53 @@ const App: React.FC = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showQuickTips, setShowQuickTips] = useState(true);
   const [chatOpen, setChatOpen] = useState(false);
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string }>>([
-    { role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.' },
+  const [showSessionList, setShowSessionList] = useState(false);
+  
+  // Session storage for multi-turn persistent chat
+  const {
+    currentSessionId,
+    savedSessions,
+    isLoadingSession,
+    createNewSession,
+    loadSession,
+    saveSession,
+    deleteSession,
+    initializeSessions
+  } = useSessionStorage();
+  
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    { role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.', timestamp: new Date().toISOString() },
   ]);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
+  // Track tool calls during streaming for visibility
+  const [activeToolCalls, setActiveToolCalls] = useState<string[]>([]);
+  // Track which messages have expanded thinking sections
+  const [expandedThinking, setExpandedThinking] = useState<Set<number>>(new Set());
+  // Track which tool results are expanded (key: "msgIdx-toolIdx")
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+  // Track which JSON spec sections are expanded (key: msgIdx)
+  const [expandedJsonSpec, setExpandedJsonSpec] = useState<Set<number>>(new Set());
+  // Track which Mermaid sections are expanded (key: msgIdx)
+  const [expandedMermaid, setExpandedMermaid] = useState<Set<number>>(new Set());
+  // Track closing animations
+  const [closingThinking, setClosingThinking] = useState<Set<number>>(new Set());
+  const [closingTools, setClosingTools] = useState<Set<string>>(new Set());
+  const [closingJsonSpec, setClosingJsonSpec] = useState<Set<number>>(new Set());
+  const [closingMermaid, setClosingMermaid] = useState<Set<number>>(new Set());
+  // Conversation persistence - enables multi-turn dialogue with the agent
+  const [conversationThreadId, setConversationThreadId] = useState<number | null>(null);
+  const [lastMessageId, setLastMessageId] = useState<number | null>(null);
   const [chatPos, setChatPos] = useState<{ x: number; y: number }>({ x: 120, y: 520 });
+  const [chatSize, setChatSize] = useState<{ width: number; height: number }>({ width: 440, height: 520 });
   const [chatDragging, setChatDragging] = useState(false);
+  const [chatResizing, setChatResizing] = useState<string | null>(null); // 'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'
   const [clearSpin, setClearSpin] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  // Grid snapping - enabled by default, hold Shift for free movement
+  const [snapEnabled, setSnapEnabled] = useState(true);
   const chatDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const chatResizeStart = useRef<{ x: number; y: number; width: number; height: number; posX: number; posY: number }>({ x: 0, y: 0, width: 440, height: 520, posX: 0, posY: 0 });
   // History for multi-step undo
   const historyRef = useRef<Array<{ nodes: Node[]; edges: Edge[] }>>([]);
   const historyIndexRef = useRef(-1);
@@ -852,6 +627,117 @@ const App: React.FC = () => {
   
   // BUG-007 FIX: Abort controller for parseMermaidAndCreateDiagram race condition
   const parseAbortControllerRef = useRef<AbortController | null>(null);
+
+  // ============================================
+  // MULTI-TAB STATE MANAGEMENT
+  // ============================================
+  const {
+    tabs,
+    activeTabId,
+    createTab,
+    switchTab,
+    closeTab,
+    updateTabContent,
+    updateTabViewport,
+    updateTabChat,
+    getActiveTab,
+  } = useDiagramTabsStore();
+  
+  // Track if we're in the middle of a tab switch to avoid update loops
+  const isTabSwitchingRef = useRef(false);
+  // Track the previous active tab ID to detect tab switches
+  const prevActiveTabIdRef = useRef<string | null>(null);
+  // Debounce timer for tab content updates
+  const tabUpdateTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Track hydration state to avoid calling store methods before hydration completes
+  const [isHydrated, setIsHydrated] = useState(false);
+  
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+  
+  // Initialize with a default tab if none exist (only after hydration)
+  useEffect(() => {
+    if (isHydrated && tabs.length === 0) {
+      createTab('Untitled');
+    }
+  }, [isHydrated, tabs.length, createTab]);
+
+  // Sync ReactFlow state with active tab when tab changes
+  useEffect(() => {
+    if (!activeTabId || activeTabId === prevActiveTabIdRef.current) return;
+    
+    const activeTab = getActiveTab();
+    if (!activeTab) return;
+    
+    // Mark that we're switching tabs
+    isTabSwitchingRef.current = true;
+    
+    // Restore nodes and edges from the active tab
+    setNodes(activeTab.nodes);
+    setEdges(activeTab.edges);
+    
+    // Restore viewport if ReactFlow instance is available
+    if (reactFlowInstance && activeTab.viewport) {
+      setTimeout(() => {
+        reactFlowInstance.setViewport(activeTab.viewport);
+      }, 50);
+    }
+    
+    // Restore chat state for this tab
+    if (activeTab.threadId !== undefined) {
+      setConversationThreadId(activeTab.threadId);
+      setLastMessageId(activeTab.lastMessageId);
+    }
+    
+    // Update ref after state changes
+    prevActiveTabIdRef.current = activeTabId;
+    
+    // Clear the switching flag after a short delay
+    setTimeout(() => {
+      isTabSwitchingRef.current = false;
+    }, 100);
+  }, [activeTabId, getActiveTab, setNodes, setEdges, reactFlowInstance]);
+
+  // Sync current nodes/edges back to active tab (debounced)
+  useEffect(() => {
+    // Skip if we're in the middle of a tab switch
+    if (isTabSwitchingRef.current || !activeTabId) return;
+    
+    // Clear existing timer
+    if (tabUpdateTimerRef.current) {
+      clearTimeout(tabUpdateTimerRef.current);
+    }
+    
+    // Debounce the update to avoid excessive writes during drag operations
+    tabUpdateTimerRef.current = setTimeout(() => {
+      updateTabContent(activeTabId, nodes, edges);
+    }, 300);
+    
+    return () => {
+      if (tabUpdateTimerRef.current) {
+        clearTimeout(tabUpdateTimerRef.current);
+      }
+    };
+  }, [nodes, edges, activeTabId, updateTabContent]);
+
+  // Handle tab switch - save viewport before switching
+  const handleTabSwitch = useCallback((newTabId: string) => {
+    if (activeTabId && reactFlowInstance) {
+      // Save current viewport before switching
+      const viewport = reactFlowInstance.getViewport();
+      updateTabViewport(activeTabId, viewport);
+    }
+    switchTab(newTabId);
+  }, [activeTabId, reactFlowInstance, switchTab, updateTabViewport]);
+
+  // Sync conversation state to active tab when it changes
+  useEffect(() => {
+    if (activeTabId && conversationThreadId !== null) {
+      updateTabChat(activeTabId, conversationThreadId, lastMessageId);
+    }
+  }, [conversationThreadId, lastMessageId, activeTabId, updateTabChat]);
 
   // Undo handler
   const undo = useCallback(() => {
@@ -879,47 +765,51 @@ const App: React.FC = () => {
     []
   );
 
-  // Persist chat state
+  // Initialize sessions on mount
   useEffect(() => {
+    const { sessionData } = initializeSessions();
+    if (sessionData) {
+      setChatMessages(sessionData.messages.length > 0 ? sessionData.messages : [
+        { role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.', timestamp: new Date().toISOString() }
+      ]);
+      setConversationThreadId(sessionData.threadId);
+      setLastMessageId(sessionData.lastMessageId);
+      debugLog('[Session] Restored session:', { 
+        messageCount: sessionData.messages.length,
+        threadId: sessionData.threadId 
+      });
+    }
+    
+    // Also restore chat position from localStorage
     try {
-      const stored = localStorage.getItem('snowgram.chat');
+      const stored = localStorage.getItem('snowgram.chatPos');
       if (stored) {
         const parsed = JSON.parse(stored);
-        // BUG-009 FIX: Validate array structure before setting
-        if (parsed.messages && Array.isArray(parsed.messages)) {
-          setChatMessages(parsed.messages);
-        }
-        if (typeof parsed.open === 'boolean') setChatOpen(parsed.open);
-        if (typeof parsed.input === 'string') setChatInput(parsed.input);
         if (parsed.pos && typeof parsed.pos.x === 'number' && typeof parsed.pos.y === 'number') {
           setChatPos(clampChatPos(parsed.pos));
         }
+        if (typeof parsed.open === 'boolean') setChatOpen(parsed.open);
       }
     } catch (e) {
-      console.warn('Failed to load chat from storage', e);
-      // Clear corrupted storage
-      try { localStorage.removeItem('snowgram.chat'); } catch {}
+      console.warn('Failed to load chat position from storage', e);
     }
-  }, [clampChatPos]);
+  }, [clampChatPos, initializeSessions]);
 
+  // Auto-save session when messages or thread change
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handleResize = () => setChatPos((pos) => clampChatPos(pos));
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [clampChatPos]);
+    if (currentSessionId && !isLoadingSession.current) {
+      saveSession(currentSessionId, chatMessages, conversationThreadId, lastMessageId);
+    }
+  }, [chatMessages, conversationThreadId, lastMessageId, currentSessionId, saveSession]);
 
+  // Save chat position separately (not per-session)
   useEffect(() => {
     try {
-      localStorage.setItem(
-        'snowgram.chat',
-        JSON.stringify({ messages: chatMessages, open: chatOpen, input: chatInput, pos: chatPos })
-      );
+      localStorage.setItem('snowgram.chatPos', JSON.stringify({ pos: chatPos, open: chatOpen }));
     } catch (e) {
-      console.warn('Failed to persist chat to storage', e);
+      console.warn('Failed to persist chat position', e);
     }
-  }, [chatMessages, chatOpen, chatInput, chatPos]);
+  }, [chatPos, chatOpen]);
 
   const currentMermaid = React.useMemo(() => generateMermaidFromDiagram(nodes, edges), [nodes, edges]);
 
@@ -964,6 +854,22 @@ const App: React.FC = () => {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [undo]);
+
+  // Alt/Option key toggles grid snapping (hold Alt for free movement)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setSnapEnabled(false);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setSnapEnabled(true);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   const updateEdgeMenuPosition = useCallback(() => {
     if (!reactFlowInstance || selectedEdges.length === 0) {
@@ -1836,17 +1742,25 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const callAgent = async (query: string): Promise<AgentResult> => {
+  const callAgent = async (query: string, threadId?: number): Promise<AgentResult> => {
     // All agent calls go through the secure backend proxy
+    // Pass threadId for conversation continuity (multi-turn dialogue)
     const resp = await fetch('/api/agent/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, threadId }),
     });
     if (!resp.ok) {
       throw new Error('Unable to generate architecture. Please try again later.');
     }
     const data: AgentResult = await resp.json();
+    
+    // Update conversation thread for subsequent messages
+    if (data.threadId) {
+      setConversationThreadId(data.threadId);
+      debugLog('[Chat] Conversation thread:', data.threadId);
+    }
+    
     return data;
   };
 
@@ -1916,609 +1830,20 @@ const App: React.FC = () => {
 // Ensure CSP resources stay inside their provider boundary
 const fitCspNodesIntoBoundaries = (nodes: Node[]) => fitAllBoundaries(nodes);
 
-// Ensure core medallion nodes and edges exist (Bronze/Silver/Gold + streams + Analytics)
-// BUG-002 FIX: Work with local copies to avoid mutating input arrays (React immutability)
+// =============================================================================
+// AGENTIC ARCHITECTURE: Pass-through function
+// The agent is the source of truth for topology. Frontend just renders.
+// This enables "chat with your diagram" - any architecture pattern works.
+// =============================================================================
 const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => {
-  // Create mutable local copies - never mutate the original arrays
-  let nodes = [...inputNodes];
-  let edges = [...inputEdges];
+  // AGENT-FIRST: Trust the agent output completely
+  // No forced nodes, no blocked edges, no ID remapping
+  // The agent decides what components exist and how they connect
+  debugLog('[Completeness] Agent-first mode: passing through nodes/edges unchanged');
+  debugLog('[Completeness] Input:', { nodeCount: inputNodes.length, edgeCount: inputEdges.length });
   
-  const normalizeLabel = (s: string) => 
-    s.toLowerCase()
-      .replace(/[→\-\s]+/g, '') // Remove arrows, dashes, spaces
-      .replace(/to/g, '') // Remove "to" (e.g., "Bronze to Silver")
-      .replace(/[^a-z0-9]/g, '');
-  
-  // If agent's output is severely incomplete, allow forced additions
-  // Layer-based diagrams have fewer nodes (3 layers + CDC/Transform vs 9 granular nodes)
-  const isSeverelyIncomplete = nodes.length < 3 || edges.length < 2;
-  
-  // Detect dark mode from existing nodes
-  const isDark = nodes.length > 0 && (nodes[0].data as any)?.isDarkMode === true;
-  
-  // Helper to detect medallion layer and get colors
-  const getLayerColors = (id: string, label: string) => {
-    const text = `${id} ${label}`.toLowerCase();
-    
-    // Bronze layer
-    if (text.includes('bronze') || text.includes('raw') || text.includes('landing') ||
-        text.includes('ingest') || text.includes('source') || text.includes('staging')) {
-      return LAYER_COLORS.bronze;
-    }
-    
-    // Silver layer
-    if (text.includes('silver') || text.includes('clean') || text.includes('conform') ||
-        text.includes('transform') || text.includes('standardize') || text.includes('validated')) {
-      return LAYER_COLORS.silver;
-    }
-    
-    // Gold layer
-    if (text.includes('gold') || text.includes('curated') || text.includes('refined') ||
-        text.includes('aggregate') || text.includes('business') || text.includes('dim_') ||
-        text.includes('fact_') || text.includes('mart')) {
-      return LAYER_COLORS.gold;
-    }
-    
-    // External sources
-    if (text.includes('s3') || text.includes('aws') || text.includes('kafka') ||
-        text.includes('api') || text.includes('external') || text.includes('lake')) {
-      return LAYER_COLORS.external;
-    }
-    
-    // BI/Analytics
-    if (text.includes('analytics') || text.includes('dashboard') || text.includes('report') ||
-        text.includes('bi_') || text.includes('tableau') || text.includes('powerbi')) {
-      return LAYER_COLORS.bi;
-    }
-    
-    return LAYER_COLORS.snowflake; // Default
-  };
-  
-  const addNode = (id: string, label: string, componentType: string, force = false) => {
-    // Get layer-specific colors
-    const layerColors = getLayerColors(id, label);
-    const borderColor = layerColors.border;
-    const backgroundColor = isDark ? layerColors.backgroundDark : layerColors.background;
-    
-    // If force mode or severely incomplete, add without checking
-    if (force || isSeverelyIncomplete) {
-      const existing = nodes.find((n) => n.id === id);
-      if (existing) {
-        // Update existing node to ensure correct type AND colors
-        (existing.data as any).label = label;
-        (existing.data as any).componentType = componentType;
-        // Update style with layer colors
-        existing.style = {
-          ...existing.style,
-          border: `2px solid ${borderColor}`,
-          background: backgroundColor,
-          color: isDark ? '#e5f2ff' : '#1a1a1a',
-        };
-        return;
-      }
-      nodes.push({
-        id,
-        type: 'snowflakeNode',
-        position: { x: 0, y: 0 },
-        data: {
-          label,
-          componentType,
-          showHandles: true,
-          isDarkMode: isDark,
-          labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
-          onRename: renameNode,
-          onDelete: deleteNode,
-          onCopy: copyNode,
-        },
-        style: {
-          border: `2px solid ${borderColor}`,
-          background: backgroundColor,
-          borderRadius: 8,
-          color: isDark ? '#e5f2ff' : '#1a1a1a',
-        },
-      });
-      return;
-    }
-    
-    // Check for semantic equivalence (same label or same componentType)
-    const normLabel = normalizeLabel(label);
-    const exists = nodes.some((n) => {
-      if (n.id === id) return true;
-      const nLabel = normalizeLabel((n.data as any)?.label || '');
-      const nComp = ((n.data as any)?.componentType || '').toString().toLowerCase();
-      // Match by label similarity or exact componentType (for medallion-specific types)
-      if (nLabel === normLabel) return true;
-      if (componentType === nComp) return true;
-      return false;
-    });
-    if (exists) return;
-    nodes.push({
-      id,
-      type: 'snowflakeNode',
-      position: { x: 0, y: 0 },
-      data: {
-        label,
-        componentType,
-        showHandles: true,
-        isDarkMode: isDark,
-        labelColor: isDark ? '#e5f2ff' : '#1a1a1a',
-        onRename: renameNode,
-        onDelete: deleteNode,
-        onCopy: copyNode,
-      },
-      style: {
-        border: `2px solid ${borderColor}`,
-        background: backgroundColor,
-        borderRadius: 8,
-        color: isDark ? '#e5f2ff' : '#1a1a1a',
-      },
-    });
-  };
-  debugLog('[Completeness] Input:', { nodeCount: nodes.length, edgeCount: edges.length, isSeverelyIncomplete });
-  
-  // FIRST, remap any agent-generated node IDs to canonical medallion IDs
-  // (e.g., agent might use "stream1", "bronze_raw_tables", "silver_clean_tables" instead of canonical IDs)
-  // This must run BEFORE addNode so addNode can properly detect existing nodes
-  const idMap: Record<string, string> = {};
-  const findNodeByLabelOrId = (targetLabel: string, idPatterns: string[]): Node | undefined => {
-    const normTarget = normalizeLabel(targetLabel);
-    // First try label match
-    let found = nodes.find((n) => normalizeLabel((n.data as any)?.label || '') === normTarget);
-    // If not found, try ID pattern match
-    if (!found) {
-      for (const pattern of idPatterns) {
-        found = nodes.find((n) => n.id.toLowerCase().includes(pattern));
-        if (found) break;
-      }
-    }
-    return found;
-  };
-  const remapId = (canonicalId: string, targetLabel: string, idPatterns: string[] = []) => {
-    const existing = findNodeByLabelOrId(targetLabel, idPatterns);
-    if (existing && existing.id !== canonicalId) {
-      debugLog(`[Completeness] Remapping ${existing.id} → ${canonicalId}`);
-      idMap[existing.id] = canonicalId;
-      existing.id = canonicalId;
-      // Also update componentType to canonical medallion type if needed
-      const d: any = existing.data || {};
-      if (canonicalId === 'bronze_db') d.componentType = 'bronze_db';
-      else if (canonicalId === 'bronze_schema') d.componentType = 'bronze_schema';
-      else if (canonicalId === 'bronze_tables') d.componentType = 'bronze_tables';
-      else if (canonicalId === 'silver_db') d.componentType = 'silver_db';
-      else if (canonicalId === 'silver_schema') d.componentType = 'silver_schema';
-      else if (canonicalId === 'silver_tables') d.componentType = 'silver_tables';
-      else if (canonicalId === 'gold_db') d.componentType = 'gold_db';
-      else if (canonicalId === 'gold_schema') d.componentType = 'gold_schema';
-      else if (canonicalId === 'gold_tables') d.componentType = 'gold_tables';
-      else if (canonicalId === 'stream_bronze_silver' || canonicalId === 'stream_silver_gold') d.componentType = 'stream';
-      else if (canonicalId === 'analytics_views') d.componentType = 'analytics_views';
-    }
-  };
-  
-  // =====================================================================
-  // LAYER-BASED REMAPPING (Modern Agent Output)
-  // Agent returns abstract layers (Bronze Layer, Silver Layer, Gold Layer)
-  // Do NOT remap these to granular components (Tables, Schema, DB)
-  // =====================================================================
-  
-  // External sources - keep as-is
-  remapId('s3', 'S3 Data Lake', ['s3', 'data_lake']);
-  remapId('snowpipe', 'Snowpipe', ['pipe1', 'snowpipe']);
-  remapId('kafka', 'Kafka', ['kafka_stream', 'kafka_source']);
-  remapId('stage', 'Stage', ['sf_stage', 'staging']);
-  
-  // LAYER-BASED COMPONENTS (preferred - agent should use these)
-  remapId('bronze_layer', 'Bronze Layer', ['sf_bronze_layer', 'bronze_layer']);
-  remapId('silver_layer', 'Silver Layer', ['sf_silver_layer', 'silver_layer']);
-  remapId('gold_layer', 'Gold Layer', ['sf_gold_layer', 'gold_layer']);
-  
-  // CDC/Transform components
-  remapId('cdc_stream', 'CDC Stream', ['sf_cdc_stream', 'cdc_stream', 'stream_bronze', 'stream_silver']);
-  remapId('transform_task', 'Transform Task', ['sf_transform_task', 'transform_task', 'etl_task']);
-  
-  // Analytics layer
-  remapId('analytics_views', 'Analytics Views', ['sf_analytics_views', 'analytics', 'reporting_views']);
-  remapId('compute_wh', 'Compute Warehouse', ['sf_warehouse', 'compute', 'warehouse', 'bi_warehouse']);
-  
-  // BI tools
-  remapId('tableau', 'Tableau', ['tableau_dashboard', 'powerbi', 'bi_tool']);
-
-  // BUG-012 FIX: Create new edge objects instead of mutating in-place (React immutability)
-  // Update all edge references to use canonical IDs
-  const remappedEdges = edges.map(e => ({
-    ...e,
-    source: idMap[e.source] || e.source,
-    target: idMap[e.target] || e.target,
-  }));
-  edges = remappedEdges;
-  
-  debugLog('[Completeness] After remapping:', { nodeCount: nodes.length });
-
-  // SECOND, handle external sources (S3 vs Kafka)
-  // CRITICAL FDE FIX: NEVER add S3/Snowpipe if user asked for Kafka
-  // Check if Kafka was explicitly requested or returned by agent
-  const hasKafka = nodes.some(n => {
-    const label = ((n.data as any)?.label || '').toLowerCase();
-    const id = n.id.toLowerCase();
-    return label.includes('kafka') || id.includes('kafka');
-  });
-  
-  const hasExplicitS3 = nodes.some(n => {
-    const label = ((n.data as any)?.label || '').toLowerCase();
-    const id = n.id.toLowerCase();
-    const compType = ((n.data as any)?.componentType || '').toLowerCase();
-    // Only match EXPLICIT S3 references
-    return (label === 's3' || label === 's3 data lake' || label.startsWith('s3 ') ||
-            id === 's3' || compType === 's3');
-  });
-  
-  const hasExplicitSnowpipe = nodes.some(n => {
-    const label = ((n.data as any)?.label || '').toLowerCase();
-    const id = n.id.toLowerCase();
-    return label === 'snowpipe' || label.includes('snowpipe') || id === 'snowpipe' || id === 'pipe1';
-  });
-  
-  // FDE: If Kafka is present, REMOVE any S3/Snowpipe nodes (they shouldn't coexist)
-  if (hasKafka) {
-    debugLog('[Completeness] Kafka detected - removing any S3/Snowpipe nodes');
-    const kafkaFiltered = nodes.filter(n => {
-      const label = ((n.data as any)?.label || '').toLowerCase();
-      const id = n.id.toLowerCase();
-      const isS3 = label.includes('s3') || id === 's3';
-      const isSnowpipe = label.includes('snowpipe') || id === 'snowpipe' || id === 'pipe1';
-      if (isS3 || isSnowpipe) {
-        debugLog(`[Completeness] Removing ${id} (incompatible with Kafka)`);
-        return false;
-      }
-      return true;
-    });
-    // BUG-002 FIX: Reassign local variable instead of mutating array
-    nodes = kafkaFiltered;
-  } else if (hasExplicitS3 || hasExplicitSnowpipe) {
-    // Only add S3/Snowpipe if they were explicitly in agent output (not if Kafka is present)
-    debugLog('[Completeness] Keeping existing S3/Snowpipe (no Kafka detected)');
-    if (hasExplicitS3) addNode('s3', 'S3 Data Lake', 's3', true);
-    if (hasExplicitSnowpipe) addNode('snowpipe', 'Snowpipe', 'snowpipe', true);
-  } else {
-    debugLog('[Completeness] NO external source detected - not adding S3/Snowpipe');
-  }
-  
-  // =====================================================================
-  // LAYER-BASED COMPLETENESS (Modern Agent Output)
-  // ALWAYS ensure Bronze, Silver, Gold Layer nodes exist
-  // These are the core of medallion architecture
-  // =====================================================================
-  
-  // Helper to check if a specific layer exists (more inclusive matching)
-  const hasLayerNode = (layerName: string) => {
-    const lowerLayer = layerName.toLowerCase(); // e.g., 'bronze', 'silver', 'gold'
-    return nodes.some(n => {
-      const id = n.id.toLowerCase();
-      const label = ((n.data as any)?.label || '').toLowerCase();
-      // Match: bronze_layer, bronze layer, bronze, sf_bronze_layer, etc.
-      const hasInId = id.includes(lowerLayer);
-      const hasInLabel = label.includes(lowerLayer);
-      return hasInId || hasInLabel;
-    });
-  };
-  
-  // Log what layers exist before adding
-  debugLog('[Completeness] Layer check:', {
-    hasBronze: hasLayerNode('bronze'),
-    hasSilver: hasLayerNode('silver'),
-    hasGold: hasLayerNode('gold'),
-    nodeIds: nodes.map(n => n.id),
-    nodeLabels: nodes.map(n => (n.data as any)?.label)
-  });
-  
-  // ALWAYS add core layer nodes if they don't exist with ANY bronze/silver/gold reference
-  if (!hasLayerNode('bronze')) {
-    debugLog('[Completeness] Adding missing Bronze Layer');
-    addNode('bronze_layer', 'Bronze Layer', 'sf_bronze_layer', true);
-  }
-  if (!hasLayerNode('silver')) {
-    debugLog('[Completeness] Adding missing Silver Layer');
-    addNode('silver_layer', 'Silver Layer', 'sf_silver_layer', true);
-  }
-  if (!hasLayerNode('gold')) {
-    debugLog('[Completeness] Adding missing Gold Layer');
-    addNode('gold_layer', 'Gold Layer', 'sf_gold_layer', true);
-  }
-  
-  // Analytics layer - only if missing
-  const hasAnalytics = nodes.some(n => {
-    const id = n.id.toLowerCase();
-    const label = ((n.data as any)?.label || '').toLowerCase();
-    return id.includes('analytics') || label.includes('analytics') || 
-           id.includes('views') || label.includes('views');
-  });
-  if (!hasAnalytics) {
-    addNode('analytics_views', 'Analytics Views', 'sf_analytics_views', true);
-  }
-  
-  // DON'T force-add: CDC Stream, Transform Task, Warehouse, Tableau
-  // Let the agent decide if these are needed based on the use case
-  
-  debugLog('[Completeness] After addNode:', { 
-    nodeCount: nodes.length,
-    nodeIds: nodes.map(n => n.id)
-  });
-
-  debugLog('[Completeness] Input edges:', edges.map(e => `${e.source}->${e.target}`));
-  
-  // CLEAN UP: Remove backwards/invalid edges that violate medallion logic
-  // LAYER-BASED: Allow flexible agent-defined edges, just block obvious backwards flows
-  // Don't enforce rigid edge patterns - let agent define the flow
-  
-  // Just define what nodes are valid in the medallion context
-  const medallionNodePatterns = [
-    's3', 'snowpipe', 'kafka', 'stage',
-    'bronze_layer', 'silver_layer', 'gold_layer',
-    'cdc_stream', 'transform_task',
-    'analytics_views', 'compute_wh', 'tableau'
-  ];
-  
-  // Check if a node is a valid medallion node
-  const isValidMedallionNode = (nodeId: string) => {
-    const normalized = nodeId.toLowerCase().replace(/[^a-z0-9]/g, '');
-    return medallionNodePatterns.some(p => normalized.includes(p.replace(/[^a-z0-9]/g, '')));
-  };
-  
-  // Add common invalid patterns to explicitly block (catch any casing/whitespace variations)
-  const normalizeEdgeId = (id: string) => id.toLowerCase().replace(/[^a-z0-9]/g, '');
-  const invalidPatterns = [
-    // Backwards flows - data should flow forward only
-    'goldlayerbronzelayer', // No backwards
-    'goldlayersilverlayer', // No backwards  
-    'silverlayerbronzelayer', // No backwards
-    'analyticsbronze', // No backwards
-    'analyticssilver', // No backwards
-    'analyticsgold', // No backwards (analytics is terminal)
-  ];
-  const invalidSet = new Set(invalidPatterns.map(normalizeEdgeId));
-  
-  // Remove edges that:
-  // 1. Go backwards in the medallion flow
-  // 2. Connect medallion nodes in invalid ways
-  const cleanedEdges = edges.filter((e) => {
-    const key = `${e.source}->${e.target}`;
-    const normalizedKey = normalizeEdgeId(key);
-    
-    // Explicitly reject known invalid patterns (normalized for robustness)
-    if (invalidSet.has(normalizedKey)) {
-      debugWarn(`🚫 [Completeness] Blocked invalid edge: ${key} (normalized: ${normalizedKey})`);
-      return false;
-    }
-    
-    // Allow all other edges - let agent define the flow
-    return true;
-  });
-  
-  // BUG-002 FIX: Reassign local variable instead of mutating array
-  const beforeCount = edges.length;
-  edges = cleanedEdges;
-  debugLog('[Completeness] Cleaned edges:', { before: beforeCount, after: cleanedEdges.length, removed: beforeCount - cleanedEdges.length });
-  debugLog('[Completeness] Cleaned edges list:', cleanedEdges.map(e => `${e.source}->${e.target}`));
-
-  // Now, ensure all required edges exist (using canonical IDs)
-  const edgeMap = new Set(edges.map((e) => `${e.source}->${e.target}`));
-  const ensureEdge = (source: string, target: string) => {
-    const key = `${source}->${target}`;
-    if (edgeMap.has(key)) return;
-    edgeMap.add(key);
-    const edge: Edge = {
-      id: key,
-      source,
-      target,
-      type: 'straight',  // Direct line between handles (no routing kinks)
-      animated: true,
-      sourceHandle: 'right-source',
-      targetHandle: 'left-target',
-      style: { stroke: '#60A5FA', strokeWidth: 2.5 },
-    };
-    edges.push(edge);
-  };
-  
-  // =====================================================================
-  // LAYER-BASED EDGES - Ensure proper flow connections
-  // =====================================================================
-  
-  // External source edges based on what's present
-  if (hasKafka) {
-    // Kafka -> Bronze Layer
-    ensureEdge('kafka', 'bronze_layer');
-  } else if (hasExplicitS3 || hasExplicitSnowpipe) {
-    // S3 -> Snowpipe -> Bronze Layer
-    if (hasExplicitS3 && hasExplicitSnowpipe) {
-      ensureEdge('s3', 'snowpipe');
-      ensureEdge('snowpipe', 'bronze_layer');
-    } else if (hasExplicitS3) {
-      ensureEdge('s3', 'bronze_layer');
-    } else if (hasExplicitSnowpipe) {
-      ensureEdge('snowpipe', 'bronze_layer');
-    }
-  }
-  
-  // Core layer edges - ALWAYS ensure these exist for medallion flow
-  const nodeIds = new Set(nodes.map(n => n.id.toLowerCase()));
-  debugLog('[Completeness] Node IDs for edge logic:', Array.from(nodeIds));
-  
-  // Bronze -> Silver (direct or via CDC/Transform)
-  if (nodeIds.has('bronze_layer') && nodeIds.has('silver_layer')) {
-    const hasBronzeToSilverEdge = edges.some(e => {
-      const src = e.source.toLowerCase();
-      const tgt = e.target.toLowerCase();
-      return (src.includes('bronze') && (tgt.includes('silver') || tgt.includes('cdc') || tgt.includes('transform')));
-    });
-    if (!hasBronzeToSilverEdge) {
-      debugLog('[Completeness] Adding bronze_layer -> silver_layer edge');
-      ensureEdge('bronze_layer', 'silver_layer');
-    }
-  }
-  
-  // Silver -> Gold (direct or via CDC/Transform)
-  if (nodeIds.has('silver_layer') && nodeIds.has('gold_layer')) {
-    const hasSilverToGoldEdge = edges.some(e => {
-      const src = e.source.toLowerCase();
-      const tgt = e.target.toLowerCase();
-      return (src.includes('silver') && (tgt.includes('gold') || tgt.includes('cdc') || tgt.includes('transform')));
-    });
-    if (!hasSilverToGoldEdge) {
-      debugLog('[Completeness] Adding silver_layer -> gold_layer edge');
-      ensureEdge('silver_layer', 'gold_layer');
-    }
-  }
-  
-  // Gold -> Analytics
-  if (nodeIds.has('gold_layer') && nodeIds.has('analytics_views')) {
-    const hasGoldToAnalyticsEdge = edges.some(e => {
-      const src = e.source.toLowerCase();
-      const tgt = e.target.toLowerCase();
-      return src.includes('gold') && tgt.includes('analytics');
-    });
-    if (!hasGoldToAnalyticsEdge) {
-      debugLog('[Completeness] Adding gold_layer -> analytics_views edge');
-      ensureEdge('gold_layer', 'analytics_views');
-    }
-  }
-
-  // FILTER OUT ORPHAN NODES: Nodes that have no connections are likely extraneous agent hallucinations
-  // Only keep nodes that are either:
-  // 1. Core layer nodes (always needed)
-  // 2. Connected to at least one edge
-  // 3. Boundary nodes (special case)
-  const coreNodeIds = new Set([
-    's3', 'snowpipe', 'kafka', 'stage',
-    'bronze_layer', 'silver_layer', 'gold_layer',
-    'cdc_stream', 'cdc_stream_1', 'cdc_stream_2',
-    'transform_task', 'transform_task_1', 'transform_task_2',
-    'analytics_views', 'compute_wh', 'tableau'
-  ]);
-  
-  // Explicitly unwanted nodes that should never appear (agent hallucinations)
-  // These are "invented" tasks/components that create visual noise
-  const unwantedPatterns = [
-    // Aggregation tasks (not standard medallion)
-    'aggregation task', 'aggregation_task', 'agg task', 'agg_task',
-    'silver gold aggregation', 'silver_gold_agg', 'bronze silver aggregation',
-    // Cleansing/validation tasks (not standard)
-    'cleansing task', 'cleaning task', 'validation task',
-    'quality check', 'data quality',
-    // Processing nodes (vague names)
-    'bronze to silver', 'silver to gold', 'gold to analytics',
-    'processing task', 'processing job', 'etl job',
-    // OLD GRANULAR NODES - no longer used, filter if agent returns them
-    'bronze db', 'bronze_db', 'bronze schema', 'bronze_schema', 'bronze tables', 'bronze_tables',
-    'silver db', 'silver_db', 'silver schema', 'silver_schema', 'silver tables', 'silver_tables',
-    'gold db', 'gold_db', 'gold schema', 'gold_schema', 'gold tables', 'gold_tables',
-    // Filter hallucinated BI "views"
-    'bi analytics views', 'bi views',
-    'performance materialized views', 'performance views', 'materialized view',
-    'secure reporting views', 'reporting views', 'secure views',
-    // Filter extra dashboards/reports
-    'executive dashboard', 'executive report',
-  ];
-  
-  // Build set of nodes that appear in edges
-  const connectedNodeIds = new Set<string>();
-  edges.forEach(e => {
-    connectedNodeIds.add(e.source);
-    connectedNodeIds.add(e.target);
-  });
-  
-  // WHITELIST: Only these node IDs are allowed in medallion diagrams
-  // This prevents agent hallucinations from appearing
-  const medallionWhitelist = new Set([
-    // External sources (only if explicitly requested)
-    's3', 'snowpipe', 'kafka', 'stage',
-    // Layer-based components (modern agent output)
-    'bronze_layer', 'silver_layer', 'gold_layer',
-    // CDC and Transform components
-    'cdc_stream', 'cdc_stream_1', 'cdc_stream_2',
-    'transform_task', 'transform_task_1', 'transform_task_2',
-    // Core analytics
-    'analytics_views', 'compute_wh',
-    // BI tools (external consumers)
-    'tableau', 'powerbi', 'streamlit',
-  ]);
-  
-  // Also allow nodes that match these patterns (for flexibility)
-  const allowedPatterns = [
-    'bronze', 'silver', 'gold', 'layer',
-    'stream', 'cdc', 'task', 'transform',
-    'warehouse', 'wh', 'analytics', 'views',
-    'tableau', 'powerbi', 'streamlit', 'dashboard',
-    'kafka', 'stage', 'snowpipe',
-    'account_boundary'
-  ];
-  
-  // Filter out orphans AND unwanted patterns
-  const beforeOrphanFilter = nodes.length;
-  const filteredNodes = nodes.filter(n => {
-    const id = n.id.toLowerCase();
-    const label = ((n.data as any)?.label || '').toLowerCase();
-    const compType = ((n.data as any)?.componentType || '').toLowerCase();
-    const text = `${id} ${label} ${compType}`;
-    
-    // Always keep boundaries
-    if (compType.startsWith('account_boundary')) return true;
-    
-    // PRIORITY 1: Always keep core medallion nodes (never filter these)
-    if (coreNodeIds.has(id)) return true;
-    
-    // PRIORITY 2: Keep if in whitelist
-    if (medallionWhitelist.has(id)) return true;
-    
-    // PRIORITY 3: Filter out explicitly unwanted patterns (hallucinations)
-    const isUnwanted = unwantedPatterns.some(p => text.includes(p.toLowerCase()));
-    if (isUnwanted) {
-      debugWarn(`🚫 [Completeness] Filtering unwanted hallucinated node: ${n.id} / "${label}"`);
-      return false;
-    }
-    
-    // Keep if matches allowed patterns
-    if (allowedPatterns.some(p => text.includes(p))) return true;
-    
-    // Keep if connected to any edge AND is a warehouse/BI tool
-    if (connectedNodeIds.has(n.id) && (text.includes('warehouse') || text.includes('tableau') || text.includes('bi'))) {
-      return true;
-    }
-    
-    // Otherwise, filter it out (don't keep random orphans or hallucinations)
-    debugWarn(`🚫 [Completeness] Filtering non-core node: ${n.id} / "${label}"`);
-    return false;
-  });
-  
-  debugLog('[Completeness] Orphan filter:', { 
-    before: beforeOrphanFilter, 
-    after: filteredNodes.length, 
-    removed: beforeOrphanFilter - filteredNodes.length 
-  });
-  
-  // DEDUPLICATION: Remove multiple "transform" type nodes - keep only ONE
-  // The agent sometimes creates both "Data Transform Task" and "Data Transformation Task"
-  const transformNodes = filteredNodes.filter(n => {
-    const label = ((n.data as any)?.label || '').toLowerCase();
-    return label.includes('transform') || label.includes('etl');
-  });
-  
-  let finalFilteredNodes = filteredNodes;
-  if (transformNodes.length > 1) {
-    debugWarn(`[Completeness] Found ${transformNodes.length} transform nodes - keeping only first`);
-    // Keep only the first transform node (typically 'transform_task')
-    const keepTransformId = transformNodes[0].id;
-    finalFilteredNodes = filteredNodes.filter(n => {
-      const label = ((n.data as any)?.label || '').toLowerCase();
-      if (label.includes('transform') || label.includes('etl')) {
-        return n.id === keepTransformId;
-      }
-      return true;
-    });
-  }
-  
-  debugLog('[Completeness] Output:', { nodeCount: finalFilteredNodes.length, edgeCount: edges.length, nodeIds: finalFilteredNodes.map(n => n.id) });
-  
-  return { nodes: finalFilteredNodes, edges };
+  // Simply return the input as-is - the agent is the source of truth
+  return { nodes: inputNodes, edges: inputEdges };
 };
 
   // Handle AI generation (single shot)
@@ -2527,7 +1852,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     lastUserPromptRef.current = aiPrompt.trim(); // Store for external source detection
     setIsGenerating(true);
     try {
-      const data = await callAgent(aiPrompt);
+      // Pass threadId for conversation continuity even in single-shot mode
+      const data = await callAgent(aiPrompt, conversationThreadId ?? undefined);
       if (data) await parseMermaidAndCreateDiagram(data.mermaidCode, data.spec);
     } catch (error) {
       console.error('AI generation error:', error);
@@ -2538,13 +1864,54 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     }
   };
 
-  // Chat send handler (multi-turn)
+  // Session management handlers
+  const handleNewSession = useCallback(() => {
+    createNewSession();
+    setChatMessages([
+      { role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.', timestamp: new Date().toISOString() }
+    ]);
+    setConversationThreadId(null);
+    setLastMessageId(null);
+    setShowSessionList(false);
+    setActiveToolCalls([]);
+    debugLog('[Session] Started new session');
+  }, [createNewSession]);
+
+  const handleSwitchSession = useCallback((sessionId: string) => {
+    const sessionData = loadSession(sessionId);
+    if (sessionData) {
+      setChatMessages(sessionData.messages.length > 0 ? sessionData.messages : [
+        { role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.', timestamp: new Date().toISOString() }
+      ]);
+      setConversationThreadId(sessionData.threadId);
+      setLastMessageId(sessionData.lastMessageId);
+    } else {
+      setChatMessages([
+        { role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.', timestamp: new Date().toISOString() }
+      ]);
+      setConversationThreadId(null);
+      setLastMessageId(null);
+    }
+    setShowSessionList(false);
+    setActiveToolCalls([]);
+    debugLog('[Session] Switched to session:', sessionId);
+  }, [loadSession]);
+
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    const newSessionId = deleteSession(sessionId);
+    if (newSessionId) {
+      handleSwitchSession(newSessionId);
+    }
+  }, [deleteSession, handleSwitchSession]);
+
+  // Chat send handler (multi-turn) with SSE streaming
   const handleSendChat = async () => {
     if (!chatInput.trim() || chatSending) return;
     const userMessage = chatInput.trim();
     lastUserPromptRef.current = userMessage; // Store for external source detection
     setChatSending(true);
-    const history = [...chatMessages, { role: 'user' as const, text: userMessage }];
+    const userMsg: ChatMessage = { role: 'user', text: userMessage, timestamp: new Date().toISOString() };
+    const history = [...chatMessages, userMsg];
     setChatMessages(history);
     setChatInput('');
 
@@ -2556,33 +1923,514 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     const enrichedPrompt = `You are the SnowGram Cortex Agent. First review the existing canvas before making changes. Here is the current diagram in Mermaid (derived from the live canvas):\n\n${currentMermaid}\n\nThen continue the conversation below and apply updates based on the user's new request. If needed, adjust or refine the existing layout rather than recreating from scratch.\n\nConversation:\n${transcript}\nAgent:`;
 
     try {
-      const data = await callAgent(enrichedPrompt);
-      if (data) {
-        await parseMermaidAndCreateDiagram(data.mermaidCode, data.spec);
-        const reply = formatAgentReply(data);
-        setChatMessages((msgs) => [...msgs, { role: 'assistant', text: reply }]);
-      } else {
-        setChatMessages((msgs) => [
-          ...msgs,
-          { role: 'assistant', text: 'I could not generate a response. Try again.' },
-        ]);
+      // Add placeholder for streaming response
+      setChatMessages((msgs) => [...msgs, { role: 'assistant', text: '...', timestamp: new Date().toISOString() }]);
+      
+      const response = await fetch('/api/agent/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: enrichedPrompt, 
+          threadId: conversationThreadId,
+          parentMessageId: lastMessageId || 0
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        console.error('[Chat] Stream request failed:', response.status, errorBody);
+        throw new Error(`Stream request failed: ${response.status} - ${errorBody}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let streamedText = '';
+      let streamedThinking = '';
+      let fullText = '';
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (!payload) continue;
+
+          try {
+            const data = JSON.parse(payload);
+            
+            if (data.type === 'thread' && data.threadId) {
+              setConversationThreadId(data.threadId);
+              debugLog('[Chat] Thread ID:', data.threadId);
+            } else if (data.type === 'thinking' && data.text) {
+              // Accumulate thinking text
+              streamedThinking += data.text;
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                updated[updated.length - 1] = { 
+                  ...updated[updated.length - 1],
+                  thinking: streamedThinking
+                };
+                return updated;
+              });
+            } else if (data.type === 'tool_use' && data.tool) {
+              // Track tool calls for visibility (CKE, web search, etc.)
+              const toolName = data.tool.name || data.tool.tool_name || 
+                (data.tool.tool_calls?.[0]?.name) || 'Tool';
+              debugLog('[Chat] Tool use:', toolName, data.tool);
+              setActiveToolCalls(prev => [...prev, toolName]);
+              // Show tool execution in chat
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                const currentTools = updated[updated.length - 1].toolCalls || [];
+                if (!currentTools.includes(toolName)) {
+                  updated[updated.length - 1] = { 
+                    ...updated[updated.length - 1],
+                    toolCalls: [...currentTools, toolName]
+                  };
+                }
+                return updated;
+              });
+            } else if (data.type === 'tool_result' && data.result) {
+              // Tool result received - store full result for expandable display
+              debugLog('[Chat] Tool result:', data.result);
+              const toolName = data.result.name || 'search';
+              const rawResult = data.result.result || data.result.content || data.result;
+              const toolResult = {
+                name: toolName,
+                result: rawResult,
+                input: data.result.input || data.result.parameters
+              };
+              
+              // Extract JSON spec and Mermaid from COMPOSE_DIAGRAM_FROM_TEMPLATE result
+              let extractedJsonSpec: string | undefined;
+              let extractedMermaid: string | undefined;
+              
+              if (toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' && rawResult) {
+                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2);
+                
+                // Check if result is raw Mermaid code (common output format)
+                const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|xychart|sankey|block)/i);
+                if (isMermaidCode) {
+                  extractedMermaid = resultStr.trim();
+                } else {
+                  // Try to extract Mermaid from fenced block
+                  const mermaidMatch = resultStr.match(/```mermaid\s*([\s\S]*?)```/);
+                  if (mermaidMatch) {
+                    extractedMermaid = mermaidMatch[1].trim();
+                  } else if (typeof rawResult === 'object' && rawResult.mermaid) {
+                    extractedMermaid = rawResult.mermaid;
+                  } else if (typeof rawResult === 'object' && rawResult.mermaid_code) {
+                    extractedMermaid = rawResult.mermaid_code;
+                  }
+                }
+                
+                // Try to extract JSON block
+                const jsonMatch = resultStr.match(/```json\s*([\s\S]*?)```/);
+                if (jsonMatch) {
+                  extractedJsonSpec = jsonMatch[1].trim();
+                } else if (typeof rawResult === 'object' && rawResult.json_spec) {
+                  extractedJsonSpec = typeof rawResult.json_spec === 'string' 
+                    ? rawResult.json_spec 
+                    : JSON.stringify(rawResult.json_spec, null, 2);
+                }
+              }
+              
+              // Also extract from other diagram-generating tools
+              if ((toolName.includes('COMPOSE') || toolName.includes('DIAGRAM') || toolName.includes('GENERATE')) && rawResult && !extractedMermaid) {
+                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2);
+                const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|xychart|sankey|block)/i);
+                if (isMermaidCode) {
+                  extractedMermaid = resultStr.trim();
+                }
+              }
+              
+              // Update the tool call status and store the result
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                const lastMsg = updated[updated.length - 1];
+                // Add a completion marker and store the full result
+                const completedTools = lastMsg.completedTools || [];
+                const toolResults = lastMsg.toolResults || [];
+                if (!completedTools.includes(toolName)) {
+                  updated[updated.length - 1] = { 
+                    ...lastMsg,
+                    completedTools: [...completedTools, toolName],
+                    toolResults: [...toolResults, toolResult],
+                    // Store extracted artifacts if found
+                    jsonSpec: extractedJsonSpec || lastMsg.jsonSpec,
+                    mermaidCode: extractedMermaid || lastMsg.mermaidCode
+                  };
+                }
+                return updated;
+              });
+            } else if (data.type === 'status' && data.message) {
+              // Status update from backend - could show in UI
+              debugLog('[Chat] Status:', data.message);
+            } else if (data.type === 'tool' && data.tool) {
+              // Legacy tool format - same as tool_use
+              const toolName = data.tool.name || data.tool.tool_name || 
+                (data.tool.tool_calls?.[0]?.name) || 'Tool';
+              debugLog('[Chat] Tool call:', toolName, data.tool);
+              setActiveToolCalls(prev => [...prev, toolName]);
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                const currentTools = updated[updated.length - 1].toolCalls || [];
+                if (!currentTools.includes(toolName)) {
+                  updated[updated.length - 1] = { 
+                    ...updated[updated.length - 1],
+                    toolCalls: [...currentTools, toolName]
+                  };
+                }
+                return updated;
+              });
+            } else if (data.type === 'chunk' && data.text) {
+              streamedText += data.text;
+              // Update the last message with streamed content (strip code blocks for display)
+              let displayText = streamedText
+                .replace(/```json[\s\S]*?```/g, '')
+                .replace(/```mermaid[\s\S]*?```/g, '')
+                .replace(/```json[\s\S]*/g, '') // Handle incomplete json blocks
+                .replace(/```mermaid[\s\S]*/g, '') // Handle incomplete mermaid blocks
+                .trim();
+              
+              // Show progress indicator when generating diagram JSON
+              if (!displayText && streamedText.includes('```json')) {
+                displayText = 'Generating architecture diagram...';
+              } else if (displayText.length > 2000) {
+                // Only truncate very long responses for UI performance
+                displayText = displayText.substring(0, 2000) + '...';
+              }
+              
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                updated[updated.length - 1] = { 
+                  ...updated[updated.length - 1],
+                  role: 'assistant', 
+                  text: displayText || 'Thinking...',
+                  timestamp: updated[updated.length - 1].timestamp || new Date().toISOString()
+                };
+                return updated;
+              });
+            } else if (data.type === 'done') {
+              fullText = data.fullText || streamedText;
+              // Capture message_id for multi-turn continuity
+              if (data.messageId) {
+                setLastMessageId(data.messageId);
+                debugLog('[Chat] Message ID captured:', data.messageId);
+              }
+            } else if (data.type === 'metadata' && data.messageId) {
+              // Alternative: capture message_id from metadata event
+              setLastMessageId(data.messageId);
+              debugLog('[Chat] Message ID from metadata:', data.messageId);
+            } else if (data.type === 'error') {
+              // Set error message and break out of streaming
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                updated[updated.length - 1] = { role: 'assistant', text: `Error: ${data.error}`, timestamp: new Date().toISOString() };
+                return updated;
+              });
+              setChatSending(false);
+              return; // Exit early on error
+            }
+          } catch (parseErr) {
+            // Ignore JSON parse errors for malformed chunks - these are expected
+            // during streaming when chunks split across JSON boundaries
+          }
+        }
+      }
+
+      // Fallback: use streamedText if no 'done' event was received
+      if (!fullText && streamedText) {
+        fullText = streamedText;
+      }
+
+      // Parse the full response and update diagram
+      if (fullText) {
+        const specMatch = fullText.match(/```json\n([\s\S]*?)\n```/);
+        let spec = undefined;
+        if (specMatch) {
+          try {
+            spec = JSON.parse(specMatch[1]);
+          } catch {}
+        }
+        const mermaidMatch = fullText.match(/```mermaid\n([\s\S]*?)\n```/);
+        const mermaidCode = mermaidMatch ? mermaidMatch[1] : '';
+
+        if (spec || mermaidCode) {
+          await parseMermaidAndCreateDiagram(mermaidCode, spec);
+        }
+
+        // Extract overview for final message - look for Architecture Overview section
+        const overviewMatch = fullText.match(/##\s*Architecture Overview\s*\n([\s\S]*?)(?=\n##\s|```|$)/i);
+        const overview = overviewMatch ? overviewMatch[1].trim() : '';
+        
+        // Final message - preserve markdown formatting for ReactMarkdown to render
+        // Strip code blocks and artifact section headers (shown in dropdowns instead)
+        let finalMessage = '';
+        if (overview) {
+          // Use the extracted overview as-is (preserves markdown)
+          finalMessage = overview;
+        } else {
+          // Fallback: strip code blocks but preserve markdown formatting
+          finalMessage = fullText
+            .replace(/```json[\s\S]*?```/g, '')
+            .replace(/```mermaid[\s\S]*?```/g, '')
+            .replace(/```[\s\S]*?```/g, '')
+            .trim();
+          
+          // Only truncate if extremely long (5000+ chars)
+          if (finalMessage.length > 5000) {
+            finalMessage = finalMessage.substring(0, 5000) + '...';
+          }
+        }
+        
+        // Strip redundant section headers (these are shown in expandable dropdowns)
+        finalMessage = finalMessage
+          .replace(/\*?\*?JSON Specification\*?\*?:?\s*/gi, '')
+          .replace(/\*?\*?Mermaid Diagram\*?\*?:?\s*/gi, '')
+          .replace(/\*?\*?Mermaid Code\*?\*?:?\s*/gi, '')
+          .replace(/#{1,3}\s*JSON Specification\s*/gi, '')
+          .replace(/#{1,3}\s*Mermaid Diagram\s*/gi, '')
+          .replace(/#{1,3}\s*Mermaid Code\s*/gi, '')
+          .replace(/\n{3,}/g, '\n\n')  // Collapse excessive newlines
+          .trim();
+        
+        if (!finalMessage) {
+          finalMessage = 'Diagram updated. Review the canvas for the architecture.';
+        }
+        
+        // Include tool calls used in the final message
+        const toolsUsed = activeToolCalls.length > 0 
+          ? ''  // Tools are now shown in expandable UI, not as text
+          : '';
+        
+        // Extract JSON spec from FULL TEXT (before code blocks were stripped)
+        const jsonSpecMatch = fullText.match(/```json\s*([\s\S]*?)```/);
+        const extractedJsonSpec = jsonSpecMatch ? jsonSpecMatch[1].trim() : undefined;
+        
+        // Extract Mermaid diagram from FULL TEXT (before code blocks were stripped)
+        const mermaidSpecMatch = fullText.match(/```mermaid\s*([\s\S]*?)```/);
+        const extractedMermaid = mermaidSpecMatch ? mermaidSpecMatch[1].trim() : undefined;
+        
+        setChatMessages((msgs) => {
+          const updated = [...msgs];
+          const lastMsg = updated[updated.length - 1];
+          // Preserve thinking, toolCalls, completedTools, toolResults, and extracted artifacts from streaming
+          updated[updated.length - 1] = { 
+            role: 'assistant', 
+            text: finalMessage + toolsUsed,
+            thinking: lastMsg.thinking,
+            toolCalls: lastMsg.toolCalls || [...new Set(activeToolCalls)],
+            completedTools: lastMsg.completedTools,
+            toolResults: lastMsg.toolResults,
+            jsonSpec: extractedJsonSpec || lastMsg.jsonSpec,
+            mermaidCode: extractedMermaid || lastMsg.mermaidCode,
+            timestamp: lastMsg.timestamp || new Date().toISOString()
+          };
+          return updated;
+        });
+        
+        // Clear active tool calls
+        setActiveToolCalls([]);
       }
     } catch (err: any) {
-      console.error('Chat generation error:', err);
-      setChatMessages((msgs) => [
-        ...msgs,
-        { role: 'assistant', text: 'Error generating diagram. Please try again.' },
-      ]);
+      console.error('Chat streaming error:', err);
+      setChatMessages((msgs) => {
+        const updated = [...msgs];
+                updated[updated.length - 1] = { role: 'assistant', text: 'Error generating diagram. Please try again.', timestamp: new Date().toISOString() };
+        return updated;
+      });
     } finally {
       setChatSending(false);
+      setActiveToolCalls([]); // Clear tool calls for next request
+    }
+  };
+
+  // Variant that accepts prompt directly (for starter prompts to bypass state timing)
+  const handleSendChatWithPrompt = async (prompt: string) => {
+    if (!prompt.trim() || chatSending) return;
+    const userMessage = prompt.trim();
+    lastUserPromptRef.current = userMessage;
+    setChatSending(true);
+    const userMsg: ChatMessage = { role: 'user', text: userMessage, timestamp: new Date().toISOString() };
+    const history = [...chatMessages, userMsg];
+    setChatMessages(history);
+    setChatInput('');
+
+    const transcript = history
+      .map((m) => `${m.role === 'user' ? 'User' : 'Agent'}: ${m.text}`)
+      .join('\n');
+
+    const enrichedPrompt = `You are the SnowGram Cortex Agent. First review the existing canvas before making changes. Here is the current diagram in Mermaid (derived from the live canvas):\n\n${currentMermaid}\n\nThen continue the conversation below and apply updates based on the user's new request. If needed, adjust or refine the existing layout rather than recreating from scratch.\n\nConversation:\n${transcript}\nAgent:`;
+
+    try {
+      setChatMessages((msgs) => [...msgs, { role: 'assistant', text: '...', timestamp: new Date().toISOString() }]);
+      
+      const response = await fetch('/api/agent/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          query: enrichedPrompt, 
+          threadId: conversationThreadId,
+          parentMessageId: lastMessageId || 0
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Stream request failed: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let streamedText = '';
+      let streamedThinking = '';
+      let fullText = '';
+
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (!payload) continue;
+
+          try {
+            const data = JSON.parse(payload);
+            
+            if (data.type === 'thread' && data.threadId) {
+              setConversationThreadId(data.threadId);
+            } else if (data.type === 'thinking' && data.text) {
+              streamedThinking += data.text;
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                updated[updated.length - 1] = { ...updated[updated.length - 1], thinking: streamedThinking };
+                return updated;
+              });
+            } else if (data.type === 'tool_use' && data.tool) {
+              const toolName = data.tool.name || data.tool.tool_name || 'Tool';
+              setActiveToolCalls(prev => [...prev, toolName]);
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                const currentTools = updated[updated.length - 1].toolCalls || [];
+                if (!currentTools.includes(toolName)) {
+                  updated[updated.length - 1] = { ...updated[updated.length - 1], toolCalls: [...currentTools, toolName] };
+                }
+                return updated;
+              });
+            } else if (data.type === 'tool_result' && data.result) {
+              const toolName = data.result.name || 'search';
+              const rawResult = data.result.result || data.result.content || data.result;
+              const toolResult = { name: toolName, result: rawResult, input: data.result.input };
+              
+              let extractedMermaid: string | undefined;
+              if (toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' && rawResult) {
+                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult);
+                const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram)/i);
+                if (isMermaidCode) extractedMermaid = resultStr.trim();
+                else {
+                  const mermaidMatch = resultStr.match(/```mermaid\s*([\s\S]*?)```/);
+                  if (mermaidMatch) extractedMermaid = mermaidMatch[1].trim();
+                }
+              }
+              
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                const lastMsg = updated[updated.length - 1];
+                const completedTools = lastMsg.completedTools || [];
+                const toolResults = lastMsg.toolResults || [];
+                if (!completedTools.includes(toolName)) {
+                  updated[updated.length - 1] = { 
+                    ...lastMsg, completedTools: [...completedTools, toolName], toolResults: [...toolResults, toolResult],
+                    mermaidCode: extractedMermaid || lastMsg.mermaidCode
+                  };
+                }
+                return updated;
+              });
+            } else if (data.type === 'chunk' && data.text) {
+              streamedText += data.text;
+              fullText += data.text;
+              setChatMessages((msgs) => {
+                const updated = [...msgs];
+                updated[updated.length - 1] = { ...updated[updated.length - 1], text: streamedText };
+                return updated;
+              });
+            } else if (data.type === 'done') {
+              if (data.messageId) setLastMessageId(data.messageId);
+            }
+          } catch {}
+        }
+      }
+
+      // Process final diagram
+      const specMatch = fullText.match(/```json\n([\s\S]*?)\n```/);
+      const specStr = specMatch ? specMatch[1] : '';
+      let spec: { nodes: any[]; edges: any[]; layout?: any } | undefined;
+      if (specStr) {
+        try {
+          spec = JSON.parse(specStr);
+        } catch { /* ignore parse errors */ }
+      }
+      const mermaidMatch = fullText.match(/```mermaid\n([\s\S]*?)\n```/);
+      const mermaidCode = mermaidMatch ? mermaidMatch[1] : '';
+      if (spec || mermaidCode) await parseMermaidAndCreateDiagram(mermaidCode, spec);
+
+      // Final cleanup
+      let finalMessage = fullText.replace(/```json[\s\S]*?```/g, '').replace(/```mermaid[\s\S]*?```/g, '').trim();
+      if (!finalMessage) finalMessage = 'Diagram updated. Review the canvas for the architecture.';
+      
+      setChatMessages((msgs) => {
+        const updated = [...msgs];
+        const lastMsg = updated[updated.length - 1];
+        updated[updated.length - 1] = { 
+          ...lastMsg, text: finalMessage,
+          jsonSpec: specMatch ? specMatch[1].trim() : lastMsg.jsonSpec,
+          mermaidCode: mermaidMatch ? mermaidMatch[1].trim() : lastMsg.mermaidCode
+        };
+        return updated;
+      });
+      setActiveToolCalls([]);
+    } catch (err) {
+      console.error('Chat error:', err);
+      setChatMessages((msgs) => {
+        const updated = [...msgs];
+        updated[updated.length - 1] = { role: 'assistant', text: 'Error generating diagram. Please try again.', timestamp: new Date().toISOString() };
+        return updated;
+      });
+    } finally {
+      setChatSending(false);
+      setActiveToolCalls([]);
     }
   };
 
   const handleClearChat = () => {
-    const seed = [{ role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.' }] as typeof chatMessages;
+    const seed: ChatMessage[] = [{ role: 'assistant', text: 'Tell me what to build. I will refine the diagram and keep context.', timestamp: new Date().toISOString() }];
     setChatMessages(seed);
     setChatInput('');
+    // Reset conversation thread to start fresh
+    setConversationThreadId(null);
+    debugLog('[Chat] Conversation cleared, thread reset');
   };
+
+  // Copy to clipboard helper with visual feedback
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyToClipboard = useCallback(async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  }, []);
 
   // Chat drag
   const onChatDragStart = (e: React.MouseEvent) => {
@@ -2605,6 +2453,85 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     };
   }, [chatDragging, setChatPos]);
 
+  // Chat resize handlers
+  const onChatResizeStart = (e: React.MouseEvent, direction: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    chatResizeStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: chatSize.width,
+      height: chatSize.height,
+      posX: chatPos.x,
+      posY: chatPos.y,
+    };
+    setChatResizing(direction);
+  };
+
+  useEffect(() => {
+    if (!chatResizing) return;
+    const minWidth = 320;
+    const minHeight = 380;
+    const maxWidth = window.innerWidth - 100;
+    const maxHeight = window.innerHeight - 100;
+
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - chatResizeStart.current.x;
+      const dy = e.clientY - chatResizeStart.current.y;
+      const dir = chatResizing;
+
+      let newWidth = chatResizeStart.current.width;
+      let newHeight = chatResizeStart.current.height;
+      let newPosX = chatResizeStart.current.posX;
+      let newPosY = chatResizeStart.current.posY;
+
+      // East (right edge)
+      if (dir.includes('e')) {
+        newWidth = Math.min(maxWidth, Math.max(minWidth, chatResizeStart.current.width + dx));
+      }
+      // West (left edge)
+      if (dir.includes('w')) {
+        const proposedWidth = chatResizeStart.current.width - dx;
+        if (proposedWidth >= minWidth && proposedWidth <= maxWidth) {
+          newWidth = proposedWidth;
+          newPosX = chatResizeStart.current.posX + dx;
+        }
+      }
+      // South (bottom edge)
+      if (dir.includes('s')) {
+        newHeight = Math.min(maxHeight, Math.max(minHeight, chatResizeStart.current.height + dy));
+      }
+      // North (top edge)
+      if (dir.includes('n')) {
+        const proposedHeight = chatResizeStart.current.height - dy;
+        if (proposedHeight >= minHeight && proposedHeight <= maxHeight) {
+          newHeight = proposedHeight;
+          newPosY = chatResizeStart.current.posY + dy;
+        }
+      }
+
+      setChatSize({ width: newWidth, height: newHeight });
+      setChatPos({ x: newPosX, y: newPosY });
+    };
+
+    const onUp = () => setChatResizing(null);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [chatResizing]);
+
+  // Header drag for expanded panel
+  const onChatHeaderDragStart = (e: React.MouseEvent) => {
+    // Only allow drag from header area, not from buttons
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    chatDragOffset.current = { x: e.clientX - chatPos.x, y: e.clientY - chatPos.y };
+    setChatDragging(true);
+  };
+
   // Convert Mermaid to ReactFlow using shared component catalog
   const parseMermaidAndCreateDiagram = async (mermaidCode: string, spec?: { nodes: any[]; edges: any[]; layout?: any }) => {
     // BUG-007 FIX: Abort any previous parsing operation to prevent race conditions
@@ -2616,6 +2543,15 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     
     // Helper to check if this operation was aborted
     const isAborted = () => abortController.signal.aborted;
+    
+    // LAYOUT PRESERVATION: Capture current node positions before processing
+    // This ensures conversational edits don't reset the user's layout
+    const currentNodes = getNodes();
+    const existingPositions = new Map<string, { x: number; y: number }>();
+    currentNodes.forEach(node => {
+      existingPositions.set(node.id, { x: node.position.x, y: node.position.y });
+    });
+    debugLog(`[Layout Preservation] Captured ${existingPositions.size} existing positions`);
     
     if (spec?.nodes?.length) {
       // ================================================================
@@ -2654,10 +2590,24 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           });
         }
         
-        // Use backend position if available, otherwise fallback to grid
-        const position = (n.position && typeof n.position.x === 'number') 
-          ? { x: n.position.x, y: n.position.y }
-          : { x: (idx % 4) * 260, y: Math.floor(idx / 4) * 200 };
+        // LAYOUT PRESERVATION: Priority order for position:
+        // 1. Existing canvas position (preserves user's manual layout)
+        // 2. Backend-provided position (agent's suggestion)
+        // 3. Default grid position (fallback)
+        let position: { x: number; y: number };
+        const existingPos = existingPositions.get(nodeId);
+        
+        if (existingPos) {
+          // Preserve existing position - user's layout takes priority
+          position = existingPos;
+          debugLog(`[Layout Preservation] Preserving position for ${nodeId}:`, position);
+        } else if (n.position && typeof n.position.x === 'number') {
+          // Use backend position for new nodes
+          position = { x: n.position.x, y: n.position.y };
+        } else {
+          // Fallback to grid for nodes without positions
+          position = { x: (idx % 4) * 260, y: Math.floor(idx / 4) * 200 };
+        }
         
         return {
           id: n.id || `node-${idx}`,
@@ -2730,63 +2680,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       }
 
       // ===========================================================================
-      // FDE FIX: Remove external cloud components when user didn't ask for them
-      // This is a critical guardrail - even if the agent's tools return S3/AWS/Azure,
-      // we strip them out unless the user EXPLICITLY mentioned external data sources
+      // AGENTIC APPROACH: Trust the agent completely
+      // The agent understands context and returns only relevant components.
+      // We no longer filter based on keyword matching in user prompts.
       // ===========================================================================
-      const userPrompt = lastUserPromptRef.current.toLowerCase();
-      const externalKeywords = ['s3', 'aws', 'azure', 'gcp', 'kafka', 'external', 'data lake', 'cloud storage', 'ingest from', 'load from', 'pull from'];
-      const userWantsExternal = externalKeywords.some(k => userPrompt.includes(k));
-      
-      if (!userWantsExternal) {
-        const externalPatterns = ['s3', 'aws', 'snowpipe', 'pipe', 'kafka', 'azure', 'gcp', 'lake', 'external', 'ingest'];
-        const beforeExtFilter = specNodes.length;
-        
-        specNodes = specNodes.filter(n => {
-          const id = n.id.toLowerCase();
-          const label = ((n.data as any)?.label || '').toLowerCase();
-          const compType = ((n.data as any)?.componentType || '').toLowerCase();
-          const text = `${id} ${label} ${compType}`;
-          
-          // Keep boundary nodes
-          if (compType.startsWith('account_boundary')) return true;
-          
-          // Check if this is an external component
-          const isExternal = externalPatterns.some(p => {
-            // More precise matching to avoid false positives
-            if (p === 's3') return text.includes('s3') && !text.includes('s3_bucket_used_correctly');
-            if (p === 'aws') return text.includes('aws');
-            if (p === 'snowpipe' || p === 'pipe') return text.includes('pipe') || text.includes('snowpipe');
-            if (p === 'lake') return text.includes('lake') && !text.includes('data lakehouse');
-            return text.includes(p);
-          });
-          
-          if (isExternal) {
-            debugWarn(`🚫 [FDE Filter] Removing unwanted external component: ${id} / ${label} (user prompt: "${lastUserPromptRef.current.substring(0, 50)}...")`);
-            return false;
-          }
-          return true;
-        });
-        
-        const extFilterCount = beforeExtFilter - specNodes.length;
-        if (extFilterCount > 0) {
-          debugLog(`[FDE Filter] Removed ${extFilterCount} external component(s) - user didn't request them`);
-        }
-        
-        // Also filter out AWS-related boundaries
-        specNodes = specNodes.filter(n => {
-          const id = n.id.toLowerCase();
-          const compType = ((n.data as any)?.componentType || '').toLowerCase();
-          if (id.includes('aws') || compType.includes('aws')) {
-            debugWarn(`🚫 [FDE Filter] Removing AWS boundary: ${id}`);
-            return false;
-          }
-          return true;
-        });
-      } else {
-        debugLog(`[FDE Filter] User requested external sources - keeping all components`);
-      }
-      // ===========================================================================
+      debugLog('[Pipeline] Agent-first mode: trusting agent output (no FDE filtering)');
 
       const specEdges: Edge[] = (spec.edges || []).map((e: any, i: number) => ({
         id: `${e.source || 's'}-${e.target || 't'}-${i}`,
@@ -2864,11 +2762,9 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           debugWarn(`[Layout] Edge count changed: ${cleanedSpecEdges.length} → ${elkResult.edges.length}`);
         }
       } catch (elkError) {
-        debugWarn(`[Layout] Error, falling back to deterministic:`, elkError);
-        // Fallback to existing layout if ELK fails
-        laidOut = isMedallion(specNodes)
-          ? layoutMedallionDeterministic(specNodes)
-          : { nodes: layoutNodes(specNodes, cleanedSpecEdges), edges: cleanedSpecEdges };
+        debugWarn(`[Layout] ELK layout error, falling back to DAG layout:`, elkError);
+        // Simple fallback - use DAG layout for all architectures
+        laidOut = { nodes: layoutNodes(specNodes, cleanedSpecEdges), edges: cleanedSpecEdges };
       }
       // Always auto-create boundaries from node keywords.
       // Agent boundaries have placeholder positions {x:0, y:0} — addAccountBoundaries
@@ -2931,8 +2827,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         const dy = c2.y - c1.y;
 
         // FIXED: Use magnitude comparison instead of absolute threshold
-        // This matches the logic in layoutMedallionDeterministic.makeEdge
-        // and prevents diagonal edges in grid layouts
+        // This prevents diagonal edges in grid layouts
         
         // If vertical distance is GREATER than horizontal → vertical flow
         if (Math.abs(dy) > Math.abs(dx)) {
@@ -2949,7 +2844,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         };
       };
 
-      let finalEdges = enforcedBoundaries.edges.map((e) => {
+      const finalEdges = enforcedBoundaries.edges.map((e) => {
         // PRESERVE handles from ELK layout if they exist
         // Only use pickHandle as fallback for edges without handles
         const hasExistingHandles = e.sourceHandle && e.targetHandle;
@@ -2969,7 +2864,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },
         };
       });
-      let finalNodes = normalizedNodesWithSize
+      const finalNodes = normalizedNodesWithSize
         .map((n) =>
           ensureBoundaryStyle(
             n,
@@ -3004,41 +2899,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       }
       
       // =============================================================================
-      // FINAL FDE GUARDRAIL: Strip AWS/external components if user didn't request them
-      // This is the LAST line of defense before rendering - catches any components
-      // that slipped through previous filters (agent hallucinations, completeness logic, etc.)
-      // =============================================================================
-      const userPromptFinal = lastUserPromptRef.current.toLowerCase();
-      const externalKeywordsFinal = ['s3', 'aws', 'azure', 'gcp', 'kafka', 'external', 'data lake', 'cloud storage', 'ingest from', 'load from', 'pull from'];
-      const userWantsExternalFinal = externalKeywordsFinal.some(k => userPromptFinal.includes(k));
-      
-      if (!userWantsExternalFinal) {
-        const beforeFinalFilter = finalNodes.length;
-        finalNodes = finalNodes.filter(n => {
-          const id = n.id.toLowerCase();
-          const label = ((n.data as any)?.label || '').toLowerCase();
-          const compType = ((n.data as any)?.componentType || '').toLowerCase();
-          
-          // Remove AWS/S3/Snowpipe related nodes
-          if (id === 's3' || id === 'pipe1' || id === 'snowpipe' ||
-              label.includes('s3 data lake') || label === 'snowpipe' ||
-              compType === 's3' || compType === 'snowpipe' ||
-              compType.includes('account_boundary_aws') || id.includes('aws')) {
-            debugWarn(`🚫 [FINAL GUARDRAIL] Removing: ${id} / ${label}`);
-            return false;
-          }
-          return true;
-        });
-        
-        // Also remove edges that reference removed nodes
-        const validNodeIds = new Set(finalNodes.map(n => n.id));
-        const beforeEdgeFilter = finalEdges.length;
-        finalEdges = finalEdges.filter(e => validNodeIds.has(e.source) && validNodeIds.has(e.target));
-        
-        if (beforeFinalFilter !== finalNodes.length || beforeEdgeFilter !== finalEdges.length) {
-          debugLog(`[FINAL GUARDRAIL] Removed ${beforeFinalFilter - finalNodes.length} nodes, ${beforeEdgeFilter - finalEdges.length} edges`);
-        }
-      }
+      // AGENTIC APPROACH: No post-processing filters - trust the agent completely
       // =============================================================================
       
       // BUG-007 FIX: Check if aborted before state updates
@@ -3153,9 +3014,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     }
     debugLog(`[Pipeline] After separating boundaries (mermaid): ${finalNodes.length} nodes for layout`);
 
-    const laidOut = isMedallion(finalNodes)
-      ? layoutMedallionDeterministic(finalNodes)
-      : { nodes: layoutNodes(finalNodes, completedEdges), edges: completedEdges };
+    // AGENTIC: Use simple DAG layout for all architectures (no medallion special-casing)
+    const laidOut = { nodes: layoutNodes(finalNodes, completedEdges), edges: completedEdges };
     debugLog(`[Pipeline] After layout: ${laidOut.nodes.length} nodes`);
     // Add back agent-provided boundaries before addAccountBoundaries
     const nodesWithMermaidBoundaries = [...mermaidBoundaries, ...laidOut.nodes];
@@ -3213,39 +3073,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     }));
     
     // =============================================================================
-    // FINAL FDE GUARDRAIL (Mermaid Path): Strip AWS/external components
-    // =============================================================================
-    const userPromptFinal2 = lastUserPromptRef.current.toLowerCase();
-    const externalKeywordsFinal2 = ['s3', 'aws', 'azure', 'gcp', 'kafka', 'external', 'data lake', 'cloud storage', 'ingest from', 'load from', 'pull from'];
-    const userWantsExternalFinal2 = externalKeywordsFinal2.some(k => userPromptFinal2.includes(k));
-    
-    let filteredNodesWithStyle = finalNodesWithStyle;
-    let filteredEdges = finalEdges;
-    
-    if (!userWantsExternalFinal2) {
-      const beforeFinalFilter2 = filteredNodesWithStyle.length;
-      filteredNodesWithStyle = filteredNodesWithStyle.filter(n => {
-        const id = n.id.toLowerCase();
-        const label = ((n.data as any)?.label || '').toLowerCase();
-        const compType = ((n.data as any)?.componentType || '').toLowerCase();
-        
-        if (id === 's3' || id === 'pipe1' || id === 'snowpipe' ||
-            label.includes('s3 data lake') || label === 'snowpipe' ||
-            compType === 's3' || compType === 'snowpipe' ||
-            compType.includes('account_boundary_aws') || id.includes('aws')) {
-          debugWarn(`🚫 [FINAL GUARDRAIL 2] Removing: ${id} / ${label}`);
-          return false;
-        }
-        return true;
-      });
-      
-      const validNodeIds2 = new Set(filteredNodesWithStyle.map(n => n.id));
-      filteredEdges = filteredEdges.filter(e => validNodeIds2.has(e.source) && validNodeIds2.has(e.target));
-      
-      if (beforeFinalFilter2 !== filteredNodesWithStyle.length) {
-        debugLog(`[FINAL GUARDRAIL 2] Removed ${beforeFinalFilter2 - filteredNodesWithStyle.length} unwanted nodes`);
-      }
-    }
+    // AGENTIC APPROACH: No post-processing filters - trust the agent completely
     // =============================================================================
     
     // BUG-007 FIX: Check if aborted before state updates (Mermaid path)
@@ -3254,8 +3082,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       return;
     }
     
-    setNodes(filteredNodesWithStyle);
-    setEdges(filteredEdges);
+    setNodes(finalNodesWithStyle);
+    setEdges(finalEdges);
   };
 
   return (
@@ -3409,9 +3237,17 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         <div className={styles.aiSection} />
       </div>
 
-      {/* Right Canvas - Diagram Builder with ReactFlow */}
-      <div className={styles.canvas} ref={reactFlowWrapper}>
-        <ReactFlow
+      {/* Right Side - Tab Bar + Canvas */}
+      <div className={styles.canvasWrapper}>
+        {/* Multi-Tab Bar */}
+        <TabBar 
+          isDarkMode={isDarkMode} 
+          onTabSwitch={handleTabSwitch}
+        />
+        
+        {/* Canvas - Diagram Builder with ReactFlow */}
+        <div className={styles.canvas} ref={reactFlowWrapper}>
+          <ReactFlow
           style={{ background: isDarkMode ? '#0F172A' : '#F8FAFC' }}
           nodes={nodes}
           edges={edges.map(edge => {
@@ -3452,6 +3288,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           connectionMode={ConnectionMode.Loose}
           isValidConnection={() => true}
           fitView
+          snapToGrid={snapEnabled}
+          snapGrid={[16, 16]}
         proOptions={{ hideAttribution: true }}
           deleteKeyCode={null}
           selectNodesOnDrag={false}
@@ -3864,6 +3702,9 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             <div className={styles.instructionItem}>
               • Press Delete to remove selected
               </div>
+            <div className={styles.instructionItem}>
+              • <span className={styles.highlight}>Hold Alt/⌥ for free movement</span>
+              </div>
             </div>
           </Panel>
 
@@ -3884,6 +3725,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             </Panel>
           )}
         </ReactFlow>
+        </div>
       </div>
 
       {/* Agent Chat Panel */}
@@ -3903,11 +3745,28 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         </button>
         <div
           className={`${styles.chatPanel} ${chatOpen ? `${styles.chatPanelOpen} ${styles.chatEntered}` : `${styles.chatPanelCollapsed} ${styles.chatExited}`} ${showDebug ? styles.chatPanelDebugOpen : ''}`}
-          style={{ left: 0, top: 0 }}
+          style={{ left: 0, top: 0, width: chatOpen ? chatSize.width : undefined, height: chatOpen ? chatSize.height : undefined }}
           aria-hidden={!chatOpen}
         >
+          {/* Resize handles - all 8 directions */}
+          {chatOpen && (
+            <>
+              <div className={styles.resizeHandleN} onMouseDown={(e) => onChatResizeStart(e, 'n')} />
+              <div className={styles.resizeHandleS} onMouseDown={(e) => onChatResizeStart(e, 's')} />
+              <div className={styles.resizeHandleE} onMouseDown={(e) => onChatResizeStart(e, 'e')} />
+              <div className={styles.resizeHandleW} onMouseDown={(e) => onChatResizeStart(e, 'w')} />
+              <div className={styles.resizeHandleNE} onMouseDown={(e) => onChatResizeStart(e, 'ne')} />
+              <div className={styles.resizeHandleNW} onMouseDown={(e) => onChatResizeStart(e, 'nw')} />
+              <div className={styles.resizeHandleSE} onMouseDown={(e) => onChatResizeStart(e, 'se')} />
+              <div className={styles.resizeHandleSW} onMouseDown={(e) => onChatResizeStart(e, 'sw')} />
+            </>
+          )}
           <div className={styles.chatContent}>
-            <div className={styles.chatHeader}>
+            <div 
+              className={`${styles.chatHeader} ${chatOpen ? styles.chatHeaderDraggable : ''}`}
+              onMouseDown={chatOpen ? onChatHeaderDragStart : undefined}
+              style={{ cursor: chatOpen ? (chatDragging ? 'grabbing' : 'grab') : undefined }}
+            >
               <div className={styles.chatHeaderLeft}>
                 <div className={`${styles.chatTitle} ${chatOpen ? styles.textShimmer : ''}`}>
                   <span className={styles.titleBrand}>SnowGram</span> Design Assistant
@@ -3915,6 +3774,32 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 <div className={`${styles.chatSubtitle} ${chatOpen ? styles.textShimmer : ''}`}>Powered by Cortex</div>
               </div>
               <div className={styles.chatHeaderActions}>
+                {/* New Chat button */}
+                <button
+                  className={styles.chatAction}
+                  onClick={handleNewSession}
+                  title="New chat"
+                  style={{ color: '#10B981' }}
+                >
+                  <span style={{ fontSize: '18px', fontWeight: 'bold' }}>+</span>
+                </button>
+                {/* History toggle button */}
+                {savedSessions.length > 0 && (
+                  <button
+                    className={styles.chatAction}
+                    onClick={() => setShowSessionList(!showSessionList)}
+                    title="Chat history"
+                    style={{ color: showSessionList ? '#0EA5E9' : undefined }}
+                  >
+                    <img
+                      src="/icons/Snowflake_ICON_Time.svg"
+                      alt="History"
+                      className={styles.chatActionIcon}
+                      style={{ width: 16, height: 16 }}
+                    />
+                  </button>
+                )}
+                {/* Clear/Refresh button */}
                 <button
                   className={styles.chatAction}
                   onClick={() => {
@@ -3935,6 +3820,46 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 </button>
               </div>
             </div>
+            
+            {/* Session List Panel */}
+            {showSessionList && savedSessions.length > 0 && (
+              <div className={styles.sessionListPanel}>
+                <div className={styles.sessionListHeader}>
+                  Recent Conversations ({savedSessions.length})
+                </div>
+                {savedSessions.map((session) => (
+                  <div
+                    key={session.id}
+                    className={`${styles.sessionItem} ${session.id === currentSessionId ? styles.sessionItemActive : ''}`}
+                    onClick={() => handleSwitchSession(session.id)}
+                  >
+                    <div className={styles.sessionInfo}>
+                      <div className={styles.sessionName}>{session.name}</div>
+                      <div className={styles.sessionMeta}>
+                        {session.messageCount} messages • {new Date(session.timestamp).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button
+                      className={styles.sessionDeleteBtn}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm('Delete this conversation?')) {
+                          handleDeleteSession(session.id);
+                        }
+                      }}
+                      title="Delete conversation"
+                    >
+                      <img
+                        src="/icons/Snowflake_ICON_No.svg"
+                        alt="Delete"
+                        style={{ width: 14, height: 14 }}
+                      />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <div className={styles.chatMessages}>
               {chatMessages.map((m, idx) => (
                 <div
@@ -3942,11 +3867,277 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                   className={m.role === 'user' ? styles.chatMessageUser : styles.chatMessageAssistant}
                 >
                   <div className={styles.chatBubble}>
-                    <strong>{m.role === 'user' ? 'You' : 'SnowGram'}:</strong> {m.text}
+                    <strong>{m.role === 'user' ? 'You' : 'SnowGram'}:</strong>
+                    
+                    {/* Thinking section - collapsible */}
+                    {m.thinking && (
+                      <div className={styles.thinkingSection}>
+                        <button 
+                          className={styles.thinkingToggle}
+                          onClick={() => {
+                            setExpandedThinking(prev => {
+                              const next = new Set(prev);
+                              if (next.has(idx)) {
+                                // Start closing animation
+                                setClosingThinking(p => new Set(p).add(idx));
+                                setTimeout(() => {
+                                  setExpandedThinking(p => { const n = new Set(p); n.delete(idx); return n; });
+                                  setClosingThinking(p => { const n = new Set(p); n.delete(idx); return n; });
+                                }, 150);
+                              } else {
+                                next.add(idx);
+                              }
+                              return next;
+                            });
+                          }}
+                        >
+                          <PsychologyIcon className={styles.thinkingIcon} />
+                          <span>Thinking</span>
+                          <ExpandMoreIcon className={`${styles.thinkingChevron} ${expandedThinking.has(idx) ? styles.expanded : ''}`} />
+                        </button>
+                        {expandedThinking.has(idx) && (
+                          <div className={`${styles.thinkingContent} ${closingThinking.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
+                            <ReactMarkdown>{m.thinking}</ReactMarkdown>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Tool calls - expandable with results */}
+                    {m.toolCalls && m.toolCalls.length > 0 && (
+                      <div className={styles.toolCallsSection}>
+                        {m.toolCalls.map((tool, toolIdx) => {
+                          const isCompleted = m.completedTools?.includes(tool);
+                          const toolResult = m.toolResults?.find(tr => tr.name === tool);
+                          const toolKey = `${idx}-${toolIdx}`;
+                          const isExpanded = expandedTools.has(toolKey);
+                          const isClosing = closingTools.has(toolKey);
+                          
+                          return (
+                            <div key={toolIdx} className={styles.toolCallItem}>
+                              <button 
+                                className={`${styles.toolCallToggle} ${isCompleted ? styles.toolCompleted : ''}`}
+                                onClick={() => {
+                                  if (toolResult) {
+                                    if (isExpanded) {
+                                      // Start closing animation
+                                      setClosingTools(p => new Set(p).add(toolKey));
+                                      setTimeout(() => {
+                                        setExpandedTools(p => { const n = new Set(p); n.delete(toolKey); return n; });
+                                        setClosingTools(p => { const n = new Set(p); n.delete(toolKey); return n; });
+                                      }, 150);
+                                    } else {
+                                      setExpandedTools(prev => new Set(prev).add(toolKey));
+                                    }
+                                  }
+                                }}
+                                disabled={!toolResult}
+                              >
+                                <span className={styles.toolIcon}>{isCompleted ? <CheckIcon fontSize="small" /> : <AutorenewIcon fontSize="small" className={styles.spinning} />}</span>
+                                <span className={styles.toolLabel}>Tool:</span>
+                                <span className={styles.toolName}>{tool}</span>
+                                {toolResult && (
+                                  <ExpandMoreIcon className={`${styles.toolChevron} ${isExpanded ? styles.expanded : ''}`} fontSize="small" />
+                                )}
+                              </button>
+                              {isExpanded && toolResult && (
+                                <div className={`${styles.toolResultContent} ${isClosing ? styles.expandableContentClosing : styles.expandableContent}`}>
+                                  {toolResult.input && (
+                                    <div className={styles.toolResultInput}>
+                                      <div className={styles.toolResultHeader}>
+                                        <strong>Input:</strong>
+                                        <button 
+                                          className={styles.copyButtonSmall}
+                                          onClick={() => copyToClipboard(JSON.stringify(toolResult.input, null, 2), `input-${toolKey}`)}
+                                          title="Copy input"
+                                        >
+                                          {copiedKey === `input-${toolKey}` ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
+                                        </button>
+                                      </div>
+                                      <SyntaxHighlighter 
+                                        language="json" 
+                                        style={oneDark}
+                                        customStyle={{ margin: '4px 0', borderRadius: '4px', fontSize: '11px' }}
+                                      >
+                                        {JSON.stringify(toolResult.input, null, 2)}
+                                      </SyntaxHighlighter>
+                                    </div>
+                                  )}
+                                  <div className={styles.toolResultOutput}>
+                                    <div className={styles.toolResultHeader}>
+                                      <strong>Result:</strong>
+                                      <button 
+                                        className={styles.copyButtonSmall}
+                                        onClick={() => copyToClipboard(
+                                          typeof toolResult.result === 'string' 
+                                            ? toolResult.result 
+                                            : JSON.stringify(toolResult.result, null, 2),
+                                          `result-${toolKey}`
+                                        )}
+                                        title="Copy result"
+                                      >
+                                        {copiedKey === `result-${toolKey}` ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
+                                      </button>
+                                    </div>
+                                    <SyntaxHighlighter 
+                                      language="json" 
+                                      style={oneDark}
+                                      customStyle={{ margin: '4px 0', borderRadius: '4px', fontSize: '11px', maxHeight: '300px', overflow: 'auto' }}
+                                    >
+                                      {typeof toolResult.result === 'string' 
+                                        ? toolResult.result 
+                                        : JSON.stringify(toolResult.result, null, 2)}
+                                    </SyntaxHighlighter>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                    {/* JSON Specification - expandable with copy button */}
+                    {m.jsonSpec && (
+                      <div className={styles.codeArtifactSection}>
+                        <div className={styles.codeArtifactHeader}>
+                          <button 
+                            className={styles.codeArtifactToggle}
+                            onClick={() => {
+                              if (expandedJsonSpec.has(idx)) {
+                                setClosingJsonSpec(p => new Set(p).add(idx));
+                                setTimeout(() => {
+                                  setExpandedJsonSpec(p => { const n = new Set(p); n.delete(idx); return n; });
+                                  setClosingJsonSpec(p => { const n = new Set(p); n.delete(idx); return n; });
+                                }, 150);
+                              } else {
+                                setExpandedJsonSpec(prev => new Set(prev).add(idx));
+                              }
+                            }}
+                          >
+                            <DataObjectIcon className={styles.codeArtifactIcon} />
+                            <span>JSON Specification</span>
+                            <ExpandMoreIcon className={`${styles.codeArtifactChevron} ${expandedJsonSpec.has(idx) ? styles.expanded : ''}`} />
+                          </button>
+                          <button 
+                            className={styles.copyButton}
+                            onClick={() => copyToClipboard(m.jsonSpec!, `json-${idx}`)}
+                            title="Copy JSON"
+                          >
+                            {copiedKey === `json-${idx}` ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
+                          </button>
+                        </div>
+                        {expandedJsonSpec.has(idx) && (
+                          <div className={`${styles.codeArtifactContent} ${closingJsonSpec.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
+                            <SyntaxHighlighter 
+                              language="json" 
+                              style={oneDark}
+                              customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', fontSize: '12px', maxHeight: '400px' }}
+                              showLineNumbers
+                            >
+                              {m.jsonSpec}
+                            </SyntaxHighlighter>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    {/* Mermaid Diagram - expandable with copy button */}
+                    {m.mermaidCode && (
+                      <div className={styles.codeArtifactSection}>
+                        <div className={styles.codeArtifactHeader}>
+                          <button 
+                            className={styles.codeArtifactToggle}
+                            onClick={() => {
+                              if (expandedMermaid.has(idx)) {
+                                setClosingMermaid(p => new Set(p).add(idx));
+                                setTimeout(() => {
+                                  setExpandedMermaid(p => { const n = new Set(p); n.delete(idx); return n; });
+                                  setClosingMermaid(p => { const n = new Set(p); n.delete(idx); return n; });
+                                }, 150);
+                              } else {
+                                setExpandedMermaid(prev => new Set(prev).add(idx));
+                              }
+                            }}
+                          >
+                            <AccountTreeIcon className={styles.codeArtifactIcon} />
+                            <span>Mermaid Diagram</span>
+                            <ExpandMoreIcon className={`${styles.codeArtifactChevron} ${expandedMermaid.has(idx) ? styles.expanded : ''}`} />
+                          </button>
+                          <button 
+                            className={styles.copyButton}
+                            onClick={() => copyToClipboard(m.mermaidCode!, `mermaid-${idx}`)}
+                            title="Copy Mermaid"
+                          >
+                            {copiedKey === `mermaid-${idx}` ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
+                          </button>
+                        </div>
+                        {expandedMermaid.has(idx) && (
+                          <div className={`${styles.codeArtifactContent} ${closingMermaid.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
+                            <SyntaxHighlighter 
+                              language="markdown" 
+                              style={oneDark}
+                              customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', fontSize: '12px', maxHeight: '400px' }}
+                              showLineNumbers
+                            >
+                              {m.mermaidCode}
+                            </SyntaxHighlighter>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    <div className={styles.chatMarkdown}>
+                      <ReactMarkdown>{m.text}</ReactMarkdown>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
+            
+            {/* Starter prompts - compact chips above input */}
+            {chatMessages.length <= 1 && !chatSending && (
+              <div className={styles.starterPrompts}>
+                <div className={styles.starterHint}>
+                  <span>Try a reference architecture</span>
+                  <span className={styles.starterHintActions}>click to send • hold ⌥ to edit</span>
+                </div>
+                <div className={styles.starterChips}>
+                  {[
+                    { icon: '/icons/Snowflake_ICON_RA_Stream.svg', label: 'Streaming', prompt: 'Generate a Snowflake Streaming Data Stack architecture diagram showing Kafka/Kinesis → Snowpipe Streaming → Streams → Dynamic Tables → Snowpark Container Services' },
+                    { icon: '/icons/Snowflake_ICON_Security.svg', label: 'Security Analytics', prompt: 'Generate a Snowflake Application Health & Security Analytics architecture with log collection, Snowpipe Streaming, anomaly detection with Snowpark ML, and Search Optimization Service' },
+                    { icon: '/icons/Snowflake_ICON_Cloud.svg', label: 'Serverless', prompt: 'Generate a Snowflake Serverless Data Stack architecture with API Gateway, Lambda/Cloud Functions, Snowflake with Hybrid Tables, and serverless ETL' },
+                    { icon: '/icons/Snowflake_ICON_Users.svg', label: 'Customer 360', prompt: 'Generate a Snowflake Customer 360 architecture showing data lake, streaming ingestion, Native Apps, Secure Data Sharing, and Snowpark orchestration' },
+                    { icon: '/icons/Snowflake_ICON_Embedded_Analytics.svg', label: 'Embedded Analytics', prompt: 'Generate a Snowflake Embedded Analytics architecture with API tier, OLTP database, Hybrid Tables, ETL ingestion, and BI tool integration' },
+                    { icon: '/icons/Snowflake_ICON_IoT.svg', label: 'IoT', prompt: 'Generate a Snowflake IoT Reference Architecture with edge devices, MQTT broker, streaming service, Snowpipe, time-series analysis, and Snowpark ML' },
+                    { icon: '/icons/Snowflake_ICON_Workloads_AI.svg', label: 'ML Pipeline', prompt: 'Generate a Snowflake Machine Learning architecture with training data ingestion, Snowpipe, Iceberg Tables, Snowpark ML, Model Registry, and inference endpoints' },
+                  ].map((starter, i) => (
+                    <button
+                      key={i}
+                      className={styles.starterChip}
+                      onClick={(e) => {
+                        if (e.altKey || e.metaKey) {
+                          // Alt/Option or Cmd: fill input for editing
+                          setChatInput(starter.prompt);
+                        } else {
+                          // Normal click: send immediately
+                          setChatInput(starter.prompt);
+                          handleSendChatWithPrompt(starter.prompt);
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        setChatInput(starter.prompt);
+                      }}
+                    >
+                      <img src={starter.icon} alt="" className={styles.starterChipIcon} />
+                      <span>{starter.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             <div className={styles.chatInputRow}>
               <textarea
                 className={styles.chatInput}
@@ -3959,7 +4150,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 tabIndex={chatOpen ? 0 : -1}
               />
               <button
-                className={styles.chatSend}
+                className={`${styles.chatSend} ${chatSending ? styles.chatSending : ''}`}
                 onClick={handleSendChat}
                 disabled={!chatInput.trim() || chatSending}
                 aria-label="Send message"

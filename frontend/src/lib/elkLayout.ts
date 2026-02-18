@@ -53,7 +53,7 @@ function isExternalNode(node: Node): boolean {
 // Layout constants
 const NODE_WIDTH = 150;
 const NODE_HEIGHT = 130;
-const COL_SPACING = 200;     // horizontal space between stage columns
+const COL_SPACING = 150;     // horizontal space between stage columns (reduced from 200 for more compact layout)
 const ROW_SPACING = 60;      // vertical space between parallel nodes in same stage
 
 /**
@@ -170,22 +170,23 @@ export async function layoutWithELK(
     return { nodes, edges };
   }
 
-  // Step 1: Get flowStageOrder and layout column for each internal node
+  // Step 1: Initialize stages from keywords (starting point)
+  // Then use edge propagation to compute ACTUAL positions from topology
   const nodeStages = new Map<string, number>();
   const nodeColumns = new Map<string, number>();
   
+  // Initialize with keyword-based stages as starting point
   internalNodes.forEach(n => {
     const data = n.data as FlowNodeData;
+    // Agent-provided flowStageOrder is an optional OVERRIDE (rare)
+    // Otherwise use keyword inference as starting point for edge propagation
     const stage = data.flowStageOrder ?? getFlowStageOrder(n as any);
     nodeStages.set(n.id, stage);
   });
 
-  // Step 1b: Edge-aware stage propagation
-  // If A → B and A.stage >= B.stage, push B.stage to A.stage + 0.5
-  // This ensures downstream nodes (e.g., CDC after Silver) get higher stages
-  // 
-  // EXCEPTION: Ignore edges FROM utility/compute nodes (warehouse, compute pool)
-  // These are "support" edges that shouldn't affect pipeline flow order
+  // ALWAYS run edge propagation to compute actual positions from topology
+  // This is the PRIMARY method - the graph structure determines layout
+  console.log('[Layout] Running edge propagation to compute stages from topology');
   
   const UTILITY_KEYWORDS = ['warehouse', 'compute', 'pool'];
   function isUtilityNode(nodeId: string): boolean {
@@ -197,19 +198,19 @@ export async function layoutWithELK(
   }
   
   const internalNodeIds = new Set(internalNodes.map(n => n.id));
-  for (let pass = 0; pass < 5; pass++) {
+  
+  // Edge propagation: if source → target, target must be AFTER source
+  for (let pass = 0; pass < 10; pass++) {
     let changed = false;
     edges.forEach(e => {
-      // Only consider edges between internal nodes
       if (!internalNodeIds.has(e.source) || !internalNodeIds.has(e.target)) return;
-      
-      // Skip edges FROM utility nodes (warehouse → task should not push task forward)
+      // Skip utility nodes (warehouses connect to multiple stages)
       if (isUtilityNode(e.source)) return;
       
       const sourceStage = nodeStages.get(e.source) ?? 3;
       const targetStage = nodeStages.get(e.target) ?? 3;
       
-      // If source stage >= target stage, target should be later
+      // If source stage >= target stage, push target further right
       if (sourceStage >= targetStage) {
         const newTargetStage = sourceStage + 0.5;
         nodeStages.set(e.target, newTargetStage);
@@ -416,16 +417,25 @@ export function hasFlowMetadata(nodes: Node[]): boolean {
 }
 
 /**
- * Enrich nodes with inferred flowStageOrder if not provided by agent
+ * Enrich nodes with inferred flowStageOrder as starting point for edge propagation.
+ * The actual positions are computed by edge propagation in layoutWithELK.
  */
 export function enrichNodesWithFlowOrder(nodes: Node[]): Node[] {
-  return nodes.map(n => ({
-    ...n,
-    data: {
-      ...(n.data as FlowNodeData),
-      flowStageOrder: getFlowStageOrder(n as any),
-    },
-  }));
+  return nodes.map(n => {
+    const data = n.data as FlowNodeData;
+    // If agent provided flowStageOrder, preserve it (optional override)
+    if (typeof data.flowStageOrder === 'number') {
+      return n;
+    }
+    // Otherwise infer from keywords as starting point
+    return {
+      ...n,
+      data: {
+        ...data,
+        flowStageOrder: getFlowStageOrder(n as any),
+      },
+    };
+  });
 }
 
 export default layoutWithELK;

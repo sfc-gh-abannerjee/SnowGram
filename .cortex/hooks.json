@@ -1,0 +1,13 @@
+{
+  "hooks": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "pre",
+          "command": "bash -c \"echo '$CORTEX_TOOL_INPUT' | grep -qE '(npm run dev|npm start|yarn dev|yarn start|next dev|streamlit run|uvicorn|python.*server|node.*server)' && echo 'BLOCKED: Do not run dev servers. Ask the user to start the server themselves.' && exit 1 || exit 0\""
+        }
+      ]
+    }
+  ]
+}

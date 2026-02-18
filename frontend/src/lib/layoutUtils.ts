@@ -185,24 +185,25 @@ export function layoutDAG<N extends NodeLike>(nodes: N[], edges: EdgeLike[]): N[
 // fitNodesIntoBoundary
 // ---------------------------------------------------------------------------
 
-/** Provider keyword map for matching child nodes to boundaries. */
+/** Provider keyword map for matching child nodes to boundaries (FALLBACK ONLY).
+ * AGENTIC: The agent should provide node.data.boundary for explicit assignment.
+ * Keywords are only used when the agent doesn't specify boundary.
+ */
 export const PROVIDER_KEYWORDS: Record<string, string[]> = {
-  // AWS-specific: S3, lake storage. Snowpipe is NOT AWS-specific (it's a Snowflake feature).
-  aws: ['aws', 's3', 'lake'],
-  azure: ['azure', 'adls', 'blob'],
-  gcp: ['gcp', 'gcs', 'bigquery', 'bq'],
-  // Kafka/streaming sources - external systems that send data TO Snowflake
-  // Includes 'snowpipe_streaming' and 'snowpipe streaming' because Snowpipe Streaming
-  // is the ingestion bridge FROM external streaming sources INTO Snowflake.
-  // Visually, it belongs in the external boundary to prevent overlap.
-  kafka: ['kafka', 'confluent', 'kinesis', 'event_hub', 'ext_kafka', 'snowpipe_streaming', 'snowpipe streaming'],
-  // Snowflake-internal features: medallion layers, tasks, CDC streams, etc.
-  // NOTE: Generic terms like 'streaming', 'snowpipe', 'pipe' were removed because they
-  // match "Snowpipe Streaming" which belongs in the kafka/streaming source boundary.
-  // This prevents the Snowflake boundary from extending to encompass external nodes.
+  // AWS-specific: S3, lake storage, Kinesis (AWS streaming service)
+  aws: ['aws', 's3', 'lake', 'kinesis', 'amazon_kinesis', 'ext_kinesis'],
+  // Azure-specific: ADLS, Blob, Event Hubs (Azure streaming service)
+  azure: ['azure', 'adls', 'blob', 'event_hub', 'event_hubs', 'eventhub', 'ext_event_hub'],
+  // GCP-specific: GCS, BigQuery, Pub/Sub
+  gcp: ['gcp', 'gcs', 'bigquery', 'bq', 'pub_sub', 'pubsub'],
+  // Kafka boundary: ONLY for self-hosted Kafka or Confluent Cloud
+  // Cloud-native streaming services belong in their cloud provider boundaries
+  kafka: ['kafka', 'confluent', 'ext_kafka'],
+  // Snowflake-internal features: medallion layers, tasks, CDC streams, Snowpipe Streaming, etc.
   snowflake: [
     'bronze', 'silver', 'gold', 'layer', 'task', 'cdc',
     'transform', 'warehouse', 'analytics', 'view', 'table', 'database', 'schema',
+    'stage', 'snowpipe', 'snowpipe_streaming', 'pipe', 'stream',
   ],
 };
 
@@ -215,6 +216,10 @@ export const EXTERNAL_PROVIDERS = ['aws', 'azure', 'gcp', 'kafka'] as const;
 
 /**
  * Fit child nodes into their provider boundary.
+ *
+ * AGENTIC APPROACH:
+ * 1. First, check if node.data.boundary matches the provider (agent-provided)
+ * 2. Fall back to keyword matching only if boundary is not provided
  *
  * - Snowflake: only measures existing positions (doesn't move nodes), resizes boundary.
  * - External providers (kafka, aws, azure, gcp): repositions nodes into a
@@ -249,13 +254,26 @@ export function fitNodesIntoBoundary<N extends NodeLike>(
   const by = boundary.position.y + FIT_PADDING + FIT_TITLE_HEIGHT;
 
   // Find matching child nodes
+  // AGENTIC: Check node.data.boundary FIRST, fall back to keywords
   const matchingIndices: number[] = [];
   result.forEach((n, i) => {
     if (i === boundaryIdx) return;
     const d: any = n.data || {};
-    const text = `${(d.label || '').toString().toLowerCase()} ${(d.componentType || '').toString().toLowerCase()}`;
     const isBound = ((d.componentType || '').toString().toLowerCase()).startsWith('account_boundary');
-    if (!isBound && keywords.some((k) => text.includes(k))) {
+    if (isBound) return;
+    
+    // AGENTIC: Agent-provided boundary takes priority
+    const agentBoundary = (d.boundary || '').toString().toLowerCase();
+    if (agentBoundary) {
+      if (agentBoundary === provider) {
+        matchingIndices.push(i);
+      }
+      return; // Agent provided boundary - don't use keyword fallback
+    }
+    
+    // FALLBACK: Keyword matching for mermaid/legacy paths
+    const text = `${(d.label || '').toString().toLowerCase()} ${(d.componentType || '').toString().toLowerCase()}`;
+    if (keywords.some((k) => text.includes(k))) {
       matchingIndices.push(i);
     }
   });
@@ -290,10 +308,19 @@ export function fitNodesIntoBoundary<N extends NodeLike>(
   });
 
   // Resize boundary to encompass all matched nodes
+  // Add minimum dimensions to prevent boundary/child overlap when there's only 1 node
+  const MIN_BOUNDARY_WIDTH = 200;   // Minimum boundary width
+  const MIN_BOUNDARY_HEIGHT = 200;  // Minimum boundary height
+  const LABEL_PADDING = 30;         // Extra padding for boundary label text
+  
   const newBoundaryX = minX - FIT_PADDING;
   const newBoundaryY = minY - FIT_PADDING - FIT_TITLE_HEIGHT;
-  const width = maxX - minX + FIT_PADDING * 2;
-  const height = maxY - minY + FIT_PADDING * 2 + FIT_TITLE_HEIGHT;
+  const rawWidth = maxX - minX + FIT_PADDING * 2;
+  const rawHeight = maxY - minY + FIT_PADDING * 2 + FIT_TITLE_HEIGHT;
+  
+  // Ensure minimum dimensions so boundary is always visibly larger than children
+  const width = Math.max(rawWidth, MIN_BOUNDARY_WIDTH);
+  const height = Math.max(rawHeight, MIN_BOUNDARY_HEIGHT + LABEL_PADDING);
 
   result[boundaryIdx] = {
     ...boundary,

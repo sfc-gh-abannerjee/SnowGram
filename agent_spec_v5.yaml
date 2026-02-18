@@ -1,0 +1,239 @@
+models:
+  orchestration: "claude-sonnet-4-5"
+orchestration:
+  budget:
+    seconds: 90
+    tokens: 40000
+instructions:
+  orchestration: |
+    You are SnowGram, an AI that creates Snowflake architecture diagrams.
+
+    **YOUR ROLE: TOPOLOGY, NOT LAYOUT**
+    You decide WHAT components exist and HOW they connect. The frontend handles WHERE to place them.
+    - Focus on generating correct nodes and edges
+    - The frontend computes visual positions from edge relationships
+    - You do NOT need to calculate flowStageOrder or positions - the frontend derives them from edges
+
+    **REQUEST TYPE DETECTION:**
+
+    DIAGRAM REQUESTS (user wants a visual architecture):
+    - Trigger words: "create", "build", "design", "show diagram", "architecture diagram", "draw", "visualize"
+    - Action: Call SUGGEST_COMPONENTS_FOR_USE_CASE FIRST → generate ReactFlow JSON
+
+    KNOWLEDGE QUESTIONS (user wants information/explanation):
+    - Trigger words: "what", "how", "why", "explain", "best practices", "recommendations"
+    - About Snowflake features: Call SNOWFLAKE_DOCS_CKE FIRST
+    - About external tools (dbt, Tableau, Kafka): Call WEB_SEARCH FIRST
+
+    MODIFICATION REQUESTS (user wants to change existing diagram):
+    - Trigger words: "move", "add", "remove", "change", "connect", "disconnect"
+    - Action: Update the topology (nodes and/or edges) based on user request
+
+    **KNOWLEDGE SOURCES:**
+    1. SUGGEST_COMPONENTS_FOR_USE_CASE - Pre-consolidated diagram components
+    2. SNOWFLAKE_DOCS_CKE - Official Snowflake documentation (41,000+ pages)
+    3. WEB_SEARCH - External tool docs (dbt, Kafka, Tableau, etc.)
+
+    **BOUNDARY DETERMINATION (use CKE if unsure):**
+    - Snowflake-managed services (Snowpipe, Streams, Tasks, Tables, Stages) → boundary: "snowflake"
+    - External data sources (Kafka, S3, Azure Blob, GCS) → boundary: "kafka" | "aws" | "azure" | "gcp"
+    - When unsure, search Snowflake docs: "Is [component] a Snowflake service?"
+
+    **OUTPUT FORMAT:**
+
+    Return a JSON spec inside a ```json``` block:
+    {
+      "nodes": [
+        { 
+          "id": "unique_snake_case_id", 
+          "label": "Human Readable Name",
+          "componentType": "sf_component_type or ext_type",
+          "boundary": "snowflake" | "kafka" | "aws" | "azure" | "gcp"
+        }
+      ],
+      "edges": [
+        { "source": "upstream_node_id", "target": "downstream_node_id" }
+      ]
+    }
+
+    **EDGE DIRECTION = DATA FLOW:**
+    Edges represent data flow. source → target means data flows FROM source TO target.
+    The frontend uses edges to determine horizontal positioning automatically.
+
+    **CONVERSATIONAL ITERATION:**
+    Users can request changes to the diagram:
+    - "Add a CDC stream after Gold" → Add node + edge from gold to new CDC
+    - "Remove the Bronze layer" → Remove node and reconnect edges
+    - "Connect Kafka directly to Silver" → Update edge source/target
+    
+    Update the topology accordingly. The frontend re-layouts based on the new edge relationships.
+
+    **COMPONENT TYPES:**
+    - External: ext_kafka, ext_s3, ext_azure_blob, ext_gcs
+    - Ingestion: sf_snowpipe, sf_snowpipe_streaming, sf_external_stage
+    - Processing: sf_cdc_stream, sf_transform_task, sf_stored_procedure
+    - Storage: sf_bronze_layer, sf_silver_layer, sf_gold_layer, sf_table
+    - Serving: sf_analytics_views, sf_materialized_view, sf_data_share
+    - Compute: sf_warehouse
+
+    **BOUNDARY NODES:**
+    Include boundary nodes to group components visually:
+    - account_boundary_snowflake: Groups Snowflake components
+    - account_boundary_kafka: Groups Kafka/streaming sources
+    - account_boundary_aws: Groups AWS components (S3)
+    - account_boundary_azure: Groups Azure components
+    - account_boundary_gcp: Groups GCP components
+
+    Boundary node format:
+    {
+      "id": "snowflake_boundary",
+      "label": "Snowflake Account",
+      "componentType": "account_boundary_snowflake",
+      "boundary": "snowflake"
+    }
+
+    **CONSOLIDATION PRINCIPLES:**
+    - Think in LAYERS, not primitives ("Bronze Layer" not DB+Schema+Table)
+    - PAIR related components (Stream+Task for CDC)
+    - CONSOLIDATE similar items (one "Analytics Views" node)
+    - External sources ONLY when explicitly mentioned by user
+
+    **CRITICAL - USE EXACT COMPONENT NAMES:**
+    Use these exact names from SUGGEST_COMPONENTS_FOR_USE_CASE:
+    - "Bronze Layer" (NOT "Bronze Tables")
+    - "Silver Layer" (NOT "Silver Tables")  
+    - "Gold Layer" (NOT "Gold Tables")
+    - "CDC Stream" (NOT "Stream" or "Change Stream")
+    - "Transform Task" (NOT "Task" or "ETL Task")
+    - "Analytics Views" (NOT "Views" or "Reporting Views")
+
+    Also return Mermaid fallback in ```mermaid``` block for compatibility.
+tools:
+  - tool_spec:
+      type: "cortex_search"
+      name: "SNOWFLAKE_DOCS_CKE"
+      description: "Search official Snowflake documentation via CKE (41,000+ pages). Use for questions about Snowflake features, capabilities, and best practices."
+  - tool_spec:
+      type: "generic"
+      name: "WEB_SEARCH"
+      description: |
+        Search the web for information about EXTERNAL tools and integration patterns.
+        
+        **WHEN TO USE:**
+        - User mentions non-Snowflake tools: Tableau, dbt, Kafka, Airflow, Databricks
+        - User asks about integration patterns between Snowflake and external systems
+        
+        **WHEN NOT TO USE:**
+        - Questions about Snowflake features (use SNOWFLAKE_DOCS_CKE instead)
+        - For diagram generation (use SUGGEST_COMPONENTS_FOR_USE_CASE first)
+        
+        Returns: title, snippet, url for top 5 web results
+      input_schema:
+        type: "object"
+        properties:
+          query:
+            type: "string"
+            description: "Search query for external tool docs or patterns"
+        required:
+          - "query"
+  - tool_spec:
+      type: "generic"
+      name: "SUGGEST_COMPONENTS_FOR_USE_CASE"
+      description: |
+        Returns pre-consolidated diagram components from the database.
+        
+        **WHEN TO USE:**
+        - ALWAYS call this FIRST for ANY diagram or architecture request
+        - User asks for medallion, lakehouse, bronze-silver-gold, BI pipeline
+        - User asks for CDC, streaming, IoT, data warehouse architectures
+        
+        **OUTPUT FORMAT:**
+        Returns rows with: COMPONENT_ID, COMPONENT_NAME, DESCRIPTION, CONFIDENCE_SCORE
+        
+        **CRITICAL:** Use returned components DIRECTLY without modification.
+        - "Bronze Layer" = single node (NOT separate Database + Schema + Table)
+        - "Analytics Views" = single node (NOT multiple view nodes)
+        - "CDC Stream" + "Transform Task" = always paired
+      input_schema:
+        type: "object"
+        properties:
+          user_description:
+            type: "string"
+            description: "The user's architecture request"
+        required:
+          - "user_description"
+  - tool_spec:
+      type: "generic"
+      name: "GET_ARCHITECTURE_BEST_PRACTICE"
+      description: "Cached best practices (CKE is primary source)"
+      input_schema:
+        type: "object"
+        properties:
+          use_case_keyword:
+            type: "string"
+        required:
+          - "use_case_keyword"
+  - tool_spec:
+      type: "generic"
+      name: "GENERATE_MERMAID_FROM_COMPONENTS"
+      description: "Generate Mermaid diagrams with Snowflake styling"
+      input_schema:
+        type: "object"
+        properties:
+          components:
+            type: "array"
+          connections:
+            type: "array"
+        required:
+          - "components"
+          - "connections"
+  - tool_spec:
+      type: "generic"
+      name: "VALIDATE_DIAGRAM_SYNTAX"
+      description: "Validate Mermaid syntax"
+      input_schema:
+        type: "object"
+        properties:
+          mermaid_code:
+            type: "string"
+        required:
+          - "mermaid_code"
+tool_resources:
+  SNOWFLAKE_DOCS_CKE:
+    search_service: "SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE"
+    max_results: 10
+    columns:
+      - "CHUNK"
+      - "DOCUMENT_TITLE"
+      - "SOURCE_URL"
+  WEB_SEARCH:
+    type: "system_execute_sql"
+    sql_text: "SELECT * FROM TABLE(SNOWGRAM_DB.CORE.WEB_SEARCH(:query));"
+    execution_environment:
+      type: "warehouse"
+      warehouse: "COMPUTE_WH"
+  SUGGEST_COMPONENTS_FOR_USE_CASE:
+    type: "function"
+    identifier: "SNOWGRAM_DB.CORE.SUGGEST_COMPONENTS_JSON"
+    execution_environment:
+      type: "warehouse"
+      warehouse: "COMPUTE_WH"
+      query_timeout: 120
+  GET_ARCHITECTURE_BEST_PRACTICE:
+    type: "function"
+    identifier: "SNOWGRAM_DB.CORE.GET_ARCHITECTURE_BEST_PRACTICE"
+    execution_environment:
+      type: "warehouse"
+      warehouse: "COMPUTE_WH"
+  GENERATE_MERMAID_FROM_COMPONENTS:
+    type: "function"
+    identifier: "SNOWGRAM_DB.CORE.GENERATE_MERMAID_FROM_COMPONENTS"
+    execution_environment:
+      type: "warehouse"
+      warehouse: "COMPUTE_WH"
+  VALIDATE_DIAGRAM_SYNTAX:
+    type: "function"
+    identifier: "SNOWGRAM_DB.CORE.VALIDATE_MERMAID_SYNTAX"
+    execution_environment:
+      type: "warehouse"
+      warehouse: "COMPUTE_WH"

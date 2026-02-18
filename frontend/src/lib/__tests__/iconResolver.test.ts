@@ -87,16 +87,16 @@ describe('Tier 2 — compound keyword scoring', () => {
     expect(resolveIcon('sf_transform_task')).toBe(SNOWFLAKE_ICONS.task);
   });
 
-  it('resolves "sf_bronze_layer" to workload_data_lake icon', () => {
-    expect(resolveIcon('sf_bronze_layer')).toBe(SNOWFLAKE_ICONS.workload_data_lake);
+  it('resolves "sf_bronze_layer" to database icon (consistent layer icon)', () => {
+    expect(resolveIcon('sf_bronze_layer')).toBe(SNOWFLAKE_ICONS.database);
   });
 
-  it('resolves "sf_silver_layer" to database icon', () => {
+  it('resolves "sf_silver_layer" to database icon (consistent layer icon)', () => {
     expect(resolveIcon('sf_silver_layer')).toBe(SNOWFLAKE_ICONS.database);
   });
 
-  it('resolves "sf_gold_layer" to workload_data_warehouse icon', () => {
-    expect(resolveIcon('sf_gold_layer')).toBe(SNOWFLAKE_ICONS.workload_data_warehouse);
+  it('resolves "sf_gold_layer" to database icon (consistent layer icon)', () => {
+    expect(resolveIcon('sf_gold_layer')).toBe(SNOWFLAKE_ICONS.database);
   });
 
   it('resolves "sf_analytics_views" to analytics icon', () => {
@@ -111,8 +111,8 @@ describe('Tier 2 — compound keyword scoring', () => {
     expect(resolveIcon('transform_task')).toBe(SNOWFLAKE_ICONS.task);
   });
 
-  it('resolves "bronze_layer" (no prefix) to workload_data_lake icon', () => {
-    expect(resolveIcon('bronze_layer')).toBe(SNOWFLAKE_ICONS.workload_data_lake);
+  it('resolves "bronze_layer" (no prefix) to database icon (consistent layer icon)', () => {
+    expect(resolveIcon('bronze_layer')).toBe(SNOWFLAKE_ICONS.database);
   });
 });
 
@@ -241,13 +241,13 @@ describe('full agent pipeline — Kafka medallion', () => {
     { componentType: 'account_boundary_kafka', expected: undefined }, // boundaries get no icon
     { componentType: 'account_boundary_snowflake', expected: undefined },
     { componentType: 'ext_kafka', expected: SNOWFLAKE_ICONS.kafka },
-    { componentType: 'sf_bronze_layer', expected: SNOWFLAKE_ICONS.workload_data_lake },
+    { componentType: 'sf_bronze_layer', expected: SNOWFLAKE_ICONS.database },  // consistent layer icon
     { componentType: 'sf_cdc_stream', expected: SNOWFLAKE_ICONS.stream },
     { componentType: 'sf_transform_task', expected: SNOWFLAKE_ICONS.task },
-    { componentType: 'sf_silver_layer', expected: SNOWFLAKE_ICONS.database },
+    { componentType: 'sf_silver_layer', expected: SNOWFLAKE_ICONS.database },  // consistent layer icon
     { componentType: 'sf_cdc_stream', expected: SNOWFLAKE_ICONS.stream },
     { componentType: 'sf_transform_task', expected: SNOWFLAKE_ICONS.task },
-    { componentType: 'sf_gold_layer', expected: SNOWFLAKE_ICONS.workload_data_warehouse },
+    { componentType: 'sf_gold_layer', expected: SNOWFLAKE_ICONS.database },  // consistent layer icon
     { componentType: 'sf_analytics_views', expected: SNOWFLAKE_ICONS.analytics },
     { componentType: 'sf_warehouse', expected: SNOWFLAKE_ICONS.warehouse },
   ];
@@ -298,7 +298,7 @@ describe('Tier 3 — fractional flowStageOrder fallback', () => {
 // ---------------------------------------------------------------------------
 describe('Combined resolution with all arguments', () => {
   it('agent bronze_layer with label and flowStageOrder resolves correctly', () => {
-    expect(resolveIcon('sf_bronze_layer', 'Bronze Layer', 2)).toBe(SNOWFLAKE_ICONS.workload_data_lake);
+    expect(resolveIcon('sf_bronze_layer', 'Bronze Layer', 2)).toBe(SNOWFLAKE_ICONS.database);
   });
 
   it('agent silver_layer with label and flowStageOrder resolves correctly', () => {
@@ -306,7 +306,7 @@ describe('Combined resolution with all arguments', () => {
   });
 
   it('agent gold_layer with label and flowStageOrder resolves correctly', () => {
-    expect(resolveIcon('sf_gold_layer', 'Gold Layer', 4)).toBe(SNOWFLAKE_ICONS.workload_data_warehouse);
+    expect(resolveIcon('sf_gold_layer', 'Gold Layer', 4)).toBe(SNOWFLAKE_ICONS.database);
   });
 
   it('agent snowpipe with label resolves correctly', () => {

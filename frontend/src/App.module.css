@@ -342,6 +342,37 @@
   height: 18px;
 }
 
+/* ============================================
+   MULTI-TAB CANVAS WRAPPER
+   ============================================ */
+
+/* Canvas wrapper - contains tab bar + canvas */
+.canvasWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0; /* Allow flex shrinking */
+}
+
+/* Tab Bar */
+.tabBar {
+  height: 42px;
+  display: flex;
+  align-items: flex-end;
+  background: linear-gradient(to bottom, #F1F5F9, #E2E8F0);
+  border-bottom: 1px solid #CBD5E1;
+  padding: 0 8px;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+  flex-shrink: 0;
+}
+
+.tabBar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
 /* Right Canvas */
 .canvas {
   flex: 1;
@@ -1434,6 +1465,16 @@
     0 0 14px rgba(16, 185, 129, 0.35);
 }
 
+/* Dark Mode - Canvas Wrapper & Tab Bar */
+.darkMode .canvasWrapper {
+  background: #0F172A;
+}
+
+.darkMode .tabBar {
+  background: linear-gradient(to bottom, #1E293B, #0F172A);
+  border-bottom-color: #334155;
+}
+
 .darkMode .canvas {
   background: #0F172A;
 }
@@ -1576,8 +1617,8 @@
   z-index: 20;
   transform-origin: top left;
   transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s ease, visibility 0.2s ease;
-  resize: both;
-  overflow: auto;
+  overflow: hidden;
+  /* Custom resize handles instead of native resize: both */
 }
 .chatPanelCollapsed {
   opacity: 0;
@@ -1605,6 +1646,90 @@
   box-shadow: 0 14px 34px rgba(20, 44, 80, 0.22);
   visibility: visible;
 }
+
+/* Resize handles for all 8 directions */
+.resizeHandleN, .resizeHandleS, .resizeHandleE, .resizeHandleW,
+.resizeHandleNE, .resizeHandleNW, .resizeHandleSE, .resizeHandleSW {
+  position: absolute;
+  z-index: 30;
+}
+/* Edge handles */
+.resizeHandleN {
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.resizeHandleS {
+  bottom: 0;
+  left: 12px;
+  right: 12px;
+  height: 6px;
+  cursor: ns-resize;
+}
+.resizeHandleE {
+  right: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 6px;
+  cursor: ew-resize;
+}
+.resizeHandleW {
+  left: 0;
+  top: 12px;
+  bottom: 12px;
+  width: 6px;
+  cursor: ew-resize;
+}
+/* Corner handles */
+.resizeHandleNE {
+  top: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+.resizeHandleNW {
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+.resizeHandleSE {
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+}
+.resizeHandleSW {
+  bottom: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nesw-resize;
+}
+/* Hover effects for visibility */
+.resizeHandleN:hover, .resizeHandleS:hover {
+  background: linear-gradient(90deg, transparent, rgba(41, 181, 232, 0.3), transparent);
+}
+.resizeHandleE:hover, .resizeHandleW:hover {
+  background: linear-gradient(180deg, transparent, rgba(41, 181, 232, 0.3), transparent);
+}
+.resizeHandleNE:hover, .resizeHandleNW:hover, .resizeHandleSE:hover, .resizeHandleSW:hover {
+  background: radial-gradient(circle at center, rgba(41, 181, 232, 0.4), transparent);
+}
+
+/* Draggable header */
+.chatHeaderDraggable {
+  user-select: none;
+}
+.chatHeaderDraggable:active {
+  cursor: grabbing;
+}
+
 .chatCollapsedVisible {
   opacity: 1;
   transform: scale(1);
@@ -1787,6 +1912,108 @@
   font-size: 18px;
   cursor: pointer;
 }
+
+/* Session List Panel Styles - Light Mode (default) */
+.sessionListPanel {
+  padding: 8px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  background: rgba(248, 250, 252, 0.95);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sessionListHeader {
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 8px;
+  padding: 0 8px;
+}
+
+.sessionItem {
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.sessionItem:hover {
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.sessionItemActive {
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(14, 165, 233, 0.25);
+}
+
+.sessionInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.sessionName {
+  font-size: 12px;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessionMeta {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.sessionDeleteBtn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  font-size: 14px;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+
+.sessionDeleteBtn:hover {
+  opacity: 1;
+}
+
+/* Session List Panel Styles - Dark Mode */
+.darkMode .sessionListPanel {
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.darkMode .sessionListHeader {
+  color: #94a3b8;
+}
+
+.darkMode .sessionItem:hover {
+  background: rgba(14, 165, 233, 0.15);
+}
+
+.darkMode .sessionItemActive {
+  background: rgba(14, 165, 233, 0.25);
+  border: 1px solid rgba(14, 165, 233, 0.4);
+}
+
+.darkMode .sessionName {
+  color: #e2e8f0;
+}
+
+.darkMode .sessionMeta {
+  color: #64748b;
+}
+
+.darkMode .sessionDeleteBtn {
+  opacity: 0.6;
+}
+
 .chatMessages {
   flex: 1;
   min-height: 0;
@@ -1830,12 +2057,11 @@
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   color: #0f172a;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 10px;
-  max-width: 80%;
-  font-size: 13px;
-  line-height: 1.4;
-  white-space: pre-wrap;
+  max-width: 85%;
+  font-size: 14px;
+  line-height: 1.5;
   word-break: break-word;
 }
 .darkMode .chatBubble {
@@ -1843,6 +2069,490 @@
   border: 1px solid #1f2937;
   color: #e5edf5;
 }
+.chatMarkdown {
+  margin-top: 2px;
+}
+.chatMarkdown p {
+  margin: 0 0 0.5em 0;
+  line-height: 1.5;
+}
+.chatMarkdown p:last-child {
+  margin-bottom: 0;
+}
+.chatMarkdown ul,
+.chatMarkdown ol {
+  margin: 0.25em 0 0.5em 0;
+  padding-left: 1.25em;
+}
+.chatMarkdown li {
+  margin: 0.15em 0;
+  line-height: 1.5;
+}
+.chatMarkdown h1, .chatMarkdown h2, .chatMarkdown h3 {
+  margin: 0.5em 0 0.25em 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.chatMarkdown h1 {
+  font-size: 1.1em;
+}
+.chatMarkdown h2 {
+  font-size: 1.05em;
+}
+.chatMarkdown h3 {
+  font-size: 1em;
+}
+.chatMarkdown strong {
+  font-weight: 600;
+}
+.chatMarkdown code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+.darkMode .chatMarkdown code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Thinking section styles - Snowflake STAR BLUE brand color (#71D3DC) */
+.thinkingSection {
+  margin: 8px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(113, 211, 220, 0.4);
+  background: rgba(113, 211, 220, 0.06);
+}
+.thinkingToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(113, 211, 220, 0.15);
+  color: #0e7490;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-radius 0.15s;
+  width: 100%;
+  text-align: left;
+}
+.thinkingToggle:hover {
+  background: rgba(113, 211, 220, 0.28);
+  border-radius: 8px 8px 0 0;
+}
+.thinkingIcon {
+  font-size: 18px !important;
+  color: #0891b2;
+  flex-shrink: 0;
+}
+.thinkingChevron {
+  font-size: 18px !important;
+  transition: transform 0.2s;
+  margin-left: auto;
+  color: #0891b2;
+}
+.thinkingChevron.expanded {
+  transform: rotate(180deg);
+}
+.thinkingContent {
+  padding: 16px 24px;
+  background: rgba(113, 211, 220, 0.05);
+  border-top: 1px solid rgba(113, 211, 220, 0.25);
+  font-size: 13px;
+  color: #475569;
+  max-height: 400px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+.thinkingContent p {
+  margin: 0 0 10px 0;
+}
+.thinkingContent p:last-child {
+  margin-bottom: 0;
+}
+/* Add proper padding for lists inside thinking content */
+.thinkingContent ul,
+.thinkingContent ol {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+.thinkingContent li {
+  margin: 4px 0;
+}
+.darkMode .thinkingSection {
+  border-color: rgba(113, 211, 220, 0.35);
+  background: rgba(113, 211, 220, 0.08);
+}
+.darkMode .thinkingToggle {
+  background: rgba(113, 211, 220, 0.18);
+  color: #22d3ee;
+}
+.darkMode .thinkingToggle:hover {
+  background: rgba(113, 211, 220, 0.30);
+  border-radius: 8px 8px 0 0;
+}
+.darkMode .thinkingIcon,
+.darkMode .thinkingChevron {
+  color: #22d3ee;
+}
+.darkMode .thinkingContent {
+  background: rgba(113, 211, 220, 0.06);
+  border-top-color: rgba(113, 211, 220, 0.2);
+  color: #94a3b8;
+}
+
+/* Tool calls section styles - expandable with results */
+.toolCallsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+}
+.toolCallItem {
+  display: flex;
+  flex-direction: column;
+  /* No border/background here - the toggle button has its own styling */
+}
+.toolCallToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(14, 165, 233, 0.12);
+  color: #0284c7;
+  border: 1px solid rgba(14, 165, 233, 0.25);
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  width: fit-content;
+}
+.toolCallToggle:hover:not(:disabled) {
+  background: rgba(14, 165, 233, 0.25);
+  border-radius: 16px;
+}
+.toolCallToggle:disabled {
+  cursor: default;
+}
+.toolCallToggle:not(.toolCompleted) {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.toolCompleted {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+  border-color: rgba(34, 197, 94, 0.3);
+  animation: none;
+}
+.toolCompleted:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.25);
+  border-radius: 16px;
+}
+.toolIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px !important;
+}
+.toolIcon svg {
+  font-size: 16px !important;
+}
+.toolName {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 11px;
+}
+.toolLabel {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+.toolChevron {
+  font-size: 16px !important;
+  transition: transform 0.2s;
+  margin-left: 2px;
+}
+.toolChevron.expanded {
+  transform: rotate(180deg);
+}
+/* Spinning animation for in-progress tools */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Shared expand animation for all dropdown content */
+@keyframes expandContent {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes collapseContent {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+.expandableContent {
+  animation: expandContent 0.2s ease-out;
+}
+
+.expandableContentClosing {
+  animation: collapseContent 0.15s ease-in forwards;
+}
+
+.toolResultContent {
+  margin-top: 4px;
+  margin-left: 8px;
+  padding: 8px 10px;
+  background: rgba(14, 165, 233, 0.08);
+  border-left: 3px solid #0ea5e9;
+  border-radius: 0 6px 6px 0;
+  font-size: 11px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.toolResultInput,
+.toolResultOutput {
+  margin-bottom: 6px;
+}
+.toolResultInput:last-child,
+.toolResultOutput:last-child {
+  margin-bottom: 0;
+}
+.toolResultContent strong {
+  color: #0284c7;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.toolResultContent pre {
+  margin: 4px 0 0 0;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 4px;
+  font-size: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #475569;
+  max-height: 150px;
+  overflow-y: auto;
+}
+.toolResultHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.copyButtonSmall {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  background: rgba(14, 165, 233, 0.15);
+  color: #0284c7;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.copyButtonSmall svg {
+  font-size: 14px !important;
+}
+.copyButtonSmall:hover {
+  background: rgba(14, 165, 233, 0.25);
+  border-color: rgba(14, 165, 233, 0.5);
+}
+.darkMode .copyButtonSmall {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+  border-color: rgba(14, 165, 233, 0.4);
+}
+.darkMode .copyButtonSmall:hover {
+  background: rgba(14, 165, 233, 0.3);
+}
+.darkMode .toolCallToggle {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+  border-color: rgba(14, 165, 233, 0.4);
+}
+.darkMode .toolCallToggle:hover:not(:disabled) {
+  background: rgba(14, 165, 233, 0.3);
+}
+.darkMode .toolCompleted {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+.darkMode .toolCompleted:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.3);
+}
+.darkMode .toolResultContent {
+  background: rgba(14, 165, 233, 0.1);
+}
+.darkMode .toolResultContent strong {
+  color: #38bdf8;
+}
+.darkMode .toolResultContent pre {
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+}
+/* Legacy chip styles (kept for backwards compatibility) */
+.toolChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  background: rgba(14, 165, 233, 0.15);
+  color: #0284c7;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.toolChip:not(.toolChipCompleted) {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+.toolChipCompleted {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+.darkMode .toolChip {
+  background: rgba(14, 165, 233, 0.2);
+  color: #38bdf8;
+  border-color: rgba(14, 165, 233, 0.4);
+}
+.darkMode .toolChipCompleted {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+/* Code Artifact Sections (JSON Spec, Mermaid) - expandable with copy */
+.codeArtifactSection {
+  margin: 8px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  background: rgba(139, 92, 246, 0.05);
+}
+.codeArtifactHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  gap: 8px;
+  background: rgba(139, 92, 246, 0.1);
+}
+.codeArtifactToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  color: #7c3aed;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 1;
+  text-align: left;
+  transition: background 0.15s;
+}
+.codeArtifactToggle:hover {
+  background: rgba(139, 92, 246, 0.1);
+  border-radius: 6px;
+}
+.codeArtifactIcon {
+  font-size: 18px !important;
+  display: flex;
+  align-items: center;
+}
+.codeArtifactChevron {
+  font-size: 18px !important;
+  transition: transform 0.2s;
+  margin-left: auto;
+}
+.codeArtifactChevron.expanded {
+  transform: rotate(180deg);
+}
+.codeArtifactContent {
+  border-top: 1px solid rgba(139, 92, 246, 0.2);
+}
+.copyButton {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(139, 92, 246, 0.15);
+  color: #7c3aed;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.copyButton svg {
+  font-size: 14px !important;
+}
+.copyButton:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.5);
+}
+.darkMode .codeArtifactSection {
+  border-color: rgba(167, 139, 250, 0.3);
+  background: rgba(139, 92, 246, 0.08);
+}
+.darkMode .codeArtifactHeader {
+  background: rgba(139, 92, 246, 0.15);
+}
+.darkMode .codeArtifactToggle {
+  color: #a78bfa;
+}
+.darkMode .codeArtifactToggle:hover {
+  background: rgba(139, 92, 246, 0.15);
+  border-radius: 6px;
+}
+.darkMode .codeArtifactContent {
+  border-top-color: rgba(167, 139, 250, 0.2);
+}
+.darkMode .copyButton {
+  background: rgba(139, 92, 246, 0.2);
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.4);
+}
+.darkMode .copyButton:hover {
+  background: rgba(139, 92, 246, 0.3);
+  border-color: rgba(167, 139, 250, 0.6);
+}
+
 .chatInputRow {
   border-top: 1px solid #e2e8f0;
   padding: 10px 12px;
@@ -1914,7 +2624,92 @@
   width: 4px;
   overflow: hidden;
   letter-spacing: 1px;
+}
+
+/* Sending state - show dots animation, hide icon */
+.chatSending {
+  background: linear-gradient(135deg, #34d399, #10b981);
+  pointer-events: none;
+}
+.chatSending .chatSendIcon {
+  display: none;
+}
+.chatSending .sendDots {
+  display: inline;
   animation: dotEllipsis 1s steps(3,end) infinite;
+}
+
+/* Starter Prompts - Compact chips above input */
+.starterPrompts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0 8px;
+}
+.starterHint {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 4px;
+  font-size: 11px;
+  color: #64748b;
+}
+.starterHintActions {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 400;
+}
+.starterChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-start;
+}
+.starterChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid rgba(41, 181, 232, 0.25);
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #0284c7;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.starterChip:hover {
+  background: rgba(41, 181, 232, 0.08);
+  border-color: rgba(41, 181, 232, 0.45);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(41, 181, 232, 0.15);
+}
+.starterChip:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+.starterChipIcon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.85;
+  flex-shrink: 0;
+}
+.darkMode .starterHint {
+  color: #94a3b8;
+}
+.darkMode .starterHintActions {
+  color: #64748b;
+}
+.darkMode .starterChip {
+  border-color: rgba(41, 181, 232, 0.3);
+  color: #38bdf8;
+}
+.darkMode .starterChip:hover {
+  background: rgba(41, 181, 232, 0.12);
+  border-color: rgba(41, 181, 232, 0.5);
+  box-shadow: 0 2px 8px rgba(41, 181, 232, 0.2);
 }
 
 /* Debug Panel - Stellar styling */

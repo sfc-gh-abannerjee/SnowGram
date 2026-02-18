@@ -37,9 +37,10 @@ const KEYWORD_MAP: KeywordMapping[] = [
   { keywords: ['transform_task'],                                                         iconKey: 'task' },
   { keywords: ['cdc_stream', 'change_stream'],                                            iconKey: 'stream' },
   { keywords: ['analytics_views', 'analytics_view'],                                      iconKey: 'analytics' },
-  { keywords: ['bronze_layer'],                                                           iconKey: 'workload_data_lake' },
+  // AGENTIC: All medallion layers use same icon - differentiated by label, not icon
+  { keywords: ['bronze_layer'],                                                           iconKey: 'database' },
   { keywords: ['silver_layer'],                                                           iconKey: 'database' },
-  { keywords: ['gold_layer'],                                                             iconKey: 'workload_data_warehouse' },
+  { keywords: ['gold_layer'],                                                             iconKey: 'database' },
 
   // ── External Data Sources ─────────────────────────────────────────────
   { keywords: ['kafka', 'confluent', 'kinesis', 'event_hub', 'eventgrid', 'msk'],       iconKey: 'kafka' },
@@ -111,10 +112,11 @@ const KEYWORD_MAP: KeywordMapping[] = [
   { keywords: ['tag', 'classification'],                                                 iconKey: 'tag' },
   { keywords: ['alert', 'notification'],                                                 iconKey: 'notification' },
 
-  // ── Medallion Architecture ────────────────────────────────────────────
-  { keywords: ['bronze', 'raw', 'landing'],                                              iconKey: 'workload_data_lake' },
-  { keywords: ['silver', 'clean', 'conform'],                                              iconKey: 'database' },
-  { keywords: ['gold', 'curated', 'mart', 'business', 'presentation'],                   iconKey: 'workload_data_warehouse' },
+  // ── Medallion Architecture (generic terms) ─────────────────────────────
+  // AGENTIC: All medallion layers use same icon - differentiated by label, not icon
+  { keywords: ['bronze', 'raw', 'landing'],                                              iconKey: 'database' },
+  { keywords: ['silver', 'clean', 'conform'],                                            iconKey: 'database' },
+  { keywords: ['gold', 'curated', 'mart', 'business', 'presentation'],                   iconKey: 'database' },
 
   // ── File Formats ──────────────────────────────────────────────────────
   { keywords: ['parquet'],                                                               iconKey: 'file_parquet' },

@@ -7,7 +7,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { query } = req.body as { query?: string };
+    const { query, threadId, parentMessageId } = req.body as { 
+      query?: string;
+      threadId?: number;
+      parentMessageId?: number;
+    };
+    
     if (!query || query.length < 5) {
       return res.status(400).json({ error: 'Query must be at least 5 characters' });
     }
@@ -18,7 +23,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const client = new SnowgramAgentClient(pat);
-    const result = await client.generateArchitecture(query);
+    // Pass thread info for conversation continuity
+    const result = await client.generateArchitecture(query, threadId, parentMessageId);
 
     res.status(200).json({
       mermaidCode: result.mermaidCode,
@@ -28,6 +34,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       antiPatterns: result.antiPatterns,
       components: result.components,
       rawResponse: result.rawResponse,
+      // Return thread info for frontend to persist
+      threadId: result.threadId,
+      messageId: result.messageId,
     });
   } catch (error) {
     console.error('Agent proxy error:', error);

@@ -37,6 +37,8 @@ export interface AgentResponse {
   citations: Citation[];
   rawResponse: string;
   spec?: SnowgramSpec;
+  threadId?: number;  // Return thread ID for conversation persistence
+  messageId?: number; // Return message ID for follow-up messages
 }
 
 export interface ComponentInfo {
@@ -58,52 +60,69 @@ export interface Citation {
 // ==================================================================
 
 // ==================================================================
-// SYSTEM PROMPT: Let the agent USE ITS TOOLS - do NOT override with hardcoded templates
-// The agent has access to SUGGEST_COMPONENTS_JSON tool that returns proper components
-// based on use case. We just need to guide the OUTPUT FORMAT.
+// AGENTIC SYSTEM PROMPT: 
+// Agent is responsible for TOPOLOGY (what components, how they connect)
+// Frontend is responsible for LAYOUT (where to place them visually)
+// Agent uses CKE/tools to determine component boundaries
 // ==================================================================
-const SNOWGRAM_SYSTEM_PROMPT = `You are the SnowGram Architecture Agent. Generate Snowflake architecture diagrams.
+const SNOWGRAM_SYSTEM_PROMPT = `You are the SnowGram Architecture Agent. Generate Snowflake architecture diagrams based on user requests.
 
-**CRITICAL: USE YOUR TOOLS FIRST**
-Call SUGGEST_COMPONENTS_FOR_USE_CASE to get the correct components, then use EXACTLY what it returns.
+**YOUR ROLE: TOPOLOGY, NOT LAYOUT**
+You decide WHAT components exist and HOW they connect. The frontend handles WHERE to place them.
+- Focus on generating correct nodes and edges
+- The frontend will compute visual positions from edge relationships
+- You do NOT need to calculate flowStageOrder - the frontend derives it from edges
 
-**EXACT COMPONENT NAMES (MANDATORY):**
-- "Bronze Layer" (NOT "Bronze Tables" or "Bronze")
-- "Silver Layer" (NOT "Silver Tables" or "Silver")  
-- "Gold Layer" (NOT "Gold Tables" or "Gold")
-- "CDC Stream" (NOT "Stream" or "Change Stream")
-- "Transform Task" (NOT "Task" or "ETL Task")
-- "Analytics Views" (NOT "Views" or "Gold Views")
+**USE YOUR TOOLS FOR COMPONENT KNOWLEDGE**
+1. Call SUGGEST_COMPONENTS_FOR_USE_CASE to get correct components for the user's pattern
+2. Use SNOWFLAKE_DOCS_SEARCH to determine if a component is internal or external to Snowflake
 
-NEVER invent component names. Use ONLY what SUGGEST_COMPONENTS_FOR_USE_CASE returns.
+**BOUNDARY DETERMINATION (use CKE if unsure):**
+- Snowflake-managed services (Snowpipe, Streams, Tasks, Tables, Stages) → boundary: "snowflake"
+- External data sources (Kafka, S3, Azure Blob, GCS) → boundary: "kafka" | "aws" | "azure" | "gcp"
+- When unsure, search Snowflake docs: "Is [component] a Snowflake service?"
 
 **OUTPUT FORMAT:**
 
-1. **SnowGram JSON** (inside \`\`\`json\`\`\` block):
+Return a JSON spec inside a \`\`\`json\`\`\` block:
 {
   "nodes": [
     { 
-      "id": "unique_id", 
-      "label": "EXACT name from tool",
-      "componentType": "component_type",
-      "flowStage": "source|ingest|raw|transform|refined|serve|consume",
-      "flowStageOrder": 0-6,
-      "position": {"x": number, "y": number}
+      "id": "unique_snake_case_id", 
+      "label": "Human Readable Name",
+      "componentType": "sf_component_type or ext_type",
+      "boundary": "snowflake" | "kafka" | "aws" | "azure" | "gcp"
     }
   ],
   "edges": [
-    { "source": "source_id", "target": "target_id", "sourceHandle": "right-source", "targetHandle": "left-target" }
+    { "source": "upstream_node_id", "target": "downstream_node_id" }
   ]
 }
 
-2. **Mermaid Fallback** (inside \`\`\`mermaid\`\`\` block)
+**CONVERSATIONAL ITERATION:**
+- Users can request changes: "Add a CDC stream after Gold", "Remove the Bronze layer", "Connect Kafka directly to Silver"
+- Update the topology (nodes/edges) accordingly
+- The frontend will automatically re-layout based on the new edge relationships
 
-**LAYOUT - LEFT TO RIGHT:**
-- flowStageOrder: source(0) → ingest(1) → raw(2) → transform(3) → refined(4) → serve(5) → consume(6)
-- Position x: 100 + (flowStageOrder * 200), y: 180 for main flow
+**EDGE DIRECTION = DATA FLOW:**
+Edges represent data flow direction. source → target means data flows FROM source TO target.
+Example: { "source": "bronze", "target": "cdc_stream" } means data flows from Bronze to CDC Stream.
 
-**MEDALLION PATTERN:**
-[Source] → Stage → Bronze Layer → CDC Stream → Transform Task → Silver Layer → CDC Stream → Transform Task → Gold Layer → Analytics Views`;
+**COMPONENT TYPES:**
+- External: ext_kafka, ext_s3, ext_azure_blob, ext_gcs
+- Ingestion: sf_snowpipe, sf_snowpipe_streaming, sf_external_stage
+- Processing: sf_cdc_stream, sf_transform_task, sf_stored_procedure
+- Storage: sf_bronze_layer, sf_silver_layer, sf_gold_layer, sf_table
+- Serving: sf_analytics_views, sf_materialized_view, sf_data_share
+- Compute: sf_warehouse
+
+**CRITICAL - MERMAID OUTPUT REQUIREMENT:**
+When your tools (COMPOSE_DIAGRAM_FROM_TEMPLATE, COMPOSE_DIAGRAM_FROM_PATTERN, etc.) return Mermaid code, you MUST include that code VERBATIM in your response inside a \`\`\`mermaid\`\`\` block.
+- Do NOT summarize or paraphrase the Mermaid code
+- Do NOT say "Diagram updated" or "Here's your diagram" without the actual code
+- ALWAYS copy the full Mermaid flowchart/diagram syntax from the tool result into your response
+- The user needs to see the complete Mermaid code to render the diagram`;
+
 
 // ==================================================================
 // 3. Agent Client (Enhanced Implementation)
@@ -119,26 +138,42 @@ export class SnowgramAgentClient {
   /**
    * Generate architecture diagram from natural language query
    * Returns parsed response with diagram, best practices, and citations
+   * 
+   * @param query - The user's natural language request
+   * @param existingThreadId - Optional thread ID for conversation continuity
+   * @param parentMessageId - Optional parent message ID for follow-up messages
    */
-  async generateArchitecture(query: string): Promise<AgentResponse> {
+  async generateArchitecture(
+    query: string, 
+    existingThreadId?: number, 
+    parentMessageId?: number
+  ): Promise<AgentResponse> {
     const headers = {
       'Authorization': `Bearer ${this.pat}`,
       'Content-Type': 'application/json',
     };
 
-    // 1) Create a thread
-    const threadResp = await fetch(`${this.baseUrl}${this.threadsPath}`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({}),
-    });
+    // 1) Create a thread only if we don't have an existing one
+    let thread_id = existingThreadId;
+    
+    if (!thread_id) {
+      const threadResp = await fetch(`${this.baseUrl}${this.threadsPath}`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({}),
+      });
 
-    if (!threadResp.ok) {
-      const errText = await threadResp.text();
-      throw new Error(`Thread create failed: ${threadResp.status} ${threadResp.statusText} ${errText}`);
+      if (!threadResp.ok) {
+        const errText = await threadResp.text();
+        throw new Error(`Thread create failed: ${threadResp.status} ${threadResp.statusText} ${errText}`);
+      }
+
+      const threadData = await threadResp.json();
+      thread_id = threadData.thread_id;
+      console.log('[SnowgramAgent] Created new thread:', thread_id);
+    } else {
+      console.log('[SnowgramAgent] Reusing existing thread:', thread_id, 'parent_message_id:', parentMessageId);
     }
-
-    const { thread_id } = await threadResp.json();
 
     // 2) Run the agent with enhanced prompt
     const enforcedPrompt = `${SNOWGRAM_SYSTEM_PROMPT}
@@ -147,14 +182,13 @@ export class SnowgramAgentClient {
 ${query}
 
 **INSTRUCTIONS:**
-1. Identify the architecture pattern (Medallion, IoT, ML, CDC, Data Sharing, etc.)
-2. Generate a COMPLETE diagram with ALL required components
-3. Ensure EVERY node connects to at least one other node
-4. Use proper componentType values from the library
-5. Return BOTH JSON spec and Mermaid code
-6. Validate before returning (use the checklist above)
+1. Generate the architecture the user asked for - do not assume a specific pattern unless they specify one
+2. Ensure every node connects to at least one other node via edges
+3. Use proper componentType values (sf_* for Snowflake, ext_* for external)
+4. Include boundary field for each node (determines which account boundary contains it)
+5. Return JSON spec inside a \`\`\`json\`\`\` block
 
-Begin your response with the JSON spec, then provide the Mermaid code.`;
+Respond to the user's request directly. If they ask for changes to an existing diagram, update the topology accordingly.`;
 
     const runResp = await fetch(`${this.baseUrl}${this.runPath}`, {
       method: 'POST',
@@ -166,7 +200,7 @@ Begin your response with the JSON spec, then provide the Mermaid code.`;
           schema: 'AGENTS',
         },
         thread_id,
-        parent_message_id: 0,
+        parent_message_id: parentMessageId || 0,  // Use provided parent or start fresh
         messages: [
           {
             role: 'user',
@@ -223,7 +257,13 @@ Begin your response with the JSON spec, then provide the Mermaid code.`;
 
     console.log('[SnowgramAgent] Response length:', agentText.length, 'chars');
 
-    return this.parseResponse(agentText || '');
+    // Parse response and add thread info for conversation persistence
+    const parsed = this.parseResponse(agentText || '');
+    return {
+      ...parsed,
+      threadId: thread_id,
+      // TODO: Extract messageId from response when available for proper threading
+    };
   }
 
   /**

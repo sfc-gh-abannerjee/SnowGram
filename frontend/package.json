@@ -13,8 +13,13 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@excalidraw/excalidraw": "^0.17.0",
     "@excalidraw/mermaid-to-excalidraw": "^2.0.0",
+    "@mui/icons-material": "^7.3.8",
+    "@mui/material": "^7.3.8",
+    "@types/react-syntax-highlighter": "^15.5.13",
     "axios": "^1.6.7",
     "date-fns": "^3.3.1",
     "elkjs": "^0.11.0",
@@ -25,6 +30,7 @@
     "react-dropzone": "^14.2.3",
     "react-hot-toast": "^2.4.1",
     "react-markdown": "^9.0.1",
+    "react-syntax-highlighter": "^16.1.0",
     "reactflow": "^11.11.0",
     "socket.io-client": "^4.6.1",
     "styled-components": "^6.1.8",
