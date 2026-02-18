@@ -30,7 +30,7 @@ SnowGram uses a **template-first architecture** with 14 pre-built reference arch
 |-------------|----------|-------------|
 | `MEDALLION_LAKEHOUSE` | medallion, bronze/silver/gold, lakehouse | External sources + medallion |
 | `MEDALLION_LAKEHOUSE_SNOWFLAKE_ONLY` | snowflake medallion, native medallion | Pure Snowflake medallion |
-| `STREAMING_DATA_STACK` | kafka, streaming, real-time | Kafka Connector + Dynamic Tables |
+| `STREAMING_DATA_STACK` | kafka, streaming, real-time, kinesis, pubsub | 4 ingestion paths: Kafka, CSP Streaming, Batch/Files, Native App Connector |
 | `SECURITY_ANALYTICS` | SIEM, log, security, analytics | Log ingestion + SOS |
 | `CUSTOMER_360` | customer 360, CDP, customer data | Native Apps + ML predictions |
 | `ML_FEATURE_ENGINEERING` | ML, machine learning, feature | Model Registry + Cortex |
@@ -151,7 +151,101 @@ SELECT
   ARRAY_CONSTRUCT('Best practice 1', 'Best practice 2');
 ```
 
-### 4. Debug Agent Output Issues
+### 4. Update Template from PDF Reference Architecture
+
+When updating templates to match official Snowflake Reference Architecture PDFs, follow this workflow:
+
+**Step 1: Extract content from PDF**
+```python
+# Use PyMuPDF (fitz) to read PDF content
+import fitz
+doc = fitz.open("/path/to/reference-architecture.pdf")
+for page_num, page in enumerate(doc):
+    text = page.get_text()
+    # Extract images if needed
+    for img_index, img in enumerate(page.get_images()):
+        # Save image for visual reference
+```
+
+**Step 2: Understand the ARCHITECTURE_TEMPLATES table schema**
+
+| Column | Type | Purpose |
+|--------|------|---------|
+| `TEMPLATE_ID` | VARCHAR (PK) | Unique identifier (e.g., `STREAMING_DATA_STACK`) |
+| `TEMPLATE_NAME` | VARCHAR | Human-readable name |
+| `DESCRIPTION` | VARCHAR | **Detailed description matching PDF exactly** - includes all paths/options |
+| `COMPOSED_PATTERNS` | ARRAY | Array of component pattern IDs included in template |
+| `FULL_MERMAID_CODE` | VARCHAR | **Complete Mermaid diagram code** - this is what the agent returns |
+| `USE_CASE_CATEGORY` | VARCHAR | Category for filtering |
+| `INDUSTRY` | VARCHAR | Industry vertical |
+| `TIMES_USED` | NUMBER | Usage analytics |
+
+**Step 3: Update BOTH description AND Mermaid code**
+
+**CRITICAL**: The `COMPOSE_DIAGRAM_FROM_TEMPLATE` function returns the `FULL_MERMAID_CODE` column directly. If you only update `DESCRIPTION`, the agent will still return the old diagram.
+
+```sql
+UPDATE SNOWGRAM_DB.CORE.ARCHITECTURE_TEMPLATES
+SET 
+    -- Update description to match PDF exactly (all paths/options)
+    DESCRIPTION = 'Streaming Data Stack Reference Architecture with 4 ingestion paths:
+(1a) Kafka Path: Producer App → Kafka → Snowflake Connector for Kafka → Staging Table.
+(1b) CSP Streaming Path: Producer App → Kinesis/Event Hubs/Pub/Sub → Compute (Java SDK) → Snowpipe Streaming → Staging Table.
+(1c) Batch/Files Path: Producer App → S3/Azure Blob/GCS → Snowpipe Auto-Ingest → Staging Table.
+(1d) Native App Connector Path: Industry Sources → Native App Connector from Marketplace → Staging Table.
+All paths converge to: Staging Table → Streams & Tasks → Dynamic Tables → Snowpark/SPCS → Analytics',
+    
+    -- Update Mermaid code to visualize ALL paths from the PDF
+    FULL_MERMAID_CODE = 'flowchart LR
+    subgraph path_1a["Path 1a: Kafka"]
+        kafka["Apache Kafka"]
+        kafka_connector["Snowflake Connector for Kafka"]
+    end
+    subgraph path_1b["Path 1b: CSP Streaming"]
+        kinesis["Amazon Kinesis"]
+        csp_compute["Compute (Java SDK)"]
+        snowpipe_streaming["Snowpipe Streaming"]
+    end
+    %% ... complete Mermaid for all paths
+    ',
+    
+    -- Update patterns array to include all components
+    COMPOSED_PATTERNS = ARRAY_CONSTRUCT(
+        'kafka', 'snowflake_connector_for_kafka',
+        'amazon_kinesis', 'snowpipe_streaming',
+        'amazon_s3', 'snowpipe_auto_ingest',
+        'native_app_connector',
+        'staging_table', 'streams', 'tasks', 'dynamic_tables'
+    ),
+    
+    UPDATED_AT = CURRENT_TIMESTAMP()
+WHERE TEMPLATE_ID = 'STREAMING_DATA_STACK';
+```
+
+**Step 4: Test the updated template**
+```sql
+-- Verify the function returns the NEW Mermaid code
+SELECT SNOWGRAM_DB.CORE.COMPOSE_DIAGRAM_FROM_TEMPLATE('STREAMING_DATA_STACK');
+```
+
+**Best Practices for PDF-to-Template Updates:**
+
+1. **One master template per reference architecture** - Don't create separate templates for each path/option. Include ALL variations in one comprehensive template.
+
+2. **Description should be exhaustive** - List every path, option, and component from the PDF. Use numbered paths (1a, 1b, 1c, 1d) to match PDF labeling.
+
+3. **Mermaid code must visualize everything** - Use subgraphs to group related components by path. Include comments (`%%`) to label each path.
+
+4. **Use consistent styling** - Apply colors to differentiate paths:
+   ```
+   style path_1a fill:#E3F2FD,stroke:#2196F3
+   style path_1b fill:#F3E5F5,stroke:#9C27B0
+   style path_1c fill:#E8F5E9,stroke:#4CAF50
+   ```
+
+5. **Verify convergence points** - Most reference architectures have multiple ingestion paths that converge to common downstream processing. Ensure all paths connect to the staging/landing zone.
+
+### 5. Debug Agent Output Issues
 
 **Symptom**: Agent says "Diagram updated. Review the canvas." without showing code.
 
@@ -163,7 +257,7 @@ CRITICAL: You MUST include the returned Mermaid code VERBATIM
 in your response inside a ```mermaid code block.
 ```
 
-### 5. Test Component Search
+### 6. Test Component Search
 
 ```sql
 -- The JSON wrapper (required because agents can't call UDTFs)

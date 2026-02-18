@@ -438,4 +438,309 @@ export function enrichNodesWithFlowOrder(nodes: Node[]): Node[] {
   });
 }
 
+/**
+ * Generic subgraph-based layout for architecture diagrams.
+ * Arranges nodes based on their subgraph layout type:
+ * - 'lane' type: Horizontal rows, each lane gets its own row
+ * - 'section' type: Vertical columns within a boundary region
+ * - 'boundary' type: Container regions (e.g., Snowflake, AWS)
+ * - 'group' type: General groupings
+ * 
+ * Works for ANY architecture template with subgraphs, not just streaming.
+ */
+export function layoutWithLanes(
+  nodes: Node[],
+  edges: Edge[],
+  subgraphs?: Map<string, { label: string; nodes: string[]; parent?: string }>,
+  layoutInfo?: Map<string, { id: string; type: string; index: number; badgeLabel: string; color: string; parent?: string }>
+): { nodes: Node[]; edges: Edge[] } {
+  // Check if nodes have layout metadata
+  const hasLayoutMetadata = nodes.some(n => {
+    const data = n.data as any;
+    return typeof data.layoutType === 'string' || typeof data.lane === 'number';
+  });
+  
+  if (!hasLayoutMetadata) {
+    // Fall back to standard layout - no subgraph info
+    return { nodes, edges };
+  }
+  
+  // Layout constants - configurable for different diagram types
+  const NODE_WIDTH = 180;
+  const NODE_HEIGHT = 100;
+  const LANE_HEIGHT = 140;
+  const LANE_PADDING = 20;
+  const COLUMN_WIDTH = 220;
+  const LEFT_MARGIN = 80;
+  const TOP_MARGIN = 60;
+  const LANE_LABEL_WIDTH = 40;
+  const SECTION_COLUMN_WIDTH = 200;
+  
+  // Analyze the subgraph structure to determine layout regions
+  const laneSubgraphs: Array<{ id: string; index: number; label: string }> = [];
+  const sectionSubgraphs: Array<{ id: string; index: number; label: string; parent?: string }> = [];
+  const boundarySubgraphs: Array<{ id: string; index: number; label: string }> = [];
+  
+  if (layoutInfo) {
+    for (const [id, info] of layoutInfo) {
+      if (info.type === 'lane') {
+        laneSubgraphs.push({ id, index: info.index, label: info.badgeLabel });
+      } else if (info.type === 'section') {
+        sectionSubgraphs.push({ id, index: info.index, label: info.badgeLabel, parent: info.parent });
+      } else if (info.type === 'boundary') {
+        boundarySubgraphs.push({ id, index: info.index, label: info.badgeLabel });
+      }
+    }
+  }
+  
+  // Sort lanes and sections by index
+  laneSubgraphs.sort((a, b) => a.index - b.index);
+  sectionSubgraphs.sort((a, b) => a.index - b.index);
+  
+  // Group nodes by their layout type
+  const laneNodes = new Map<number, Node[]>();
+  const sectionNodes = new Map<string, Node[]>();
+  const boundaryNodes: Node[] = [];
+  const ungroupedNodes: Node[] = [];
+  
+  for (const node of nodes) {
+    const data = node.data as any;
+    const layoutType = data.layoutType as string | undefined;
+    const subgraphId = data.subgraph as string | undefined;
+    const laneIndex = data.lane as number | undefined;
+    
+    if (layoutType === 'lane' && laneIndex !== undefined && laneIndex >= 0) {
+      if (!laneNodes.has(laneIndex)) {
+        laneNodes.set(laneIndex, []);
+      }
+      laneNodes.get(laneIndex)!.push(node);
+    } else if (layoutType === 'section' && subgraphId) {
+      if (!sectionNodes.has(subgraphId)) {
+        sectionNodes.set(subgraphId, []);
+      }
+      sectionNodes.get(subgraphId)!.push(node);
+    } else if (layoutType === 'boundary' || laneIndex === -1) {
+      boundaryNodes.push(node);
+    } else if (laneIndex === 99 && subgraphId) {
+      // Legacy: section nodes marked with lane 99
+      if (!sectionNodes.has(subgraphId)) {
+        sectionNodes.set(subgraphId, []);
+      }
+      sectionNodes.get(subgraphId)!.push(node);
+    } else {
+      ungroupedNodes.push(node);
+    }
+  }
+  
+  // Create lane label badge nodes
+  const labelNodes: Node[] = [];
+  const numLanes = laneSubgraphs.length || laneNodes.size;
+  
+  // Add lane labels (left side badges)
+  for (let i = 0; i < numLanes; i++) {
+    const laneInfo = laneSubgraphs[i];
+    const label = laneInfo?.label || String(i + 1);
+    const laneY = TOP_MARGIN + i * (LANE_HEIGHT + LANE_PADDING);
+    
+    if (label) {
+      labelNodes.push({
+        id: `lane_label_${label}`,
+        type: 'laneLabelNode',
+        data: {
+          label: label,
+          isLaneLabel: true,
+          backgroundColor: '#0066B3',
+          textColor: '#FFFFFF',
+        },
+        position: { x: LEFT_MARGIN, y: laneY + (LANE_HEIGHT - 36) / 2 },
+        style: {
+          width: 36,
+          height: 36,
+          borderRadius: 4,
+          background: '#0066B3',
+          color: '#FFFFFF',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontWeight: 'bold',
+          fontSize: '14px',
+          border: 'none',
+        },
+      });
+    }
+  }
+  
+  // Calculate where sections start (after all lane content)
+  let maxLaneX = LEFT_MARGIN + LANE_LABEL_WIDTH + 30;
+  for (const [laneIdx, nodesInLane] of laneNodes) {
+    const laneEndX = LEFT_MARGIN + LANE_LABEL_WIDTH + 30 + nodesInLane.length * COLUMN_WIDTH;
+    maxLaneX = Math.max(maxLaneX, laneEndX);
+  }
+  const SECTION_START_X = maxLaneX + 50;
+  
+  // Add section labels (top badges above section columns)
+  for (let i = 0; i < sectionSubgraphs.length; i++) {
+    const sectionInfo = sectionSubgraphs[i];
+    const label = sectionInfo.label;
+    const sectionX = SECTION_START_X + i * SECTION_COLUMN_WIDTH;
+    
+    if (label) {
+      labelNodes.push({
+        id: `section_label_${label}`,
+        type: 'laneLabelNode',
+        data: {
+          label: label,
+          isSectionLabel: true,
+          backgroundColor: '#0066B3',
+          textColor: '#FFFFFF',
+        },
+        position: { x: sectionX + (SECTION_COLUMN_WIDTH - 36) / 2, y: TOP_MARGIN - 50 },
+        style: {
+          width: 36,
+          height: 36,
+          borderRadius: 4,
+          background: '#0066B3',
+          color: '#FFFFFF',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontWeight: 'bold',
+          fontSize: '14px',
+          border: 'none',
+        },
+      });
+    }
+  }
+  
+  // Position boundary nodes (e.g., producer) - centered vertically spanning all lanes
+  const totalLaneHeight = numLanes * LANE_HEIGHT + (numLanes - 1) * LANE_PADDING;
+  boundaryNodes.forEach((node, idx) => {
+    node.position = {
+      x: LEFT_MARGIN - 60 - idx * 140,
+      y: TOP_MARGIN + totalLaneHeight / 2 - NODE_HEIGHT / 2,
+    };
+  });
+  
+  // Position nodes in lanes
+  const LANE_START_X = LEFT_MARGIN + LANE_LABEL_WIDTH + 30;
+  const sortedLaneIndices = Array.from(laneNodes.keys()).sort((a, b) => a - b);
+  
+  for (const laneIdx of sortedLaneIndices) {
+    const nodesInLane = laneNodes.get(laneIdx)!;
+    const laneY = TOP_MARGIN + laneIdx * (LANE_HEIGHT + LANE_PADDING);
+    
+    // Sort nodes within lane by their position in the flow
+    const nodeOrder = orderNodesInLane(nodesInLane, edges);
+    
+    nodeOrder.forEach((node, colIdx) => {
+      node.position = {
+        x: LANE_START_X + colIdx * COLUMN_WIDTH,
+        y: laneY + (LANE_HEIGHT - NODE_HEIGHT) / 2,
+      };
+    });
+  }
+  
+  // Position section nodes
+  for (let sectionIdx = 0; sectionIdx < sectionSubgraphs.length; sectionIdx++) {
+    const sectionId = sectionSubgraphs[sectionIdx].id;
+    const nodesInSection = sectionNodes.get(sectionId) || [];
+    
+    const sectionX = SECTION_START_X + sectionIdx * SECTION_COLUMN_WIDTH;
+    
+    // Stack nodes vertically within each section column
+    nodesInSection.forEach((node, rowIdx) => {
+      node.position = {
+        x: sectionX,
+        y: TOP_MARGIN + rowIdx * (NODE_HEIGHT + 30),
+      };
+    });
+  }
+  
+  // Handle sections not in sectionSubgraphs (legacy section_N naming)
+  for (const [sectionId, nodesInSection] of sectionNodes) {
+    if (!sectionSubgraphs.find(s => s.id === sectionId)) {
+      // Extract index from section ID if possible
+      const indexMatch = sectionId.match(/(\d+)/);
+      const sectionIdx = indexMatch ? parseInt(indexMatch[1], 10) - 1 : sectionNodes.size;
+      const sectionX = SECTION_START_X + sectionIdx * SECTION_COLUMN_WIDTH;
+      
+      nodesInSection.forEach((node, rowIdx) => {
+        if (node.position.x === 0 && node.position.y === 0) {
+          node.position = {
+            x: sectionX,
+            y: TOP_MARGIN + rowIdx * (NODE_HEIGHT + 30),
+          };
+        }
+      });
+    }
+  }
+  
+  // Position ungrouped nodes at the bottom
+  ungroupedNodes.forEach((node, idx) => {
+    node.position = {
+      x: LANE_START_X + idx * COLUMN_WIDTH,
+      y: TOP_MARGIN + numLanes * (LANE_HEIGHT + LANE_PADDING) + 50,
+    };
+  });
+  
+  // Combine all nodes: label nodes + positioned original nodes
+  const allNodes = [...labelNodes, ...boundaryNodes, ...nodes.filter(n => !boundaryNodes.includes(n))];
+  
+  return { nodes: allNodes, edges };
+}
+
+/**
+ * Order nodes within a lane based on edge connections.
+ * Nodes that are sources come before targets.
+ */
+function orderNodesInLane(nodes: Node[], edges: Edge[]): Node[] {
+  if (nodes.length <= 1) return nodes;
+  
+  // Build adjacency for nodes in this lane
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const inDegree = new Map<string, number>();
+  const outEdges = new Map<string, string[]>();
+  
+  for (const node of nodes) {
+    inDegree.set(node.id, 0);
+    outEdges.set(node.id, []);
+  }
+  
+  for (const edge of edges) {
+    if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
+      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+      outEdges.get(edge.source)?.push(edge.target);
+    }
+  }
+  
+  // Topological sort
+  const result: Node[] = [];
+  const queue: string[] = [];
+  
+  for (const [nodeId, degree] of inDegree) {
+    if (degree === 0) queue.push(nodeId);
+  }
+  
+  while (queue.length > 0) {
+    const nodeId = queue.shift()!;
+    const node = nodes.find(n => n.id === nodeId);
+    if (node) result.push(node);
+    
+    for (const targetId of outEdges.get(nodeId) || []) {
+      const newDegree = (inDegree.get(targetId) || 1) - 1;
+      inDegree.set(targetId, newDegree);
+      if (newDegree === 0) queue.push(targetId);
+    }
+  }
+  
+  // Add any remaining nodes not reached by topological sort
+  for (const node of nodes) {
+    if (!result.includes(node)) {
+      result.push(node);
+    }
+  }
+  
+  return result;
+}
+
 export default layoutWithELK;

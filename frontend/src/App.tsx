@@ -21,7 +21,7 @@ import { COMPONENT_CATEGORIES, SNOWFLAKE_ICONS } from './components/iconMap';
 import CustomNode from './components/CustomNode';
 // SnowgramAgentClient removed - PAT must never be exposed in client-side bundle
 import { convertMermaidToFlow, LAYER_COLORS, getStageColor } from './lib/mermaidToReactFlow';
-import { layoutWithELK, enrichNodesWithFlowOrder } from './lib/elkLayout';
+import { layoutWithELK, enrichNodesWithFlowOrder, layoutWithLanes } from './lib/elkLayout';
 import { resolveIcon } from './lib/iconResolver';
 import { canonicalizeComponentType, keyForNode, normalizeBoundaryType, normalizeGraph } from './lib/graphNormalize';
 import { hexToRgb as hexToRgbUtil, getLabelColor } from './lib/colorUtils';
@@ -97,8 +97,32 @@ type AgentResult = {
   messageId?: number;
 };
 
+// Lane label node component for streaming architecture diagrams
+const LaneLabelNode: React.FC<{ data: { label: string; backgroundColor?: string; textColor?: string } }> = ({ data }) => {
+  return (
+    <div
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 4,
+        background: data.backgroundColor || '#0066B3',
+        color: data.textColor || '#FFFFFF',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 'bold',
+        fontSize: '14px',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+      }}
+    >
+      {data.label}
+    </div>
+  );
+};
+
 const nodeTypes: NodeTypes = {
   snowflakeNode: CustomNode,
+  laneLabelNode: LaneLabelNode,
 };
 
 // Flattened catalog for quick icon lookup
@@ -236,21 +260,35 @@ const ensureBoundaryStyle = (node: Node, isDark: boolean): Node => {
 const addAccountBoundaries = (nodes: Node[]): Node[] => {
   debugLog(`[addAccountBoundaries] Called with ${nodes.length} nodes`);
   const lowered = (s?: string) => (s || '').toLowerCase();
-  const hasKeyword = (n: Node, keywords: string[]) =>
-    keywords.some((k) => lowered((n.data as any)?.label).includes(k) || lowered((n.data as any)?.componentType).includes(k));
 
   const isBoundary = (n: Node) => lowered((n.data as any)?.componentType).startsWith('account_boundary');
 
-  const cloudSets = {
-    // AWS-specific services (including Kinesis which is an AWS streaming service)
-    aws: ['s3', 'aws', 's3_bucket', 'aws_', 'kinesis', 'amazon_kinesis', 'ext_kinesis'],
-    // Azure-specific services (including Event Hubs which is an Azure streaming service)
-    azure: ['azure', 'adls', 'blob', 'event_hub', 'event_hubs', 'eventhub', 'ext_event_hub'],
-    gcp: ['gcp', 'gcs', 'google', 'bigquery', 'bq', 'pub_sub', 'pubsub'],
-    // Kafka boundary: ONLY for self-hosted Kafka or Confluent Cloud
-    // NOT for cloud-native streaming services (Kinesis→AWS, EventHubs→Azure)
-    // NOT for Snowpipe Streaming (it's a Snowflake service)
-    kafka: ['kafka', 'confluent', 'ext_kafka'],
+  // SIMPLIFIED APPROACH: Only two boundaries - External Sources (left) and Snowflake (right)
+  // Following reference architecture: Sources → Snowflake (no separate AWS/Azure/GCP boundaries)
+  // External keywords - nodes matching these go in "External Sources" boundary (LEFT of Snowflake)
+  // IMPORTANT: "connector" and "snowpipe" keywords are Snowflake services, NOT external
+  const externalKeywords = [
+    's3', 'aws', 'kinesis', 'amazon_kinesis', 'ext_kinesis',
+    'azure', 'adls', 'blob', 'event_hub', 'event_hubs', 'eventhub', 'ext_event_hub',
+    'gcp', 'gcs', 'google', 'bigquery', 'bq', 'pub_sub', 'pubsub',
+    'kafka', 'confluent', 'ext_kafka',
+    'external', 'source', 'producer', 'firehose',
+  ];
+  
+  // Snowflake service keywords - these stay INSIDE Snowflake boundary even if they mention external systems
+  const snowflakeServiceKeywords = ['connector', 'snowpipe', 'stream', 'task', 'dynamic_table', 'spcs', 'snowpark'];
+  
+  // Check if node is a Snowflake service (takes priority over external keywords)
+  const isSnowflakeService = (n: Node): boolean => {
+    const text = `${lowered((n.data as any)?.label)} ${lowered((n.data as any)?.componentType)}`;
+    return snowflakeServiceKeywords.some(k => text.includes(k));
+  };
+  
+  // Check if node is external (but NOT if it's a Snowflake service)
+  const isExternal = (n: Node): boolean => {
+    if (isSnowflakeService(n)) return false; // Snowflake services stay in Snowflake
+    const text = `${lowered((n.data as any)?.label)} ${lowered((n.data as any)?.componentType)}`;
+    return externalKeywords.some(k => text.includes(k));
   };
 
   const existingBoundary = (nodes || []).reduce<Record<string, boolean>>((acc, n) => {
@@ -264,18 +302,12 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   
   debugLog(`[addAccountBoundaries] Existing boundaries:`, Object.keys(existingBoundary));
 
-  // Partition nodes by cloud vs snowflake (exclude boundaries from the working set)
+  // Partition nodes into two groups: External and Snowflake
   const nonBoundaryNodes = nodes.filter((n) => !isBoundary(n));
-  const awsNodes = nonBoundaryNodes.filter((n) => hasKeyword(n, cloudSets.aws));
-  const azureNodes = nonBoundaryNodes.filter((n) => hasKeyword(n, cloudSets.azure));
-  const gcpNodes = nonBoundaryNodes.filter((n) => hasKeyword(n, cloudSets.gcp));
-  const kafkaNodes = nonBoundaryNodes.filter((n) => hasKeyword(n, cloudSets.kafka));
-
-  // Snowflake nodes = everything else that's not a cloud/external node or boundary
-  const cloudNodeIds = new Set([...awsNodes, ...azureNodes, ...gcpNodes, ...kafkaNodes].map((n) => n.id));
-  const snowflakeNodes = nonBoundaryNodes.filter((n) => !cloudNodeIds.has(n.id));
+  const externalNodes = nonBoundaryNodes.filter(n => isExternal(n));
+  const snowflakeNodes = nonBoundaryNodes.filter(n => !isExternal(n));
   
-  debugLog(`[addAccountBoundaries] AWS: ${awsNodes.length}, Kafka: ${kafkaNodes.length}, Snowflake: ${snowflakeNodes.length}, Azure: ${azureNodes.length}, GCP: ${gcpNodes.length}`);
+  debugLog(`[addAccountBoundaries] External: ${externalNodes.length}, Snowflake: ${snowflakeNodes.length}`);
 
   const bbox = boundingBox;
 
@@ -336,7 +368,15 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   }
   
   const snowBox = bbox(snowflakeNodes);
+  const externalBox = bbox(externalNodes);
+  
   debugLog(`[addAccountBoundaries] Snowflake box:`, snowBox, `existing:`, existingBoundary['account_boundary_snowflake']);
+  debugLog(`[addAccountBoundaries] External box:`, externalBox, `existing:`, existingBoundary['account_boundary_external']);
+
+  // Track repositioning offsets for external node groups
+  const nodeOffsets = new Map<string, { dx: number; dy: number }>(); // nodeId → offset
+
+  // Create Snowflake boundary (always on the RIGHT)
   if (snowBox && !existingBoundary['account_boundary_snowflake']) {
     debugLog(`[addAccountBoundaries] ✅ Creating Snowflake boundary (not provided by agent)`);
     boundaries.push(makeBoundary('account_boundary_snowflake', 'Snowflake Account', '#29B5E8', snowBox, isDark));
@@ -344,68 +384,29 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
     debugLog(`[addAccountBoundaries] ⏭️  Skipping Snowflake boundary (already exists from agent)`);
   }
 
-  // Track repositioning offsets for external node groups
-  // When a boundary is placed to the left of Snowflake, we must also move its contained nodes
-  const nodeOffsets = new Map<string, { dx: number; dy: number }>(); // nodeId → offset
-
-  const awsBoxRaw = bbox(awsNodes);
-  debugLog(`[addAccountBoundaries] AWS box:`, awsBoxRaw, `existing:`, existingBoundary['account_boundary_aws']);
-  if (awsBoxRaw && !existingBoundary['account_boundary_aws']) {
-    debugLog(`[addAccountBoundaries] ✅ Creating AWS boundary (not provided by agent)`);
-    // Position AWS box to the left of Snowflake box when both exist to avoid overlap
-    const width = (awsBoxRaw.maxX - awsBoxRaw.minX) + padX * 2;
-    const height = (awsBoxRaw.maxY - awsBoxRaw.minY) + padY * 2;
-    const leftX = snowBox ? snowBox.minX - width - BOUNDARY_GAP : awsBoxRaw.minX - padX;
+  // Create single "External Sources" boundary (always on the LEFT of Snowflake)
+  // This replaces the old multiple AWS/Azure/GCP/Kafka boundaries
+  if (externalBox && externalNodes.length > 0 && !existingBoundary['account_boundary_external']) {
+    debugLog(`[addAccountBoundaries] ✅ Creating External Sources boundary (not provided by agent)`);
+    
+    // Calculate boundary dimensions
+    const width = (externalBox.maxX - externalBox.minX) + padX * 2;
+    
+    // Position external boundary to the left of Snowflake
+    const leftX = snowBox ? snowBox.minX - padX - BOUNDARY_GAP - width : externalBox.minX - padX;
     const box = snowBox
-      ? { minX: leftX, minY: awsBoxRaw.minY - padY, maxX: leftX + width, maxY: awsBoxRaw.maxY + padY }
-      : awsBoxRaw;
-    boundaries.push(makeBoundary('account_boundary_aws', 'AWS Account', '#FF9900', box, isDark));
-    // Reposition AWS nodes into the new boundary position
+      ? { minX: leftX, minY: externalBox.minY - padY, maxX: leftX + width, maxY: externalBox.maxY + padY }
+      : externalBox;
+    
+    boundaries.push(makeBoundary('account_boundary_external', 'External Sources', '#6B7280', box, isDark));
+    
+    // Reposition external nodes into the new boundary position
     if (snowBox) {
-      const dx = (box.minX + padX) - awsBoxRaw.minX;
-      awsNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
+      const dx = (box.minX + padX) - externalBox.minX;
+      externalNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
     }
-  } else if (existingBoundary['account_boundary_aws']) {
-    debugLog(`[addAccountBoundaries] ⏭️  Skipping AWS boundary (already exists from agent)`);
-  }
-
-  const azureBox = bbox(azureNodes);
-  if (azureBox && !existingBoundary['account_boundary_azure']) {
-    debugLog(`[addAccountBoundaries] ✅ Creating Azure boundary (not provided by agent)`);
-    boundaries.push(makeBoundary('account_boundary_azure', 'Azure Account', '#0089D6', azureBox, isDark));
-  } else if (existingBoundary['account_boundary_azure']) {
-    debugLog(`[addAccountBoundaries] ⏭️  Skipping Azure boundary (already exists from agent)`);
-  }
-
-  const gcpBox = bbox(gcpNodes);
-  if (gcpBox && !existingBoundary['account_boundary_gcp']) {
-    debugLog(`[addAccountBoundaries] ✅ Creating GCP boundary (not provided by agent)`);
-    boundaries.push(makeBoundary('account_boundary_gcp', 'GCP Account', '#4285F4', gcpBox, isDark));
-  } else if (existingBoundary['account_boundary_gcp']) {
-    debugLog(`[addAccountBoundaries] ⏭️  Skipping GCP boundary (already exists from agent)`);
-  }
-
-  // Kafka/streaming boundary (external to Snowflake)
-  const kafkaBox = bbox(kafkaNodes);
-  if (kafkaBox && !existingBoundary['account_boundary_kafka']) {
-    debugLog(`[addAccountBoundaries] ✅ Creating Kafka boundary (not provided by agent)`);
-    // Position Kafka to the left of Snowflake
-    const width = (kafkaBox.maxX - kafkaBox.minX) + padX * 2;
-    const height = (kafkaBox.maxY - kafkaBox.minY) + padY * 2;
-    // BUG-006 FIX: Renamed from snowBox to snowBoxForKafka to avoid shadowing
-    const snowBoxForKafka = bbox(snowflakeNodes);
-    const leftX = snowBoxForKafka ? snowBoxForKafka.minX - width - BOUNDARY_GAP : kafkaBox.minX - padX;
-    const box = snowBoxForKafka
-      ? { minX: leftX, minY: kafkaBox.minY - padY, maxX: leftX + width, maxY: kafkaBox.maxY + padY }
-      : kafkaBox;
-    boundaries.push(makeBoundary('account_boundary_kafka', 'Streaming Source', '#E01E5A', box, isDark));
-    // Reposition Kafka nodes into the new boundary position
-    if (snowBoxForKafka) {
-      const dx = (box.minX + padX) - kafkaBox.minX;
-      kafkaNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
-    }
-  } else if (existingBoundary['account_boundary_kafka']) {
-    debugLog(`[addAccountBoundaries] ⏭️  Skipping Kafka boundary (already exists from agent)`);
+  } else if (existingBoundary['account_boundary_external']) {
+    debugLog(`[addAccountBoundaries] ⏭️  Skipping External Sources boundary (already exists from agent)`);
   }
 
   // Collect existing boundaries from input
@@ -413,15 +414,7 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   
   debugLog(`[addAccountBoundaries] Created ${boundaries.length} new boundaries, found ${existingBoundaryNodes.length} existing boundaries`);
   
-  // Calculate bounding boxes for recalculation
-  const snowBoxCalc = bbox(snowflakeNodes);
-  const awsBoxCalc = bbox(awsNodes);
-  const azureBoxCalc = bbox(azureNodes);
-  const gcpBoxCalc = bbox(gcpNodes);
-  const kafkaBoxCalc = bbox(kafkaNodes);
-  
   // Recalculate positions for agent-provided boundaries based on actual node positions
-  // Also track node repositioning for boundaries that need to move
   const recalculatedBoundaries = existingBoundaryNodes.map(boundary => {
     const compType = lowered((boundary.data as any)?.componentType);
     
@@ -431,19 +424,12 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
     
     if (compType === 'account_boundary_snowflake') {
       containedNodes = snowflakeNodes;
-      rawBox = snowBoxCalc;
-    } else if (compType === 'account_boundary_aws') {
-      containedNodes = awsNodes;
-      rawBox = awsBoxCalc;
-    } else if (compType === 'account_boundary_azure') {
-      containedNodes = azureNodes;
-      rawBox = azureBoxCalc;
-    } else if (compType === 'account_boundary_gcp') {
-      containedNodes = gcpNodes;
-      rawBox = gcpBoxCalc;
-    } else if (compType === 'account_boundary_kafka') {
-      containedNodes = kafkaNodes;
-      rawBox = kafkaBoxCalc;
+      rawBox = snowBox;
+    } else if (compType.includes('external') || compType.includes('source') || compType.includes('kafka') || 
+               compType.includes('aws') || compType.includes('azure') || compType.includes('gcp')) {
+      // Treat any external-related boundary as containing external nodes
+      containedNodes = externalNodes;
+      rawBox = externalBox;
     }
     
     if (!rawBox) {
@@ -453,37 +439,23 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
     
     debugLog(`[addAccountBoundaries] Recalculating ${compType} boundary from ${containedNodes.length} nodes`);
     
-    // Apply spacing logic: AWS should be positioned to the left of Snowflake with 40px gap
+    // Apply spacing logic: external boundaries positioned to the left of Snowflake
     let finalPosition = { x: rawBox.minX - padX, y: rawBox.minY - padYTop };
     const finalSize = {
       width: (rawBox.maxX - rawBox.minX) + padX * 2,
       height: (rawBox.maxY - rawBox.minY) + padYTop + padYBottom
     };
     
-    if (compType === 'account_boundary_aws' && snowBoxCalc) {
-      // Calculate the width of the AWS boundary
-      const awsWidth = (rawBox.maxX - rawBox.minX) + padX * 2;
-      // Calculate Snowflake boundary left edge (node minX - padding)
-      const snowflakeBoundaryLeft = snowBoxCalc.minX - padX;
-      // Position AWS to the left of Snowflake boundary with BOUNDARY_GAP gap
-      const leftX = snowflakeBoundaryLeft - awsWidth - BOUNDARY_GAP;
+    // Reposition external boundary to LEFT of Snowflake
+    const isExternalBoundary = compType !== 'account_boundary_snowflake';
+    if (isExternalBoundary && snowBox) {
+      const boundaryWidth = (rawBox.maxX - rawBox.minX) + padX * 2;
+      const leftX = snowBox.minX - padX - BOUNDARY_GAP - boundaryWidth;
       finalPosition = { x: leftX, y: rawBox.minY - padYTop };
-      // Calculate offset for AWS nodes so they move with the boundary
+      // Calculate offset for nodes so they move with the boundary
       const dx = (leftX + padX) - rawBox.minX;
       containedNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
-      debugLog(`[addAccountBoundaries] Repositioning AWS: snowflake nodes minX=${snowBoxCalc.minX}, snowflake boundary left=${snowflakeBoundaryLeft}, awsWidth=${awsWidth}, final leftX=${leftX}, node dx=${dx}`);
-    }
-    
-    // Position Kafka boundary to the left of Snowflake (similar to AWS)
-    if (compType === 'account_boundary_kafka' && snowBoxCalc) {
-      const kafkaWidth = (rawBox.maxX - rawBox.minX) + padX * 2;
-      const snowflakeBoundaryLeft = snowBoxCalc.minX - padX;
-      const leftX = snowflakeBoundaryLeft - kafkaWidth - BOUNDARY_GAP;
-      finalPosition = { x: leftX, y: rawBox.minY - padYTop };
-      // Calculate offset for Kafka nodes so they move with the boundary
-      const dx = (leftX + padX) - rawBox.minX;
-      containedNodes.forEach(n => nodeOffsets.set(n.id, { dx, dy: 0 }));
-      debugLog(`[addAccountBoundaries] Repositioning Kafka: final leftX=${leftX}, node dx=${dx}`);
+      debugLog(`[addAccountBoundaries] Repositioning ${compType}: final leftX=${leftX}, node dx=${dx}`);
     }
     
     // Update boundary position and size
@@ -1947,6 +1919,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       let streamedText = '';
       let streamedThinking = '';
       let fullText = '';
+      let toolExtractedMermaid = '';  // Track Mermaid extracted from tool results
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -2049,6 +2022,13 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 }
               }
               
+              // CRITICAL: Store extracted Mermaid for use in final diagram processing
+              // This ensures tool result Mermaid is used even if agent doesn't include it in text response
+              if (extractedMermaid) {
+                toolExtractedMermaid = extractedMermaid;
+                debugLog('[Chat] Extracted Mermaid from tool result:', extractedMermaid.slice(0, 100) + '...');
+              }
+              
               // Update the tool call status and store the result
               setChatMessages((msgs) => {
                 const updated = [...msgs];
@@ -2090,7 +2070,27 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               });
             } else if (data.type === 'chunk' && data.text) {
               streamedText += data.text;
-              // Update the last message with streamed content (strip code blocks for display)
+              
+              // Extract code blocks progressively during streaming for dropdown display
+              // Complete JSON block
+              const jsonMatch = streamedText.match(/```json\s*([\s\S]*?)```/);
+              const streamingJsonSpec = jsonMatch ? jsonMatch[1].trim() : undefined;
+              // Incomplete JSON block (still streaming)
+              const incompleteJsonMatch = !jsonMatch && streamedText.match(/```json\s*([\s\S]*?)$/);
+              const partialJsonSpec = incompleteJsonMatch ? incompleteJsonMatch[1].trim() : undefined;
+              
+              // Complete Mermaid block
+              const mermaidMatch = streamedText.match(/```mermaid\s*([\s\S]*?)```/);
+              const streamingMermaidCode = mermaidMatch ? mermaidMatch[1].trim() : undefined;
+              // Incomplete Mermaid block (still streaming)
+              const incompleteMermaidMatch = !mermaidMatch && streamedText.match(/```mermaid\s*([\s\S]*?)$/);
+              const partialMermaidCode = incompleteMermaidMatch ? incompleteMermaidMatch[1].trim() : undefined;
+              
+              // Use complete or partial code for dropdown display
+              const currentJsonSpec = streamingJsonSpec || partialJsonSpec;
+              const currentMermaidCode = streamingMermaidCode || partialMermaidCode;
+              
+              // Strip code blocks from display text (they're shown in dropdowns instead)
               let displayText = streamedText
                 .replace(/```json[\s\S]*?```/g, '')
                 .replace(/```mermaid[\s\S]*?```/g, '')
@@ -2098,9 +2098,9 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 .replace(/```mermaid[\s\S]*/g, '') // Handle incomplete mermaid blocks
                 .trim();
               
-              // Show progress indicator when generating diagram JSON
-              if (!displayText && streamedText.includes('```json')) {
-                displayText = 'Generating architecture diagram...';
+              // Show progress indicator when code is streaming into dropdown
+              if (!displayText && (currentJsonSpec || currentMermaidCode)) {
+                displayText = currentMermaidCode ? 'Generating diagram...' : 'Generating specification...';
               } else if (displayText.length > 2000) {
                 // Only truncate very long responses for UI performance
                 displayText = displayText.substring(0, 2000) + '...';
@@ -2108,11 +2108,15 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               
               setChatMessages((msgs) => {
                 const updated = [...msgs];
+                const lastMsg = updated[updated.length - 1];
                 updated[updated.length - 1] = { 
-                  ...updated[updated.length - 1],
+                  ...lastMsg,
                   role: 'assistant', 
                   text: displayText || 'Thinking...',
-                  timestamp: updated[updated.length - 1].timestamp || new Date().toISOString()
+                  timestamp: lastMsg.timestamp || new Date().toISOString(),
+                  // Update code artifacts progressively for dropdown display
+                  jsonSpec: currentJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: currentMermaidCode || lastMsg.mermaidCode
                 };
                 return updated;
               });
@@ -2150,7 +2154,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       }
 
       // Parse the full response and update diagram
-      if (fullText) {
+      if (fullText || toolExtractedMermaid) {
         const specMatch = fullText.match(/```json\n([\s\S]*?)\n```/);
         let spec = undefined;
         if (specMatch) {
@@ -2159,9 +2163,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           } catch {}
         }
         const mermaidMatch = fullText.match(/```mermaid\n([\s\S]*?)\n```/);
-        const mermaidCode = mermaidMatch ? mermaidMatch[1] : '';
-
+        // CRITICAL FIX: Use Mermaid from tool result if not in agent's text response
+        const mermaidCode = mermaidMatch ? mermaidMatch[1] : toolExtractedMermaid;
+        
         if (spec || mermaidCode) {
+          debugLog('[Chat] Rendering diagram - mermaidCode length:', mermaidCode.length, 'from:', mermaidMatch ? 'text response' : 'tool result');
           await parseMermaidAndCreateDiagram(mermaidCode, spec);
         }
 
@@ -2290,6 +2296,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       let streamedText = '';
       let streamedThinking = '';
       let fullText = '';
+      let toolExtractedMermaid = '';  // Track Mermaid extracted from tool results
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -2332,7 +2339,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               const toolResult = { name: toolName, result: rawResult, input: data.result.input };
               
               let extractedMermaid: string | undefined;
-              if (toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' && rawResult) {
+              if ((toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' || toolName.includes('COMPOSE') || toolName.includes('DIAGRAM')) && rawResult) {
                 const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult);
                 const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram)/i);
                 if (isMermaidCode) extractedMermaid = resultStr.trim();
@@ -2340,6 +2347,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                   const mermaidMatch = resultStr.match(/```mermaid\s*([\s\S]*?)```/);
                   if (mermaidMatch) extractedMermaid = mermaidMatch[1].trim();
                 }
+              }
+              
+              // CRITICAL: Store extracted Mermaid for use in final diagram processing
+              if (extractedMermaid) {
+                toolExtractedMermaid = extractedMermaid;
               }
               
               setChatMessages((msgs) => {
@@ -2380,8 +2392,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         } catch { /* ignore parse errors */ }
       }
       const mermaidMatch = fullText.match(/```mermaid\n([\s\S]*?)\n```/);
-      const mermaidCode = mermaidMatch ? mermaidMatch[1] : '';
-      if (spec || mermaidCode) await parseMermaidAndCreateDiagram(mermaidCode, spec);
+      // CRITICAL FIX: Use Mermaid from tool result if not in agent's text response
+      const mermaidCode = mermaidMatch ? mermaidMatch[1] : toolExtractedMermaid;
+      if (spec || mermaidCode) {
+        debugLog('[Chat] Rendering diagram - mermaidCode length:', mermaidCode.length, 'from:', mermaidMatch ? 'text response' : 'tool result');
+        await parseMermaidAndCreateDiagram(mermaidCode, spec);
+      }
 
       // Final cleanup
       let finalMessage = fullText.replace(/```json[\s\S]*?```/g, '').replace(/```mermaid[\s\S]*?```/g, '').trim();
@@ -2393,7 +2409,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         updated[updated.length - 1] = { 
           ...lastMsg, text: finalMessage,
           jsonSpec: specMatch ? specMatch[1].trim() : lastMsg.jsonSpec,
-          mermaidCode: mermaidMatch ? mermaidMatch[1].trim() : lastMsg.mermaidCode
+          mermaidCode: mermaidMatch ? mermaidMatch[1].trim() : (toolExtractedMermaid || lastMsg.mermaidCode)
         };
         return updated;
       });
@@ -2686,17 +2702,22 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       // ===========================================================================
       debugLog('[Pipeline] Agent-first mode: trusting agent output (no FDE filtering)');
 
-      const specEdges: Edge[] = (spec.edges || []).map((e: any, i: number) => ({
-        id: `${e.source || 's'}-${e.target || 't'}-${i}`,
-        source: e.source,
-        target: e.target,
-        type: 'straight',  // Direct line between handles (no routing kinks)
-        animated: true,
-        sourceHandle: e.sourceHandle || 'right-source',
-        targetHandle: e.targetHandle || 'left-target',
-        style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
-        deletable: true,
-      }));
+      // FIX: Support both agent formats - some use from/to, others use source/target
+      const specEdges: Edge[] = (spec.edges || []).map((e: any, i: number) => {
+        const source = e.source || e.from;
+        const target = e.target || e.to;
+        return {
+          id: `${source || 's'}-${target || 't'}-${i}`,
+          source,
+          target,
+          type: 'straight',  // Direct line between handles (no routing kinks)
+          animated: true,
+          sourceHandle: e.sourceHandle || 'right-source',
+          targetHandle: e.targetHandle || 'left-target',
+          style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
+          deletable: true,
+        };
+      });
 
       // AGENT-FIRST: Trust the agent output - frontend is a pure renderer
       // Previously: ensureMedallionCompleteness manipulated nodes/edges
@@ -2914,12 +2935,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       return;
     }
 
-    const { nodes: newNodes, edges: newEdges } = convertMermaidToFlow(
+    const { nodes: newNodes, edges: newEdges, subgraphs: mermaidSubgraphs, layoutInfo: mermaidLayoutInfo } = convertMermaidToFlow(
       mermaidCode,
       COMPONENT_CATEGORIES,
       isDarkMode
     );
-    debugLog(`[Pipeline] After mermaid parse: ${newNodes.length} nodes, ${newEdges.length} edges`);
+    debugLog(`[Pipeline] After mermaid parse: ${newNodes.length} nodes, ${newEdges.length} edges, subgraphs: ${mermaidSubgraphs?.size || 0}, layoutInfo: ${mermaidLayoutInfo?.size || 0}`);
     // Ensure medallion completeness FIRST (before normalization to preserve edges)
     const nonBoundaryNodes = newNodes.filter(
       (n) => !(((n.data as any)?.componentType || '').toString().toLowerCase().startsWith('account_boundary'))
@@ -3014,8 +3035,19 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     }
     debugLog(`[Pipeline] After separating boundaries (mermaid): ${finalNodes.length} nodes for layout`);
 
-    // AGENTIC: Use simple DAG layout for all architectures (no medallion special-casing)
-    const laidOut = { nodes: layoutNodes(finalNodes, completedEdges), edges: completedEdges };
+    // GENERIC SUBGRAPH LAYOUT: Use subgraph-based layout when layout info is present
+    // Works for ANY architecture template with subgraphs (streaming, medallion with lanes, etc.)
+    let laidOut: { nodes: Node[]; edges: Edge[] };
+    if (mermaidLayoutInfo && mermaidLayoutInfo.size > 0) {
+      debugLog(`[Pipeline] Using generic subgraph layout for ${mermaidLayoutInfo.size} layout regions`);
+      laidOut = layoutWithLanes(finalNodes, completedEdges, mermaidSubgraphs, mermaidLayoutInfo);
+    } else if (mermaidSubgraphs && mermaidSubgraphs.size > 0) {
+      debugLog(`[Pipeline] Using lane-based layout for ${mermaidSubgraphs.size} subgraphs (legacy)`);
+      laidOut = layoutWithLanes(finalNodes, completedEdges, mermaidSubgraphs);
+    } else {
+      // AGENTIC: Use simple DAG layout for all architectures (no medallion special-casing)
+      laidOut = { nodes: layoutNodes(finalNodes, completedEdges), edges: completedEdges };
+    }
     debugLog(`[Pipeline] After layout: ${laidOut.nodes.length} nodes`);
     // Add back agent-provided boundaries before addAccountBoundaries
     const nodesWithMermaidBoundaries = [...mermaidBoundaries, ...laidOut.nodes];
@@ -4104,13 +4136,13 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 </div>
                 <div className={styles.starterChips}>
                   {[
-                    { icon: '/icons/Snowflake_ICON_RA_Stream.svg', label: 'Streaming', prompt: 'Generate a Snowflake Streaming Data Stack architecture diagram showing Kafka/Kinesis → Snowpipe Streaming → Streams → Dynamic Tables → Snowpark Container Services' },
-                    { icon: '/icons/Snowflake_ICON_Security.svg', label: 'Security Analytics', prompt: 'Generate a Snowflake Application Health & Security Analytics architecture with log collection, Snowpipe Streaming, anomaly detection with Snowpark ML, and Search Optimization Service' },
-                    { icon: '/icons/Snowflake_ICON_Cloud.svg', label: 'Serverless', prompt: 'Generate a Snowflake Serverless Data Stack architecture with API Gateway, Lambda/Cloud Functions, Snowflake with Hybrid Tables, and serverless ETL' },
-                    { icon: '/icons/Snowflake_ICON_Users.svg', label: 'Customer 360', prompt: 'Generate a Snowflake Customer 360 architecture showing data lake, streaming ingestion, Native Apps, Secure Data Sharing, and Snowpark orchestration' },
-                    { icon: '/icons/Snowflake_ICON_Embedded_Analytics.svg', label: 'Embedded Analytics', prompt: 'Generate a Snowflake Embedded Analytics architecture with API tier, OLTP database, Hybrid Tables, ETL ingestion, and BI tool integration' },
-                    { icon: '/icons/Snowflake_ICON_IoT.svg', label: 'IoT', prompt: 'Generate a Snowflake IoT Reference Architecture with edge devices, MQTT broker, streaming service, Snowpipe, time-series analysis, and Snowpark ML' },
-                    { icon: '/icons/Snowflake_ICON_Workloads_AI.svg', label: 'ML Pipeline', prompt: 'Generate a Snowflake Machine Learning architecture with training data ingestion, Snowpipe, Iceberg Tables, Snowpark ML, Model Registry, and inference endpoints' },
+                    { icon: '/icons/Snowflake_ICON_RA_Stream.svg', label: 'Streaming', prompt: 'Generate a Snowflake Streaming Data Stack reference architecture diagram' },
+                    { icon: '/icons/Snowflake_ICON_Security.svg', label: 'Security Analytics', prompt: 'Generate a Snowflake Security Analytics architecture diagram' },
+                    { icon: '/icons/Snowflake_ICON_Cloud.svg', label: 'Serverless', prompt: 'Generate a Snowflake Serverless Data Stack architecture diagram' },
+                    { icon: '/icons/Snowflake_ICON_Users.svg', label: 'Customer 360', prompt: 'Generate a Snowflake Customer 360 architecture diagram' },
+                    { icon: '/icons/Snowflake_ICON_Embedded_Analytics.svg', label: 'Embedded Analytics', prompt: 'Generate a Snowflake Embedded Analytics architecture diagram' },
+                    { icon: '/icons/Snowflake_ICON_IoT.svg', label: 'IoT', prompt: 'Generate a Snowflake IoT Reference Architecture diagram' },
+                    { icon: '/icons/Snowflake_ICON_Workloads_AI.svg', label: 'ML Pipeline', prompt: 'Generate a Snowflake Machine Learning architecture diagram' },
                   ].map((starter, i) => (
                     <button
                       key={i}

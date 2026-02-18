@@ -197,22 +197,181 @@ function classifyByHeuristic(norm: string): string | null {
   return null;
 }
 
+// ============================================
+// GENERIC SUBGRAPH LAYOUT CONFIGURATION
+// ============================================
+// Layout types that can be auto-detected from subgraph naming conventions
+
+export type SubgraphLayoutType = 'lane' | 'section' | 'boundary' | 'group';
+
+export interface SubgraphLayoutInfo {
+  id: string;
+  label: string;
+  type: SubgraphLayoutType;
+  index: number;        // Order within its type (lane 0, 1, 2... or section 0, 1, 2...)
+  badgeLabel: string;   // Text shown in badge (e.g., "1a", "2", "A")
+  color: string;        // Background color for visual distinction
+  parent?: string;      // Parent subgraph ID (for nested structures)
+}
+
+// Color palette for auto-assignment
+const LAYOUT_COLORS = [
+  '#E3F2FD', '#F3E5F5', '#E8F5E9', '#FFF8E1', 
+  '#E1F5FE', '#FCE4EC', '#E0F2F1', '#FFF3E0',
+  '#E8EAF6', '#F1F8E9', '#FFFDE7', '#ECEFF1'
+];
+
+/**
+ * Auto-detect subgraph layout type from naming conventions.
+ * Supports multiple naming patterns for flexibility across different templates.
+ */
+export function detectSubgraphLayoutType(id: string, label: string, parent?: string): { type: SubgraphLayoutType; index: number; badgeLabel: string } {
+  const idLower = id.toLowerCase();
+  const labelLower = label.toLowerCase();
+  
+  // LANE patterns: path_1a, lane_1, row_a, ingestion_1, etc.
+  const lanePatterns = [
+    /^path[_-]?(\w+)$/i,           // path_1a, path-1b
+    /^lane[_-]?(\w+)$/i,           // lane_1, lane-a
+    /^row[_-]?(\w+)$/i,            // row_1, row-a
+    /^ingestion[_-]?(\w+)$/i,      // ingestion_1
+    /^flow[_-]?(\w+)$/i,           // flow_1
+    /^stream[_-]?(\w+)$/i,         // stream_1
+  ];
+  
+  for (const pattern of lanePatterns) {
+    const match = idLower.match(pattern);
+    if (match) {
+      const suffix = match[1];
+      // Extract numeric index if possible
+      const numMatch = suffix.match(/(\d+)/);
+      const index = numMatch ? parseInt(numMatch[1], 10) - 1 : extractAlphaIndex(suffix);
+      return { type: 'lane', index: Math.max(0, index), badgeLabel: suffix.toUpperCase() };
+    }
+  }
+  
+  // SECTION patterns: section_2, stage_1, col_a, column_1, step_1
+  const sectionPatterns = [
+    /^section[_-]?(\w+)$/i,        // section_2, section-3
+    /^stage[_-]?(\w+)$/i,          // stage_1, stage-2
+    /^col(?:umn)?[_-]?(\w+)$/i,    // col_1, column_2
+    /^step[_-]?(\w+)$/i,           // step_1, step-2
+    /^phase[_-]?(\w+)$/i,          // phase_1
+    /^zone[_-]?(\w+)$/i,           // zone_1
+  ];
+  
+  for (const pattern of sectionPatterns) {
+    const match = idLower.match(pattern);
+    if (match) {
+      const suffix = match[1];
+      const numMatch = suffix.match(/(\d+)/);
+      const index = numMatch ? parseInt(numMatch[1], 10) - 1 : extractAlphaIndex(suffix);
+      return { type: 'section', index: Math.max(0, index), badgeLabel: suffix.toUpperCase() };
+    }
+  }
+  
+  // BOUNDARY patterns: snowflake, aws_account, cloud_boundary, etc.
+  const boundaryKeywords = ['snowflake', 'aws', 'azure', 'gcp', 'google', 'cloud', 'account', 'boundary', 'vpc', 'network'];
+  for (const keyword of boundaryKeywords) {
+    if (idLower.includes(keyword) || labelLower.includes(keyword)) {
+      return { type: 'boundary', index: 0, badgeLabel: '' };
+    }
+  }
+  
+  // Special handling for producer/consumer patterns (they're like boundaries)
+  if (idLower.includes('producer') || idLower.includes('consumer') || idLower.includes('source') || idLower.includes('sink')) {
+    return { type: 'boundary', index: -1, badgeLabel: '' };
+  }
+  
+  // Default: general group
+  return { type: 'group', index: 0, badgeLabel: extractBadgeFromLabel(label) };
+}
+
+/**
+ * Extract alphabetic index (a=0, b=1, c=2, etc.)
+ */
+function extractAlphaIndex(str: string): number {
+  const alphaMatch = str.match(/([a-z])$/i);
+  if (alphaMatch) {
+    return alphaMatch[1].toLowerCase().charCodeAt(0) - 'a'.charCodeAt(0);
+  }
+  return 0;
+}
+
+/**
+ * Extract a short badge label from a longer label string
+ */
+function extractBadgeFromLabel(label: string): string {
+  // Try to find a number or letter at the end
+  const match = label.match(/(\d+[a-z]?|[a-z])$/i);
+  if (match) return match[1].toUpperCase();
+  
+  // Otherwise use first letter(s)
+  const words = label.split(/[\s_-]+/);
+  if (words.length >= 2) {
+    return words.map(w => w[0]).join('').substring(0, 2).toUpperCase();
+  }
+  return label.substring(0, 2).toUpperCase();
+}
+
+/**
+ * Build layout info for all subgraphs, auto-detecting types and assigning colors
+ */
+export function buildSubgraphLayoutInfo(
+  subgraphs: Map<string, { label: string; nodes: string[]; parent?: string }>
+): Map<string, SubgraphLayoutInfo> {
+  const layoutInfo = new Map<string, SubgraphLayoutInfo>();
+  let colorIndex = 0;
+  
+  for (const [id, sg] of subgraphs) {
+    const { type, index, badgeLabel } = detectSubgraphLayoutType(id, sg.label, sg.parent);
+    
+    layoutInfo.set(id, {
+      id,
+      label: sg.label,
+      type,
+      index,
+      badgeLabel,
+      color: LAYOUT_COLORS[colorIndex % LAYOUT_COLORS.length],
+      parent: sg.parent,
+    });
+    
+    colorIndex++;
+  }
+  
+  return layoutInfo;
+}
+
 /**
  * Lightweight Mermaid flowchart parser to produce ReactFlow nodes/edges.
  * Supports common arrow types: -->, --- , -.->, ==> variants.
+ * NOW SUPPORTS: Subgraph parsing for lane-based layouts (streaming architecture)
  * Layout is a simple grid; callers may re-run layout if desired.
  */
 export function convertMermaidToFlow(
   mermaidCode: string,
   componentCatalog: Catalog,
   isDarkMode = false
-): { nodes: Node[]; edges: Edge[] } {
+): { 
+  nodes: Node[]; 
+  edges: Edge[]; 
+  subgraphs?: Map<string, { label: string; nodes: string[]; parent?: string }>;
+  layoutInfo?: Map<string, SubgraphLayoutInfo>;
+} {
   const edges: Edge[] = [];
   const nodeMap: Map<string, Node> = new Map();
+  
+  // Track subgraphs and their contained nodes
+  const subgraphs = new Map<string, { label: string; nodes: string[]; parent?: string }>();
+  const nodeToSubgraph = new Map<string, string>(); // nodeId -> subgraphId
 
   const lines = mermaidCode.split('\n').map(l => l.trim()).filter(Boolean);
   const edgeRegex = /^([\w-]+)\s*[-.=>]+?\s*([\w-]+)(?:\s*\[\[?(.+?)\]?\])?/;
   const nodeDefRegex = /^([\w-]+)\s*\[(.+)\]/;
+  
+  // Subgraph parsing regex
+  const subgraphStartRegex = /^subgraph\s+([\w-]+)\s*\[?"?(.+?)"?\]?$/;
+  const subgraphEndRegex = /^end$/i;
 
   const getLabel = (id: string) => {
     const def = lines.find(l => l.startsWith(`${id}[`));
@@ -257,6 +416,10 @@ export function convertMermaidToFlow(
         isDarkMode,
         showHandles: !isBoundary,
         icon: isBoundary ? undefined : undefined,
+        // Lane info will be added after subgraph parsing
+        subgraph: undefined as string | undefined,
+        lane: undefined as number | undefined,
+        laneLabel: undefined as string | undefined,
       },
       position: { x: 0, y: 0 },
       style: {
@@ -270,20 +433,74 @@ export function convertMermaidToFlow(
     return node;
   };
 
+  // Track current subgraph stack (for nested subgraphs)
+  const subgraphStack: string[] = [];
+  
   for (const line of lines) {
-    // node definition lines
-    const nd = line.match(nodeDefRegex);
-    if (nd) {
-      ensureNode(nd[1]);
+    // Skip flowchart declaration and style lines
+    if (line.startsWith('flowchart') || line.startsWith('graph') || line.startsWith('%%') || line.startsWith('style ')) {
       continue;
     }
-    // edge lines
+    
+    // Check for subgraph start
+    const subgraphMatch = line.match(subgraphStartRegex);
+    if (subgraphMatch) {
+      const subgraphId = subgraphMatch[1];
+      const subgraphLabel = cleanText(subgraphMatch[2].replace(/["]/g, ''));
+      const parentSubgraph = subgraphStack.length > 0 ? subgraphStack[subgraphStack.length - 1] : undefined;
+      
+      subgraphs.set(subgraphId, {
+        label: subgraphLabel,
+        nodes: [],
+        parent: parentSubgraph
+      });
+      subgraphStack.push(subgraphId);
+      continue;
+    }
+    
+    // Check for subgraph end
+    if (subgraphEndRegex.test(line)) {
+      subgraphStack.pop();
+      continue;
+    }
+    
+    // Node definition lines
+    const nd = line.match(nodeDefRegex);
+    if (nd) {
+      const node = ensureNode(nd[1]);
+      // Associate node with current subgraph (layout info applied after all parsing)
+      if (subgraphStack.length > 0) {
+        const currentSubgraph = subgraphStack[subgraphStack.length - 1];
+        nodeToSubgraph.set(node.id, currentSubgraph);
+        subgraphs.get(currentSubgraph)?.nodes.push(node.id);
+        node.data.subgraph = currentSubgraph;
+      }
+      continue;
+    }
+    
+    // Edge lines
     const m = line.match(edgeRegex);
     if (m) {
       const source = m[1];
       const target = m[2];
       const sourceNode = ensureNode(source);
       const targetNode = ensureNode(target);
+      
+      // Associate nodes with current subgraph if they were just created
+      if (subgraphStack.length > 0) {
+        const currentSubgraph = subgraphStack[subgraphStack.length - 1];
+        if (!nodeToSubgraph.has(sourceNode.id)) {
+          nodeToSubgraph.set(sourceNode.id, currentSubgraph);
+          subgraphs.get(currentSubgraph)?.nodes.push(sourceNode.id);
+          sourceNode.data.subgraph = currentSubgraph;
+        }
+        if (!nodeToSubgraph.has(targetNode.id)) {
+          nodeToSubgraph.set(targetNode.id, currentSubgraph);
+          subgraphs.get(currentSubgraph)?.nodes.push(targetNode.id);
+          targetNode.data.subgraph = currentSubgraph;
+        }
+      }
+      
       const sourceId = sourceNode.id;
       const targetId = targetNode.id;
       edges.push({
@@ -300,7 +517,33 @@ export function convertMermaidToFlow(
     }
   }
 
-  // Simple grid layout
+  // Build generic layout info from subgraphs and apply to nodes
+  const layoutInfo = buildSubgraphLayoutInfo(subgraphs);
+  
+  // Apply layout metadata to all nodes based on their subgraph
+  for (const node of nodeMap.values()) {
+    const subgraphId = node.data.subgraph as string | undefined;
+    if (subgraphId && layoutInfo.has(subgraphId)) {
+      const info = layoutInfo.get(subgraphId)!;
+      node.data.layoutType = info.type;
+      node.data.layoutIndex = info.index;
+      node.data.badgeLabel = info.badgeLabel;
+      node.data.layoutColor = info.color;
+      
+      // Legacy compatibility: map layout type to lane number
+      if (info.type === 'lane') {
+        node.data.lane = info.index;
+        node.data.laneLabel = info.badgeLabel;
+      } else if (info.type === 'section') {
+        node.data.lane = 99; // Sections use lane 99 convention
+        node.data.laneLabel = info.badgeLabel;
+      } else if (info.type === 'boundary') {
+        node.data.lane = info.index === -1 ? -1 : 99;
+      }
+    }
+  }
+
+  // Simple grid layout (will be overridden by lane layout if subgraphs present)
   const nodes = Array.from(nodeMap.values());
   const cols = 4;
   nodes.forEach((n, idx) => {
@@ -309,7 +552,13 @@ export function convertMermaidToFlow(
     n.position = { x: col * 260, y: row * 200 };
   });
 
-  return { nodes, edges };
+  // Return subgraph info and layout info for lane-based layout
+  return { 
+    nodes, 
+    edges, 
+    subgraphs: subgraphs.size > 0 ? subgraphs : undefined,
+    layoutInfo: layoutInfo.size > 0 ? layoutInfo : undefined
+  };
 }
 
 function matchComponent(label: string, catalog: Catalog): string {
