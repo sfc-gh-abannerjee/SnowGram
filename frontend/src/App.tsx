@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import dynamic from 'next/dynamic';
 import ReactFlow, {
   Node,
   Edge,
@@ -19,6 +20,9 @@ import 'reactflow/dist/style.css';
 import styles from './App.module.css';
 import { COMPONENT_CATEGORIES, SNOWFLAKE_ICONS } from './components/iconMap';
 import CustomNode from './components/CustomNode';
+import TextBoxNode from './components/TextBoxNode';
+import ShapeNode from './components/ShapeNode';
+import StickyNoteNode from './components/StickyNoteNode';
 // SnowgramAgentClient removed - PAT must never be exposed in client-side bundle
 import { convertMermaidToFlow, LAYER_COLORS, getStageColor } from './lib/mermaidToReactFlow';
 import { layoutWithELK, enrichNodesWithFlowOrder, layoutWithLanes } from './lib/elkLayout';
@@ -28,8 +32,12 @@ import { hexToRgb as hexToRgbUtil, getLabelColor } from './lib/colorUtils';
 import { generateMermaidFromDiagram } from './lib/mermaidExport';
 import { boundingBox, layoutDAG, fitAllBoundaries, LAYOUT_CONSTANTS } from './lib/layoutUtils';
 import { getFlowStageOrder } from './lib/elkLayoutUtils';
-import ReactMarkdown from 'react-markdown';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+// PERF: Lazy load heavy markdown/syntax dependencies (~150KB bundle savings)
+const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
+const SyntaxHighlighter = dynamic(
+  () => import('react-syntax-highlighter').then(mod => mod.Prism),
+  { ssr: false }
+);
 import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { useSessionStorage, type ChatMessage, type SavedSession, type ToolResult } from './hooks/useSessionStorage';
 // Material Icons for professional UI
@@ -99,13 +107,18 @@ type AgentResult = {
 
 // Lane label node component for streaming architecture diagrams
 const LaneLabelNode: React.FC<{ data: { label: string; backgroundColor?: string; textColor?: string } }> = ({ data }) => {
+  // DEBUG: Log what data the component receives
+  console.log(`[LaneLabelNode] Rendering label="${data.label}", backgroundColor="${data.backgroundColor}", textColor="${data.textColor}"`);
+  
+  const bgColor = data.backgroundColor || '#7C3AED';  // Default to PURPLE if not provided
+  
   return (
     <div
       style={{
         width: 36,
         height: 36,
         borderRadius: 4,
-        background: data.backgroundColor || '#0066B3',
+        background: bgColor,
         color: data.textColor || '#FFFFFF',
         display: 'flex',
         alignItems: 'center',
@@ -123,6 +136,9 @@ const LaneLabelNode: React.FC<{ data: { label: string; backgroundColor?: string;
 const nodeTypes: NodeTypes = {
   snowflakeNode: CustomNode,
   laneLabelNode: LaneLabelNode,
+  textBox: TextBoxNode,
+  shape: ShapeNode,
+  stickyNote: StickyNoteNode,
 };
 
 // Flattened catalog for quick icon lookup
@@ -303,11 +319,14 @@ const addAccountBoundaries = (nodes: Node[]): Node[] => {
   debugLog(`[addAccountBoundaries] Existing boundaries:`, Object.keys(existingBoundary));
 
   // Partition nodes into two groups: External and Snowflake
+  // Exclude lane/section label nodes from boundary calculation - they should render OUTSIDE the boundary
+  const isLabelNode = (n: Node) => n.type === 'laneLabelNode' || (n.data as any)?.isBadgeNode === true;
   const nonBoundaryNodes = nodes.filter((n) => !isBoundary(n));
   const externalNodes = nonBoundaryNodes.filter(n => isExternal(n));
-  const snowflakeNodes = nonBoundaryNodes.filter(n => !isExternal(n));
+  const snowflakeNodes = nonBoundaryNodes.filter(n => !isExternal(n) && !isLabelNode(n));
+  const labelNodes = nonBoundaryNodes.filter(n => isLabelNode(n));
   
-  debugLog(`[addAccountBoundaries] External: ${externalNodes.length}, Snowflake: ${snowflakeNodes.length}`);
+  debugLog(`[addAccountBoundaries] External: ${externalNodes.length}, Snowflake: ${snowflakeNodes.length}, Labels: ${labelNodes.length}`);
 
   const bbox = boundingBox;
 
@@ -627,6 +646,28 @@ const App: React.FC = () => {
   
   useEffect(() => {
     setIsHydrated(true);
+  }, []);
+
+  // TEST HOOK: Expose parseMermaidAndCreateDiagram for visual testing
+  // This enables automated visual quality testing via Playwright
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).generateDiagram = async (mermaidCode: string) => {
+        try {
+          await parseMermaidAndCreateDiagram(mermaidCode);
+          return true;
+        } catch (e) {
+          console.error('[Test Hook] generateDiagram error:', e);
+          return false;
+        }
+      };
+      debugLog('[Test Hook] window.generateDiagram registered');
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        delete (window as any).generateDiagram;
+      }
+    };
   }, []);
   
   // Initialize with a default tab if none exist (only after hydration)
@@ -1169,7 +1210,7 @@ const App: React.FC = () => {
         target: params.target,
         sourceHandle: handles.sourceHandle,
         targetHandle: handles.targetHandle,
-        type: 'straight',  // Direct line between handles (no routing kinks)
+        type: 'smoothstep',  // Orthogonal routing with rounded corners
         animated: true,
       style: { stroke: '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth
         deletable: true,
@@ -1437,6 +1478,34 @@ const App: React.FC = () => {
     [setNodes]
   );
 
+  // Update text for TextBox/StickyNote nodes
+  const updateNodeText = useCallback(
+    (nodeId: string, newText: string) => {
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, text: newText } }
+            : node
+        )
+      );
+    },
+    [setNodes]
+  );
+
+  // Update label for Shape nodes
+  const updateShapeLabel = useCallback(
+    (nodeId: string, newLabel: string) => {
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === nodeId
+            ? { ...node, data: { ...node.data, label: newLabel } }
+            : node
+        )
+      );
+    },
+    [setNodes]
+  );
+
   // Copy/duplicate a node with slight offset
   const copyNode = useCallback(
     (nodeId: string) => {
@@ -1480,6 +1549,79 @@ const App: React.FC = () => {
         y: event.clientY - bounds.top,
       });
 
+      // Check if this is a shape/annotation component (has nodeType property)
+      if (component.nodeType) {
+        let newNode: Node;
+        const nodeId = `${component.nodeType}_${Date.now()}`;
+        const rgbFill = hexToRgbUtil(fillColor) || { r: 41, g: 181, b: 232 };
+
+        switch (component.nodeType) {
+          case 'textBox':
+            newNode = {
+              id: nodeId,
+              type: 'textBox',
+              position,
+              style: { width: 200, height: 80 },
+              data: {
+                text: '',
+                fontSize: 14,
+                textAlign: 'left',
+                showBorder: true,
+                borderColor: fillColor,
+                backgroundColor: `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${fillAlpha})`,
+                showHandles: true,
+                isDarkMode,
+                onTextChange: updateNodeText,
+              },
+            };
+            break;
+
+          case 'stickyNote':
+            newNode = {
+              id: nodeId,
+              type: 'stickyNote',
+              position,
+              style: { width: 180, height: 150 },
+              data: {
+                text: '',
+                color: 'yellow',
+                fontSize: 13,
+                showHandles: true,
+                isDarkMode,
+                onTextChange: updateNodeText,
+              },
+            };
+            break;
+
+          case 'shape':
+            newNode = {
+              id: nodeId,
+              type: 'shape',
+              position,
+              style: { width: 120, height: 80 },
+              data: {
+                shapeType: component.shapeType || 'rectangle',
+                label: '',
+                width: 120,
+                height: 80,
+                fillColor: `rgba(${rgbFill.r},${rgbFill.g},${rgbFill.b},${fillAlpha})`,
+                strokeColor: fillColor,
+                strokeWidth: 2,
+                isDarkMode,
+                onLabelChange: updateShapeLabel,
+              },
+            };
+            break;
+
+          default:
+            return; // Unknown nodeType, skip
+        }
+
+        setNodes((nds) => nds.concat(newNode));
+        return;
+      }
+
+      // Standard Snowflake component handling (existing logic)
     const isBoundary = component.id?.startsWith('account_boundary');
       const boundaryColors: Record<string, string> = {
         account_boundary_snowflake: '#29B5E8',
@@ -1529,30 +1671,61 @@ const App: React.FC = () => {
 
       setNodes((nds) => nds.concat(newNode));
     },
-    [reactFlowInstance, setNodes, isDarkMode, deleteNode, renameNode, fillColor, fillAlpha, cornerRadius]
+    [reactFlowInstance, setNodes, isDarkMode, deleteNode, renameNode, fillColor, fillAlpha, cornerRadius, updateNodeText, updateShapeLabel]
   );
 
   // Update all existing nodes when dark mode changes
   React.useEffect(() => {
     setNodes((nds) =>
-      nds.map((node) => ({
-        ...node,
-        data: {
+      nds.map((node) => {
+        const baseData = {
           ...node.data,
           isDarkMode,
-          labelColor: (node.data as any)?.labelColor
-            || (isDarkMode ? '#E5EDF5' : '#0F172A'),
-          onDelete: deleteNode,
-          onRename: renameNode,
-        },
-      }))
+        };
+        
+        // Add appropriate callbacks based on node type
+        if (node.type === 'textBox' || node.type === 'stickyNote') {
+          return {
+            ...node,
+            data: {
+              ...baseData,
+              onTextChange: updateNodeText,
+            },
+          };
+        } else if (node.type === 'shape') {
+          return {
+            ...node,
+            data: {
+              ...baseData,
+              onLabelChange: updateShapeLabel,
+            },
+          };
+        } else {
+          // Standard snowflakeNode
+          return {
+            ...node,
+            data: {
+              ...baseData,
+              labelColor: (node.data as any)?.labelColor
+                || (isDarkMode ? '#E5EDF5' : '#0F172A'),
+              onDelete: deleteNode,
+              onRename: renameNode,
+            },
+          };
+        }
+      })
     );
-  }, [isDarkMode, setNodes, deleteNode, renameNode]);
+  }, [isDarkMode, setNodes, deleteNode, renameNode, updateNodeText, updateShapeLabel]);
 
   // Recompute label colors on theme change to ensure contrast
   React.useEffect(() => {
     setNodes((nds) =>
       nds.map((node) => {
+        // Skip shape/annotation nodes - they handle their own colors
+        if (node.type === 'textBox' || node.type === 'stickyNote' || node.type === 'shape') {
+          return node;
+        }
+        
         const data: any = node.data || {};
         const fill = data.fillColor || '#29B5E8';
         const alpha = typeof data.fillAlpha === 'number' ? data.fillAlpha : 0;
@@ -2096,6 +2269,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 .replace(/```mermaid[\s\S]*?```/g, '')
                 .replace(/```json[\s\S]*/g, '') // Handle incomplete json blocks
                 .replace(/```mermaid[\s\S]*/g, '') // Handle incomplete mermaid blocks
+                // Strip raw flowchart/graph syntax (not wrapped in fences)
+                // Must match anywhere (not just line start) and strip to end of string
+                .replace(/(flowchart|graph)\s+(LR|TD|TB|RL|BT)\b[\s\S]*$/i, '')
+                // Also strip JSON spec blocks that aren't in code fences
+                .replace(/\{\s*"nodes"\s*:\s*\[[\s\S]*$/i, '')
                 .trim();
               
               // Show progress indicator when code is streaming into dropdown
@@ -2187,6 +2365,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             .replace(/```json[\s\S]*?```/g, '')
             .replace(/```mermaid[\s\S]*?```/g, '')
             .replace(/```[\s\S]*?```/g, '')
+            // Strip raw flowchart/graph syntax (not wrapped in fences)
+            // Must match anywhere (not just line start) and strip to end of string
+            .replace(/(flowchart|graph)\s+(LR|TD|TB|RL|BT)\b[\s\S]*$/i, '')
+            // Also strip JSON spec blocks that aren't in code fences
+            .replace(/\{\s*"nodes"\s*:\s*\[[\s\S]*$/i, '')
             .trim();
           
           // Only truncate if extremely long (5000+ chars)
@@ -2710,7 +2893,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           id: `${source || 's'}-${target || 't'}-${i}`,
           source,
           target,
-          type: 'straight',  // Direct line between handles (no routing kinks)
+        type: 'smoothstep',  // Orthogonal routing with rounded corners
           animated: true,
           sourceHandle: e.sourceHandle || 'right-source',
           targetHandle: e.targetHandle || 'left-target',
@@ -2727,7 +2910,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         ...e,
         sourceHandle: e.sourceHandle || 'right-source',
         targetHandle: e.targetHandle || 'left-target',
-        type: 'straight',  // Direct line between handles (no routing kinks)
+        type: 'smoothstep',  // Orthogonal routing with rounded corners
       }));
 
       // Add icons to ALL nodes AFTER completeness (including newly created medallion nodes)
@@ -2982,8 +3165,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       // Pick handles based purely on alignment
       const handles = pickHandle(e.source, e.target);
       
-      // Use 'straight' for direct lines between handles (no routing kinks)
-      const edgeType = 'straight';
+      // Use 'smoothstep' for orthogonal routing with rounded corners
+      const edgeType = 'smoothstep';
       
       return {
         ...e,
@@ -3049,16 +3232,285 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       laidOut = { nodes: layoutNodes(finalNodes, completedEdges), edges: completedEdges };
     }
     debugLog(`[Pipeline] After layout: ${laidOut.nodes.length} nodes`);
+    // Helper to log label node positions (includes both elkLayout and mermaid badge formats)
+    const logLabelPositions = (stage: string, nodes: Node[]) => {
+      const labels = nodes.filter(n => 
+        n.id.startsWith('lane_label_') || 
+        n.id.startsWith('section_label_') ||
+        n.id.startsWith('badge_') ||
+        (n.data as any)?.isBadgeNode === true
+      );
+      if (labels.length > 0) {
+        const posStr = labels.map(n => `${n.id}@(${Math.round(n.position.x)},${Math.round(n.position.y)})`).join(', ');
+        console.log(`[Pipeline:${stage}] Label/badge positions: ${posStr}`);
+      } else {
+        console.log(`[Pipeline:${stage}] No label/badge nodes found`);
+      }
+    };
+    logLabelPositions('layout', laidOut.nodes);
     // Add back agent-provided boundaries before addAccountBoundaries
     const nodesWithMermaidBoundaries = [...mermaidBoundaries, ...laidOut.nodes];
     debugLog(`[Pipeline] After layout + mermaid boundaries: ${nodesWithMermaidBoundaries.length} nodes (${mermaidBoundaries.length} from agent)`);
     const withBoundaries = addAccountBoundaries(nodesWithMermaidBoundaries);
     debugLog(`[Pipeline] After boundaries: ${withBoundaries.length} nodes`);
+    logLabelPositions('boundaries', withBoundaries);
+    
+    // Log ALL boundary positions for debugging
+    console.log(`[Pipeline:boundary-debug] Total nodes in withBoundaries: ${withBoundaries.length}`);
+    const allBoundaries = withBoundaries.filter(n => {
+      const ct = ((n.data as any)?.componentType || '').toLowerCase();
+      const hasB = ct.includes('boundary') || n.id.toLowerCase().includes('boundary');
+      if (hasB) console.log(`[Pipeline:boundary-debug] Found: ${n.id}, componentType=${ct}`);
+      return hasB;
+    });
+    console.log(`[Pipeline:boundary-debug] Found ${allBoundaries.length} boundaries`);
+    allBoundaries.forEach(b => {
+      const style = b.style as any;
+      console.log(`[Pipeline:boundary-debug] ${b.id}: pos=(${Math.round(b.position.x)},${Math.round(b.position.y)}), size=${style?.width}x${style?.height}, type=${(b.data as any)?.componentType}`);
+    });
+    
+    // CRITICAL: Reposition lane labels INSIDE the Snowflake boundary
+    // The lane labels should appear at the LEFT EDGE of the Snowflake boundary,
+    // not in the gap between External Sources and Snowflake.
+    
+    // First, find both boundaries to understand their positions
+    const allBoundaryNodes = withBoundaries.filter(n => 
+      ((n.data as any)?.componentType || '').toLowerCase().includes('boundary') ||
+      n.id.toLowerCase().includes('boundary')
+    );
+    
+    const snowflakeBoundary = allBoundaryNodes.find(n => 
+      ((n.data as any)?.componentType || '').toLowerCase().includes('account_boundary_snowflake')
+    );
+    
+    const externalBoundary = allBoundaryNodes.find(n => 
+      ((n.data as any)?.componentType || '').toLowerCase().includes('account_boundary_external')
+    );
+    
+    if (snowflakeBoundary && externalBoundary) {
+      const externalStyle = externalBoundary.style as any;
+      const externalRightEdge = externalBoundary.position.x + (externalStyle?.width || 0);
+      const snowflakeLeftEdge = snowflakeBoundary.position.x;
+      const snowflakeStyle = snowflakeBoundary.style as any;
+      
+      console.log(`[Pipeline:boundaries-info] External: x=${Math.round(externalBoundary.position.x)}, width=${externalStyle?.width}, rightEdge=${Math.round(externalRightEdge)}`);
+      console.log(`[Pipeline:boundaries-info] Snowflake: x=${Math.round(snowflakeLeftEdge)}, width=${snowflakeStyle?.width}`);
+      console.log(`[Pipeline:boundaries-info] Gap between boundaries: ${Math.round(snowflakeLeftEdge - externalRightEdge)}px`);
+      
+      // Debug: Log positions of key nodes to understand the gap
+      const debugNodes = ['consumer', 'industry_sources', 'marketplace', 'kafka_connector', 'snowpipe_streaming', 'csp'];
+      debugNodes.forEach(nodeId => {
+        const node = withBoundaries.find(n => n.id === nodeId);
+        if (node) {
+          console.log(`[Pipeline:node-pos] ${nodeId}: x=${Math.round(node.position.x)}, y=${Math.round(node.position.y)}`);
+        }
+      });
+      
+      // The issue: Snowflake boundary encompasses "gap" nodes like consumer, industry_sources
+      // We need to find the VISUAL Snowflake content area - where kafka_connector etc. are
+      // Find all content nodes (not boundaries, labels, spacers)
+      const contentNodes = withBoundaries.filter(n => {
+        const id = n.id.toLowerCase();
+        const ct = ((n.data as any)?.componentType || '').toLowerCase();
+        return !id.includes('boundary') && 
+               !id.startsWith('lane_label_') && 
+               !id.startsWith('section_label_') &&
+               !id.includes('spacer') &&
+               !ct.includes('boundary') &&
+               ct !== 'lanelabelnode';
+      });
+      
+      // Find nodes that are clearly INSIDE the visual Snowflake area
+      // These are nodes to the RIGHT of the external boundary's right edge + gap
+      const BOUNDARY_GAP = 50; // This should match addAccountBoundaries
+      const visualSnowflakeStart = externalRightEdge + BOUNDARY_GAP;
+      
+      // Find leftmost content node that's clearly in the Snowflake visual area
+      const snowflakeVisualNodes = contentNodes.filter(n => n.position.x >= visualSnowflakeStart);
+      const leftmostVisualX = snowflakeVisualNodes.length > 0 
+        ? Math.min(...snowflakeVisualNodes.map(n => n.position.x))
+        : snowflakeLeftEdge + 15;
+      
+      console.log(`[Pipeline:visual-calc] External right edge: ${Math.round(externalRightEdge)}`);
+      console.log(`[Pipeline:visual-calc] Visual Snowflake start (ext + gap): ${Math.round(visualSnowflakeStart)}`);
+      console.log(`[Pipeline:visual-calc] Leftmost visual Snowflake node: x=${Math.round(leftmostVisualX)}`);
+      
+      // LANE BADGE REPOSITIONING: Position lane badges in a VERTICAL COLUMN on the far left
+      // Reference image shows lane badges (1a, 1b, 1c, 1d) all at the SAME X position,
+      // forming a vertical stack, each at the Y-level of its respective lane content
+      
+      // Group content nodes by their lane
+      const laneContentMap = new Map<string, typeof contentNodes>();
+      contentNodes.forEach(n => {
+        const lane = (n.data as any)?.lane;
+        // Handle both number and string lane values, including lane=0
+        if (lane !== undefined && lane !== null) {
+          const laneKey = String(lane);
+          if (!laneContentMap.has(laneKey)) {
+            laneContentMap.set(laneKey, []);
+          }
+          laneContentMap.get(laneKey)!.push(n);
+        }
+      });
+      
+      console.log(`[Pipeline:lane-groups] Found ${laneContentMap.size} lanes: ${Array.from(laneContentMap.keys()).join(', ')}`);
+      
+      // Find the GLOBAL leftmost X across ALL lane content (lanes 0, 1, 2, 3)
+      const BADGE_WIDTH = 40;
+      const BADGE_MARGIN = 20; // Gap between badge column and content
+      let globalLeftmostX = Infinity;
+      ['0', '1', '2', '3'].forEach(laneKey => {
+        const laneContent = laneContentMap.get(laneKey);
+        if (laneContent && laneContent.length > 0) {
+          const leftmostX = Math.min(...laneContent.map(node => node.position.x));
+          if (leftmostX < globalLeftmostX) {
+            globalLeftmostX = leftmostX;
+          }
+        }
+      });
+      
+      // Calculate the single X position for ALL lane badges
+      const laneBadgeX = globalLeftmostX - BADGE_WIDTH - BADGE_MARGIN;
+      console.log(`[Pipeline:lane-badge-column] Global leftmost X: ${Math.round(globalLeftmostX)}, badge X: ${Math.round(laneBadgeX)}`);
+      
+      // Helper to check if node is a lane badge (handles both elkLayout and mermaid badge formats)
+      const isLaneBadge = (n: Node) => 
+        n.id.startsWith('lane_label_') || 
+        ((n.data as any)?.badgeClass === 'laneBadge');
+      
+      // Helper to check if node is a section badge  
+      const isSectionBadge = (n: Node) =>
+        n.id.startsWith('section_label_') ||
+        ((n.data as any)?.badgeClass === 'sectionBadge');
+      
+      // For each lane badge, position at laneBadgeX but at the Y-level of its lane content
+      withBoundaries.forEach(n => {
+        if (isLaneBadge(n)) {
+          // Extract lane identifier from badge ID
+          // Handle both formats: "lane_label_1A" -> "1A", "badge_1a" -> "1a"
+          const laneIdStr = n.id.replace('lane_label_', '').replace('badge_', '');
+          
+          // Map badge IDs (1A, 1B, 1C, 1D) to numeric lane values (0, 1, 2, 3)
+          const laneIdMapping: Record<string, string> = {
+            '1A': '0', '1a': '0',
+            '1B': '1', '1b': '1', 
+            '1C': '2', '1c': '2',
+            '1D': '3', '1d': '3'
+          };
+          const numericLaneId = laneIdMapping[laneIdStr] || laneIdStr;
+          const laneContent = laneContentMap.get(numericLaneId);
+          
+          if (laneContent && laneContent.length > 0) {
+            // Calculate vertical center of the lane content
+            const yPositions = laneContent.map(node => {
+              const nodeHeight = (node.style as any)?.height || 60;
+              return node.position.y + nodeHeight / 2;
+            });
+            const centerY = (Math.min(...yPositions) + Math.max(...yPositions)) / 2;
+            
+            // Position badge at the GLOBAL laneBadgeX, vertically centered with lane
+            const newX = laneBadgeX;
+            const newY = centerY - 18; // Badge height ~36, so offset by half
+            
+            const oldX = n.position.x;
+            const oldY = n.position.y;
+            n.position = { x: newX, y: newY };
+            console.log(`[Pipeline:reposition] ${n.id}: (${Math.round(oldX)},${Math.round(oldY)}) → (${Math.round(newX)},${Math.round(newY)}) (centerY: ${Math.round(centerY)})`);
+          } else {
+            console.log(`[Pipeline:reposition] ${n.id}: no content found for lane ${laneIdStr}`);
+          }
+        }
+      });
+      
+      // SECTION BADGE REPOSITIONING: Position section badges above their content columns
+      // Group content nodes by their section subgraph
+      const sectionContentMap = new Map<string, typeof contentNodes>();
+      contentNodes.forEach(n => {
+        const subgraph = (n.data as any)?.subgraph as string | undefined;
+        // Include both "section_N" and "analytics_section" patterns
+        if (subgraph && (subgraph.startsWith('section_') || subgraph === 'analytics_section')) {
+          if (!sectionContentMap.has(subgraph)) {
+            sectionContentMap.set(subgraph, []);
+          }
+          sectionContentMap.get(subgraph)!.push(n);
+        }
+      });
+      
+      // For each section badge, find its content and center badge above it
+      withBoundaries.forEach(n => {
+        if (isSectionBadge(n)) {
+          // Extract section identifier from badge ID
+          // Handle both formats: "section_label_2" -> "2", "badge_5" -> "5"
+          const sectionId = n.id.replace('section_label_', '').replace('badge_', '');
+          
+          // Map badge ID to actual subgraph ID
+          // Most sections use "section_N" pattern, but ANALYTICS uses "analytics_section"
+          let sectionSubgraphId: string;
+          if (sectionId.toUpperCase() === 'ANALYTICS') {
+            sectionSubgraphId = 'analytics_section';
+          } else {
+            sectionSubgraphId = `section_${sectionId}`;
+          }
+          
+          const sectionContent = sectionContentMap.get(sectionSubgraphId);
+          
+          if (sectionContent && sectionContent.length > 0) {
+            // Calculate center X of section content
+            const xPositions = sectionContent.map(node => node.position.x + ((node.style as any)?.width || 150) / 2);
+            const centerX = (Math.min(...xPositions) + Math.max(...xPositions)) / 2;
+            const badgeWidth = 36;
+            const newX = centerX - badgeWidth / 2;
+            
+            // Position Y at top of content column (slightly above topmost content node)
+            const yPositions = sectionContent.map(node => node.position.y);
+            const topY = Math.min(...yPositions);
+            const newY = topY - 50; // 50px above content
+            
+            const oldX = n.position.x;
+            const oldY = n.position.y;
+            n.position = { x: newX, y: newY };
+            console.log(`[Pipeline:reposition] ${n.id}: (${Math.round(oldX)},${Math.round(oldY)}) → (${Math.round(newX)},${Math.round(newY)}) (content center: ${Math.round(centerX)}, top: ${Math.round(topY)})`);
+          } else {
+            console.log(`[Pipeline:reposition] ${n.id}: no content found for ${sectionSubgraphId}`);
+          }
+        }
+      });
+    } else if (snowflakeBoundary) {
+      // Fallback: only Snowflake boundary exists
+      const snowflakeLeftEdge = snowflakeBoundary.position.x;
+      const LABEL_OFFSET = 15;
+      const targetX = snowflakeLeftEdge + LABEL_OFFSET;
+      
+      console.log(`[Pipeline:reposition] No external boundary, placing labels at Snowflake x=${Math.round(snowflakeLeftEdge)} + ${LABEL_OFFSET}`);
+      
+      withBoundaries.forEach(n => {
+        if (n.id.startsWith('lane_label_')) {
+          const oldX = n.position.x;
+          n.position = { ...n.position, x: targetX };
+          console.log(`[Pipeline:reposition] ${n.id}: x=${oldX} → x=${Math.round(n.position.x)}`);
+        }
+      });
+    }
+    logLabelPositions('after-reposition', withBoundaries);
     const fitted = fitCspNodesIntoBoundaries(withBoundaries);
     debugLog(`[Pipeline] After fitting: ${fitted.length} nodes`);
+    logLabelPositions('fitted', fitted);
     const normalizedFinal = normalizeGraph(fitted, laidOut.edges);
     debugLog(`[Pipeline] After normalize (FINAL): ${normalizedFinal.nodes.length} nodes, ${normalizedFinal.edges.length} edges`);
+    logLabelPositions('normalize', normalizedFinal.nodes);
     const enforcedBoundaries = enforceAccountBoundaries(normalizedFinal.nodes, normalizedFinal.edges, isDarkMode);
+    logLabelPositions('enforced', enforcedBoundaries.nodes);
+    // Log boundary positions for debugging
+    const boundaries = enforcedBoundaries.nodes.filter(n => 
+      ((n.data as any)?.componentType || '').toLowerCase().includes('boundary') ||
+      n.id.toLowerCase().includes('boundary')
+    );
+    if (boundaries.length > 0) {
+      const boundaryStr = boundaries.map(n => 
+        `${n.id}@(${Math.round(n.position.x)},${Math.round(n.position.y)}) w=${(n.style as any)?.width} h=${(n.style as any)?.height}`
+      ).join(', ');
+      console.log(`[Pipeline:boundaries] Boundary positions: ${boundaryStr}`);
+    }
     
     // CRITICAL: Enforce consistent node sizes for handle alignment (Mermaid path)
     // All non-boundary nodes must have identical dimensions
@@ -3071,6 +3523,9 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     const normalizedNodesWithSizeMermaid = enrichedMermaidNodes.map(n => {
       const isBoundary = ((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary');
       if (isBoundary) return n; // Keep boundary sizes as-is
+      
+      // Keep lane/section label nodes small (36x36 badges)
+      if (n.type === 'laneLabelNode') return n;
       
       // Phase 5: Apply flowStageOrder-based coloring (Mermaid path)
       const flowStage = (n.data as any)?.flowStageOrder;
@@ -3099,7 +3554,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       ...e,
       sourceHandle: e.sourceHandle || 'right-source',
       targetHandle: e.targetHandle || 'left-target',
-      type: 'straight',  // Direct line between handles (no routing kinks)
+      type: 'smoothstep',  // Orthogonal routing with rounded corners
       animated: true,
       style: { stroke: isDarkMode ? '#60A5FA' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
     }));
@@ -3327,7 +3782,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           selectNodesOnDrag={false}
           multiSelectionKeyCode="Shift"
           defaultEdgeOptions={{
-            type: 'straight',  // Direct line between handles (no routing kinks)
+        type: 'smoothstep',  // Orthogonal routing with rounded corners
             animated: true,
         style: { stroke: isDarkMode ? '#FFFFFF' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
             deletable: true,

@@ -8,7 +8,11 @@ const cleanText = (s: string) =>
   s
     .replace(/<br\s*\/?>/gi, ' ')
     .replace(/&nbsp;/gi, ' ')
+    .replace(/\\n/g, ' ')         // Convert \n escape sequences to spaces
+    .replace(/\n/g, ' ')           // Convert actual newlines to spaces
     .replace(/[<>]/g, ' ')
+    .replace(/\\"/g, '')          // Remove escaped quotes from JSON-serialized data
+    .replace(/^"|"$/g, '')        // Remove surrounding quotes
     .replace(/\s+/g, ' ')
     .trim();
 
@@ -230,29 +234,41 @@ export function detectSubgraphLayoutType(id: string, label: string, parent?: str
   const labelLower = label.toLowerCase();
   
   // LANE patterns: path_1a, lane_1, row_a, ingestion_1, etc.
+  // Note: Patterns use specific suffix matching to avoid matching parent containers
+  // like "ingestion_paths" or "flow_lanes" which should be groups, not lanes
   const lanePatterns = [
-    /^path[_-]?(\w+)$/i,           // path_1a, path-1b
-    /^lane[_-]?(\w+)$/i,           // lane_1, lane-a
-    /^row[_-]?(\w+)$/i,            // row_1, row-a
-    /^ingestion[_-]?(\w+)$/i,      // ingestion_1
-    /^flow[_-]?(\w+)$/i,           // flow_1
-    /^stream[_-]?(\w+)$/i,         // stream_1
+    /^path[_-]?(\d+[a-z]?|[a-z])$/i,      // path_1a, path-1, path_a (NOT path_anything)
+    /^lane[_-]?(\d+[a-z]?|[a-z])$/i,      // lane_1, lane-a (NOT lane_container)
+    /^row[_-]?(\d+[a-z]?|[a-z])$/i,       // row_1, row-a
+    /^ingestion[_-]?(\d+[a-z]?|[a-z])$/i, // ingestion_1 (NOT ingestion_paths)
+    /^flow[_-]?(\d+[a-z]?|[a-z])$/i,      // flow_1 (NOT flow_container)
+    /^stream[_-]?(\d+[a-z]?|[a-z])$/i,    // stream_1
   ];
   
   for (const pattern of lanePatterns) {
     const match = idLower.match(pattern);
     if (match) {
       const suffix = match[1];
-      // Extract numeric index if possible
-      const numMatch = suffix.match(/(\d+)/);
-      const index = numMatch ? parseInt(numMatch[1], 10) - 1 : extractAlphaIndex(suffix);
+      // For compound identifiers like "1a", "1b", use the alpha suffix for lane index
+      // The number is the group, the letter is the lane within the group
+      const compoundMatch = suffix.match(/^(\d+)([a-z])$/i);
+      let index: number;
+      if (compoundMatch) {
+        // "1a" -> index from 'a', "1b" -> index from 'b', etc.
+        index = compoundMatch[2].toLowerCase().charCodeAt(0) - 'a'.charCodeAt(0);
+      } else {
+        // Simple numeric: "1" -> index 0, "2" -> index 1
+        const numMatch = suffix.match(/(\d+)/);
+        index = numMatch ? parseInt(numMatch[1], 10) - 1 : extractAlphaIndex(suffix);
+      }
       return { type: 'lane', index: Math.max(0, index), badgeLabel: suffix.toUpperCase() };
     }
   }
   
-  // SECTION patterns: section_2, stage_1, col_a, column_1, step_1
+  // SECTION patterns: section_2, stage_1, col_a, column_1, step_1, analytics_section
   const sectionPatterns = [
     /^section[_-]?(\w+)$/i,        // section_2, section-3
+    /^(\w+)[_-]section$/i,         // analytics_section, delivery_section (section at end)
     /^stage[_-]?(\w+)$/i,          // stage_1, stage-2
     /^col(?:umn)?[_-]?(\w+)$/i,    // col_1, column_2
     /^step[_-]?(\w+)$/i,           // step_1, step-2
@@ -365,13 +381,97 @@ export function convertMermaidToFlow(
   const subgraphs = new Map<string, { label: string; nodes: string[]; parent?: string }>();
   const nodeToSubgraph = new Map<string, string>(); // nodeId -> subgraphId
 
-  const lines = mermaidCode.split('\n').map(l => l.trim()).filter(Boolean);
-  const edgeRegex = /^([\w-]+)\s*[-.=>]+?\s*([\w-]+)(?:\s*\[\[?(.+?)\]?\])?/;
+  // PRE-PROCESS: Unescape JSON escape sequences that may come from LLM output
+  // The agent sometimes outputs mermaid with escaped quotes like [\"5\"] instead of ["5"]
+  const unescapedMermaid = mermaidCode
+    .replace(/\\"/g, '"')   // Unescape quotes: \" -> "
+    .replace(/\\\\/g, '\\'); // Unescape backslashes: \\ -> \
+  
+  const lines = unescapedMermaid.split('\n').map(l => l.trim()).filter(Boolean);
+  // Edge regex: handles arrows like --> , -->, -->|"label"|, -.->|label|, etc.
+  // Format: source -->|"optional label"| target  OR  source --> target
+  const edgeRegex = /^([\w-]+)\s*([-.=]+>)\s*(?:\|[^|]*\|\s*)?([\w-]+)/;
   const nodeDefRegex = /^([\w-]+)\s*\[(.+)\]/;
+  // Invisible link regex: handles ~~~ syntax for alignment without visible edges
+  // Format: source ~~~ target (used to associate badges with their target subgraphs)
+  // Note: ^\s* handles leading whitespace from indented Mermaid code
+  const invisibleLinkRegex = /^\s*([\w-]+)\s*~~~\s*([\w-]+)$/;
   
   // Subgraph parsing regex
   const subgraphStartRegex = /^subgraph\s+([\w-]+)\s*\[?"?(.+?)"?\]?$/;
   const subgraphEndRegex = /^end$/i;
+  
+  // classDef parsing regex: classDef name fill:#color,stroke:#color,color:#color,...
+  const classDefRegex = /^classDef\s+([\w-]+)\s+(.+)$/;
+  // classDef with just the name (styles may be on next line)
+  const classDefNameOnlyRegex = /^classDef\s+([\w-]+)\s*$/;
+  // Style line: fill:#color,stroke:#color,color:#color,...
+  const styleLineRegex = /^fill:(#[\w]+)/;
+  // Node with class: nodeId(["label"]):::className or nodeId["label"]:::className
+  const nodeWithClassRegex = /^([\w-]+)\s*\(\[?"?([^"\]]+)"?\]\):::(\w+)/;
+  
+  // Parse classDef definitions first (handle multi-line)
+  const classStyles = new Map<string, { fill?: string; stroke?: string; color?: string }>();
+  let pendingClassName: string | null = null;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // First try single-line classDef
+    const classDefMatch = line.match(classDefRegex);
+    if (classDefMatch) {
+      const className = classDefMatch[1];
+      const styleStr = classDefMatch[2];
+      const styles: { fill?: string; stroke?: string; color?: string } = {};
+      
+      // Parse style properties
+      const fillMatch = styleStr.match(/fill:(#[\w]+)/);
+      const strokeMatch = styleStr.match(/stroke:(#[\w]+)/);
+      const colorMatch = styleStr.match(/color:(#[\w]+)/);
+      
+      if (fillMatch) styles.fill = fillMatch[1];
+      if (strokeMatch) styles.stroke = strokeMatch[1];
+      if (colorMatch) styles.color = colorMatch[1];
+      
+      classStyles.set(className, styles);
+      pendingClassName = null;
+      continue;
+    }
+    
+    // Check for classDef with just name (styles on next line)
+    const nameOnlyMatch = line.match(classDefNameOnlyRegex);
+    if (nameOnlyMatch) {
+      pendingClassName = nameOnlyMatch[1];
+      continue;
+    }
+    
+    // Check if this is a style line following a classDef name
+    if (pendingClassName && styleLineRegex.test(line)) {
+      const styles: { fill?: string; stroke?: string; color?: string } = {};
+      
+      const fillMatch = line.match(/fill:(#[\w]+)/);
+      const strokeMatch = line.match(/stroke:(#[\w]+)/);
+      const colorMatch = line.match(/color:(#[\w]+)/);
+      
+      if (fillMatch) styles.fill = fillMatch[1];
+      if (strokeMatch) styles.stroke = strokeMatch[1];
+      if (colorMatch) styles.color = colorMatch[1];
+      
+      classStyles.set(pendingClassName, styles);
+      pendingClassName = null;
+      continue;
+    }
+    
+    // Clear pending if we hit a non-style line
+    if (pendingClassName && !line.startsWith('fill:')) {
+      pendingClassName = null;
+    }
+  }
+  
+  // Debug: log parsed classStyles
+  if (classStyles.size > 0) {
+    console.log('[Mermaid Parser] Parsed classDef styles:', Object.fromEntries(classStyles));
+  }
 
   const getLabel = (id: string) => {
     const def = lines.find(l => l.startsWith(`${id}[`));
@@ -384,14 +484,31 @@ export function convertMermaidToFlow(
 
   const normalizeBoundaryId = (id: string, label: string) => {
     const txt = `${id} ${label}`.toLowerCase();
+    // Only normalize actual ACCOUNT BOUNDARY nodes, not individual cloud services
+    // Must match patterns like "Azure Account", "Azure Account Boundary", "GCP Account", etc.
+    // NOT patterns like "Azure Blob Storage", "Google Pub/Sub", "Azure Event Hubs"
     if (txt.includes('snowflake account')) return 'account_boundary_snowflake';
     if (txt.includes('aws account') || txt.includes('amazon account')) return 'account_boundary_aws';
-    if (txt.includes('azure')) return 'account_boundary_azure';
-    if (txt.includes('gcp') || txt.includes('google')) return 'account_boundary_gcp';
+    // Azure: only match "azure account" or boundary patterns, NOT individual services
+    if (txt.includes('azure account') || (txt.includes('azure') && txt.includes('boundary'))) {
+      return 'account_boundary_azure';
+    }
+    // GCP/Google: only match "gcp account", "google account", or boundary patterns
+    if (txt.includes('gcp account') || txt.includes('google account') || 
+        ((txt.includes('gcp') || txt.includes('google')) && txt.includes('boundary'))) {
+      return 'account_boundary_gcp';
+    }
     return id;
   };
 
   const ensureNode = (rawId: string) => {
+    // Skip invalid node IDs (empty, just dashes, etc.)
+    if (!rawId || rawId === '-' || rawId.trim() === '' || /^-+$/.test(rawId)) {
+      console.warn('[Mermaid Parser] Skipping invalid node ID:', rawId);
+      // Return a dummy node that won't be rendered
+      return { id: '__invalid__', data: {}, position: { x: 0, y: 0 } } as Node;
+    }
+    
     const label = getLabel(rawId);
     const id = normalizeBoundaryId(rawId, label);
     if (nodeMap.has(id)) return nodeMap.get(id)!;
@@ -436,9 +553,57 @@ export function convertMermaidToFlow(
   // Track current subgraph stack (for nested subgraphs)
   const subgraphStack: string[] = [];
   
+  // Track invisible link associations (badge_id -> target_subgraph_id)
+  // These are used to associate badges with their target lanes/sections
+  const invisibleLinkAssociations = new Map<string, string>();
+  
   for (const line of lines) {
     // Skip flowchart declaration and style lines
-    if (line.startsWith('flowchart') || line.startsWith('graph') || line.startsWith('%%') || line.startsWith('style ')) {
+    if (line.startsWith('flowchart') || line.startsWith('graph') || line.startsWith('%%') || line.startsWith('style ') || line.startsWith('classDef ')) {
+      continue;
+    }
+    
+    // Check for badge nodes with :::className syntax (e.g., badge_1a(["1a"]):::laneBadge)
+    const badgeMatch = line.match(nodeWithClassRegex);
+    if (badgeMatch) {
+      const nodeId = badgeMatch[1];
+      const label = cleanText(badgeMatch[2]);
+      const className = badgeMatch[3];
+      const classStyle = classStyles.get(className);
+      
+      // Create as laneLabelNode with proper styling
+      const badgeNode: Node = {
+        id: nodeId,
+        type: 'laneLabelNode',
+        data: {
+          label: label,
+          isLaneLabel: true,
+          isBadgeNode: true,
+          badgeClass: className,
+          backgroundColor: classStyle?.fill || (className === 'laneBadge' ? '#7C3AED' : '#2563EB'),
+          textColor: classStyle?.color || '#FFFFFF',
+        },
+        position: { x: 0, y: 0 },
+        style: {
+          background: classStyle?.fill || (className === 'laneBadge' ? '#7C3AED' : '#2563EB'),
+          color: classStyle?.color || '#FFFFFF',
+          border: `2px solid ${classStyle?.stroke || (className === 'laneBadge' ? '#5B21B6' : '#1D4ED8')}`,
+          borderRadius: '4px',
+          fontWeight: 'bold',
+          width: 36,
+          height: 36,
+        },
+      };
+      nodeMap.set(nodeId, badgeNode);
+      console.log(`[Mermaid Parser] Created badge node: ${nodeId}, class=${className}, bg=${badgeNode.data.backgroundColor}`);
+      
+      // Associate with current subgraph if any
+      if (subgraphStack.length > 0) {
+        const currentSubgraph = subgraphStack[subgraphStack.length - 1];
+        nodeToSubgraph.set(nodeId, currentSubgraph);
+        subgraphs.get(currentSubgraph)?.nodes.push(nodeId);
+        badgeNode.data.subgraph = currentSubgraph;
+      }
       continue;
     }
     
@@ -478,13 +643,31 @@ export function convertMermaidToFlow(
       continue;
     }
     
+    // Handle invisible links (~~~ syntax) - used to associate badges with target subgraphs
+    // Format: badge_1a ~~~ path_1a (associates badge_1a with the path_1a subgraph)
+    const invisibleMatch = line.match(invisibleLinkRegex);
+    if (invisibleMatch) {
+      const source = invisibleMatch[1];
+      const target = invisibleMatch[2];
+      // Store the association - source (badge) should inherit layout from target (subgraph)
+      invisibleLinkAssociations.set(source, target);
+      console.log(`[Mermaid Parser] Invisible link: ${source} ~~~ ${target}`);
+      continue;  // Don't create visible edges for invisible links
+    }
+    
     // Edge lines
     const m = line.match(edgeRegex);
     if (m) {
       const source = m[1];
-      const target = m[2];
+      const target = m[3];  // Group 3: target node (group 2 is the arrow type)
       const sourceNode = ensureNode(source);
       const targetNode = ensureNode(target);
+      
+      // Skip edges with invalid nodes
+      if (sourceNode.id === '__invalid__' || targetNode.id === '__invalid__') {
+        console.warn('[Mermaid Parser] Skipping edge with invalid node:', source, '->', target);
+        continue;
+      }
       
       // Associate nodes with current subgraph if they were just created
       if (subgraphStack.length > 0) {
@@ -507,7 +690,7 @@ export function convertMermaidToFlow(
         id: `${sourceId}-${targetId}-${edges.length}`,
         source: sourceId,
         target: targetId,
-        type: 'straight',  // Direct lines to eliminate kinks
+        type: 'smoothstep',  // Orthogonal routing with rounded corners
         animated: true,
         sourceHandle: 'right-source',
         targetHandle: 'left-target',
@@ -519,6 +702,20 @@ export function convertMermaidToFlow(
 
   // Build generic layout info from subgraphs and apply to nodes
   const layoutInfo = buildSubgraphLayoutInfo(subgraphs);
+  
+  // Apply invisible link associations - badges inherit layout from their target subgraphs
+  // This happens BEFORE applying layout to nodes, so badges get proper positioning
+  for (const [badgeId, targetSubgraphId] of invisibleLinkAssociations) {
+    const badgeNode = nodeMap.get(badgeId);
+    if (badgeNode && layoutInfo.has(targetSubgraphId)) {
+      const targetInfo = layoutInfo.get(targetSubgraphId)!;
+      // Associate badge with the target subgraph for layout purposes
+      badgeNode.data.subgraph = targetSubgraphId;
+      badgeNode.data.associatedSubgraph = targetSubgraphId;  // Track original association
+      nodeToSubgraph.set(badgeId, targetSubgraphId);
+      console.log(`[Mermaid Parser] Badge ${badgeId} associated with ${targetSubgraphId} (${targetInfo.type}, index=${targetInfo.index})`);
+    }
+  }
   
   // Apply layout metadata to all nodes based on their subgraph
   for (const node of nodeMap.values()) {
