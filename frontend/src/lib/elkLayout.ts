@@ -503,11 +503,14 @@ export function layoutWithLanes(
   const boundaryNodes: Node[] = [];
   const ungroupedNodes: Node[] = [];
   
+  console.log('[layoutWithLanes] Processing nodes:', nodes.length);
   for (const node of nodes) {
     const data = node.data as any;
     const layoutType = data.layoutType as string | undefined;
     const subgraphId = data.subgraph as string | undefined;
     const laneIndex = data.lane as number | undefined;
+    
+    console.log(`[layoutWithLanes] Node ${node.id}: layoutType=${layoutType}, subgraph=${subgraphId}, lane=${laneIndex}`);
     
     if (layoutType === 'lane' && laneIndex !== undefined && laneIndex >= 0) {
       if (!laneNodes.has(laneIndex)) {
@@ -520,6 +523,14 @@ export function layoutWithLanes(
       }
       sectionNodes.get(subgraphId)!.push(node);
     } else if (layoutType === 'boundary' || laneIndex === -1) {
+      // Filter out label_area_* subgraphs - these are template artifacts for badge positioning
+      // They have fill:none,stroke:none in Mermaid but render as gray boxes if not filtered
+      const nodeIdLower = node.id.toLowerCase();
+      const subgraphLower = subgraphId?.toLowerCase() || '';
+      if (nodeIdLower.startsWith('label_area_') || subgraphLower.startsWith('label_area_')) {
+        console.log(`[layoutWithLanes] Skipping label_area boundary: ${node.id}`);
+        continue;  // Skip this node entirely
+      }
       boundaryNodes.push(node);
     } else if (laneIndex === 99 && subgraphId) {
       // Legacy: section nodes marked with lane 99
@@ -535,8 +546,13 @@ export function layoutWithLanes(
   // Create lane label badge nodes
   const labelNodes: Node[] = [];
   const numLanes = laneSubgraphs.length || laneNodes.size;
+  console.log(`[layoutWithLanes] Creating labels: numLanes=${numLanes}, laneSubgraphs=`, laneSubgraphs.map(s => s.label));
   
-  // Add lane labels (left side badges)
+  // Calculate LANE_START_X early so badges can be positioned relative to content
+  const LANE_START_X = LEFT_MARGIN + LANE_LABEL_WIDTH + 30;
+  
+  // Add lane labels (positioned INSIDE content area, adjacent to first component)
+  // Reference architecture shows badges at START of each row, inside diagram bounds
   for (let i = 0; i < numLanes; i++) {
     const laneInfo = laneSubgraphs[i];
     const label = laneInfo?.label || String(i + 1);
@@ -549,15 +565,16 @@ export function layoutWithLanes(
         data: {
           label: label,
           isLaneLabel: true,
-          backgroundColor: '#0066B3',
+          backgroundColor: '#7C3AED',  // Purple for lane badges
           textColor: '#FFFFFF',
         },
-        position: { x: LEFT_MARGIN, y: laneY + (LANE_HEIGHT - 36) / 2 },
+        // Position badge at start of lane content area (not far left margin)
+        position: { x: LANE_START_X - 50, y: laneY + (LANE_HEIGHT - 36) / 2 },
         style: {
           width: 36,
           height: 36,
           borderRadius: 4,
-          background: '#0066B3',
+          background: '#7C3AED',  // Purple for lane badges
           color: '#FFFFFF',
           display: 'flex',
           alignItems: 'center',
@@ -591,7 +608,7 @@ export function layoutWithLanes(
         data: {
           label: label,
           isSectionLabel: true,
-          backgroundColor: '#0066B3',
+          backgroundColor: '#2563EB',  // Blue for section badges
           textColor: '#FFFFFF',
         },
         position: { x: sectionX + (SECTION_COLUMN_WIDTH - 36) / 2, y: TOP_MARGIN - 50 },
@@ -599,7 +616,7 @@ export function layoutWithLanes(
           width: 36,
           height: 36,
           borderRadius: 4,
-          background: '#0066B3',
+          background: '#2563EB',  // Blue for section badges
           color: '#FFFFFF',
           display: 'flex',
           alignItems: 'center',
@@ -621,8 +638,7 @@ export function layoutWithLanes(
     };
   });
   
-  // Position nodes in lanes
-  const LANE_START_X = LEFT_MARGIN + LANE_LABEL_WIDTH + 30;
+  // Position nodes in lanes (LANE_START_X already calculated above for badge positioning)
   const sortedLaneIndices = Array.from(laneNodes.keys()).sort((a, b) => a - b);
   
   for (const laneIdx of sortedLaneIndices) {
@@ -683,10 +699,92 @@ export function layoutWithLanes(
     };
   });
   
-  // Combine all nodes: label nodes + positioned original nodes
-  const allNodes = [...labelNodes, ...boundaryNodes, ...nodes.filter(n => !boundaryNodes.includes(n))];
+  // Filter out existing badge nodes from Mermaid parse - we'll use our positioned labelNodes instead
+  // Also filter out helper nodes (spacers, labels) that are template artifacts
+  // Badge nodes from Mermaid have isBadgeNode: true or id starting with 'badge_'
+  const filteredBadges: string[] = [];
+  const filteredHelpers: string[] = [];
+  const nonHelperNodes = nodes.filter(n => {
+    const data = n.data as any;
+    const idLower = n.id.toLowerCase();
+    
+    // Filter out badge nodes
+    const isBadge = data?.isBadgeNode === true || 
+                    idLower.startsWith('badge_') ||
+                    n.type === 'laneLabelNode';
+    
+    // Filter out spacer/label helper nodes from Mermaid templates
+    // Also filter label_area_* subgraph containers (template artifacts for badge positioning)
+    const isHelper = idLower.startsWith('spacer_') ||
+                     idLower.startsWith('label_') ||
+                     idLower.startsWith('label_area_') ||
+                     idLower.includes('_node') && (idLower.includes('spacer') || idLower.includes('label'));
+    
+    if (isBadge) filteredBadges.push(n.id);
+    if (isHelper) filteredHelpers.push(n.id);
+    
+    return !isBadge && !isHelper && !boundaryNodes.includes(n);
+  });
+  console.log(`[layoutWithLanes] Filtered badges:`, filteredBadges);
+  console.log(`[layoutWithLanes] Filtered helpers:`, filteredHelpers);
   
-  return { nodes: allNodes, edges };
+  // Combine all nodes: label nodes (properly positioned) + positioned original nodes (minus helpers)
+  const allNodes = [...labelNodes, ...boundaryNodes, ...nonHelperNodes];
+  console.log(`[layoutWithLanes] Final output: ${allNodes.length} nodes (${labelNodes.length} labels, ${boundaryNodes.length} boundaries, ${nonHelperNodes.length} content)`);
+  console.log(`[layoutWithLanes] Label nodes:`, labelNodes.map(n => `${n.id}@(${n.position.x},${n.position.y})`));
+  
+  // Reassign handles based on actual node positions for optimal routing
+  const nodePositionMap = new Map(allNodes.map(n => [n.id, n.position]));
+  const edgesWithOptimalHandles = edges.map(e => {
+    const sourcePos = nodePositionMap.get(e.source);
+    const targetPos = nodePositionMap.get(e.target);
+    
+    if (sourcePos && targetPos) {
+      const dx = targetPos.x - sourcePos.x;
+      const dy = targetPos.y - sourcePos.y;
+      
+      let sourceHandle: string;
+      let targetHandle: string;
+      
+      // Choose handles based on relative positions
+      if (Math.abs(dx) > Math.abs(dy)) {
+        // Horizontal dominant
+        if (dx > 0) {
+          sourceHandle = 'right-source';
+          targetHandle = 'left-target';
+        } else {
+          sourceHandle = 'left-source';
+          targetHandle = 'right-target';
+        }
+      } else {
+        // Vertical dominant
+        if (dy > 0) {
+          sourceHandle = 'bottom-source';
+          targetHandle = 'top-target';
+        } else {
+          sourceHandle = 'top-source';
+          targetHandle = 'bottom-target';
+        }
+      }
+      
+      return {
+        ...e,
+        sourceHandle,
+        targetHandle,
+        type: 'smoothstep',  // Ensure orthogonal routing
+      };
+    }
+    
+    // Fallback for edges with unknown positions
+    return {
+      ...e,
+      sourceHandle: e.sourceHandle || 'right-source',
+      targetHandle: e.targetHandle || 'left-target',
+      type: 'smoothstep',
+    };
+  });
+  
+  return { nodes: allNodes, edges: edgesWithOptimalHandles };
 }
 
 /**
@@ -743,4 +841,4 @@ function orderNodesInLane(nodes: Node[], edges: Edge[]): Node[] {
   return result;
 }
 
-export default layoutWithELK;
+export default layoutWithELK

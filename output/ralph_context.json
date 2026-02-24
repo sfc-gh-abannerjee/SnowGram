@@ -1,0 +1,14 @@
+{
+  "template_id": "STREAMING_DATA_STACK",
+  "gap_type": "layout_rendering",
+  "details": {
+    "lane_badges_in_template": true,
+    "section_badges_in_template": true,
+    "badges_rendered_count": 4,
+    "expected_badges": 8
+  },
+  "mermaid_file": "/Users/abannerjee/Documents/SnowGram/output/streaming_mermaid.txt",
+  "reference_image": "/Users/abannerjee/Documents/SnowGram/backend/tests/visual/reference_images/reference_page4.png",
+  "iteration": 1,
+  "current_similarity": 0
+}

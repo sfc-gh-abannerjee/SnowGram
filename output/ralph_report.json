@@ -1,0 +1,17 @@
+{
+  "template_id": "STREAMING_DATA_STACK",
+  "target_similarity": 0.95,
+  "achieved": false,
+  "final_similarity": 0.7082395632817476,
+  "total_iterations": 1,
+  "iterations": [
+    {
+      "iteration": 1,
+      "similarity": 0.7082395632817476,
+      "gap_type": "layout_rendering",
+      "skill_invoked": "lane-layout-debugger",
+      "success": false,
+      "duration_seconds": 13.647953033447266
+    }
+  ]
+}

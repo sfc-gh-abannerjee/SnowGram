@@ -11,7 +11,7 @@
  * - Keyboard shortcuts
  */
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { useDiagramTabsStore } from '../store/diagramTabsStore';
 import styles from './TabBar.module.css';
 
@@ -27,17 +27,16 @@ interface ContextMenuState {
   tabId: string | null;
 }
 
-export const TabBar: React.FC<TabBarProps> = ({ isDarkMode = false, onTabSwitch }) => {
-  const {
-    tabs,
-    activeTabId,
-    createTab,
-    switchTab,
-    closeTab,
-    renameTab,
-    duplicateTab,
-    reorderTabs,
-  } = useDiagramTabsStore();
+// Actions are stable - get from store directly (outside component to avoid re-renders)
+const getStoreActions = () => useDiagramTabsStore.getState();
+
+export const TabBar: React.FC<TabBarProps> = memo(({ isDarkMode = false, onTabSwitch }) => {
+  // State with individual selectors for optimal re-render behavior
+  const tabs = useDiagramTabsStore(state => state.tabs);
+  const activeTabId = useDiagramTabsStore(state => state.activeTabId);
+  
+  // Actions are stable - extracted from store state
+  const { createTab, switchTab, closeTab, renameTab, duplicateTab, reorderTabs } = getStoreActions();
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draggedTabId, setDraggedTabId] = useState<string | null>(null);
@@ -359,6 +358,9 @@ export const TabBar: React.FC<TabBarProps> = ({ isDarkMode = false, onTabSwitch 
       )}
     </>
   );
-};
+});
+
+// Display name for React DevTools
+TabBar.displayName = 'TabBar';
 
 export default TabBar;

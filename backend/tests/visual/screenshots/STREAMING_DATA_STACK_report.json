@@ -1,0 +1,55 @@
+{
+  "template_id": "STREAMING_DATA_STACK",
+  "quality_target": 95.0,
+  "iterations_run": 1,
+  "final_score": 85.0,
+  "target_achieved": false,
+  "iteration_history": [
+    {
+      "overall_score": 85.0,
+      "layout_match": 90.0,
+      "component_completeness": 85.0,
+      "styling_quality": 80.0,
+      "edge_accuracy": 85.0,
+      "gaps": [
+        {
+          "category": "badge_numbering",
+          "description": "Numbered badges (1a-1d, 2-5) from reference are not clearly visible in rendered diagram",
+          "severity": "medium",
+          "suggested_fix": "Add numbered badges to match reference diagram sections",
+          "reference_detail": null
+        },
+        {
+          "category": "cloud_provider_logos",
+          "description": "Missing cloud provider logos (AWS, Azure, GCP) at bottom of diagram",
+          "severity": "low",
+          "suggested_fix": "Add cloud provider logos in bottom section",
+          "reference_detail": null
+        },
+        {
+          "category": "component_styling",
+          "description": "Snowflake section styling (dotted border, background color) differs from reference",
+          "severity": "low",
+          "suggested_fix": "Adjust styling of Snowflake account section to match reference",
+          "reference_detail": null
+        },
+        {
+          "category": "edge_connections",
+          "description": "Some connection lines between components have different routing/paths than reference",
+          "severity": "low",
+          "suggested_fix": "Adjust connection paths to better match reference flow",
+          "reference_detail": null
+        },
+        {
+          "category": "layout_rendering",
+          "description": "Component spacing and alignment could be more consistent with reference",
+          "severity": "low",
+          "suggested_fix": "Fine-tune component positioning and spacing",
+          "reference_detail": null
+        }
+      ],
+      "timestamp": "2026-02-23T15:07:57.499275"
+    }
+  ],
+  "timestamp": "2026-02-23T15:07:57.499437"
+}

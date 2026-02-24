@@ -1,0 +1,164 @@
+{
+  "models": {
+    "orchestration": "claude-sonnet-4-5"
+  },
+  "orchestration": {
+    "budget": {
+      "seconds": 300,
+      "tokens": 64000
+    }
+  },
+  "instructions": {
+    "response": "## MANDATORY Response Structure\n\n### Section 1: Acknowledgment\nOne sentence identifying the architecture (e.g., 'Here is a Security Analytics architecture diagram.')\n\n### Section 2: The Diagram (REQUIRED)\nYou MUST include the complete Mermaid code in a code block:\n```mermaid\n[PASTE THE FULL MERMAID CODE FROM TOOL RESULT HERE - DO NOT SUMMARIZE]\n```\n\nNEVER skip this section. NEVER say 'Diagram updated' or 'Review the canvas' without showing the actual code. The diagram code IS your primary deliverable.\n\n### Section 3: Component Summary\n- List 4-6 key components and their roles\n- Explain the data flow briefly\n\n### Section 4: Best Practices\n- 2-3 Snowflake best practices embedded in this architecture\n\n### Section 5: Stats\nEnd with: 'Generated diagram with X nodes and Y edges.'\n",
+    "orchestration": "## Tool Selection Priority\n\n### PRIORITY 1: Templates (for complete architectures)\nKeywords: medallion, bronze/silver/gold, lakehouse, IoT, batch ETL, data mesh, security analytics, SIEM, log analytics, customer 360, embedded analytics, ML, machine learning, streaming, serverless\n\u2192 Call COMPOSE_DIAGRAM_FROM_TEMPLATE\n\nAvailable Template IDs (14 total):\n- MEDALLION_LAKEHOUSE - Bronze/Silver/Gold with external sources\n- MEDALLION_LAKEHOUSE_SNOWFLAKE_ONLY - Bronze/Silver/Gold Snowflake-native\n- REALTIME_IOT_PIPELINE - IoT streaming with edge software, MQTT, rules engine\n- BATCH_DATA_WAREHOUSE - Traditional ETL warehouse\n- MULTI_CLOUD_DATA_MESH - Cross-cloud federated architecture\n- SECURITY_ANALYTICS - Log collection, Snowpipe variants, Search Optimization Service\n- ML_FEATURE_ENGINEERING - ML/Data Science pipeline with Model Registry, Cortex\n- DATA_GOVERNANCE_COMPLIANCE - Governance with masking and RLS\n- CUSTOMER_360 - 360-degree customer view with ML predictions\n- EMBEDDED_ANALYTICS - In-app visualizations with Hybrid Tables\n- STREAMING_DATA_STACK - Real-time streaming with Kafka Connector, Dynamic Tables\n- SERVERLESS_DATA_STACK - Minimal infrastructure with API Gateway\n- REALTIME_FINANCIAL_TRANSACTIONS - High-volume transaction processing\n- HYBRID_CLOUD_LAKEHOUSE - Lakehouse with Iceberg tables\n\n### PRIORITY 2: Patterns (for specific flows)\nKeywords: S3 ingestion, Kafka streaming, CDC\n\u2192 Call COMPOSE_DIAGRAM_FROM_PATTERN\n\n### PRIORITY 3: Custom (last resort)\nOnly when no template/pattern matches:\n1. SEARCH_COMPONENT_BLOCKS\n2. Build diagram manually\n3. VALIDATE_MERMAID_SYNTAX\n",
+    "system": "You are **SnowGram**, an expert Snowflake architect that generates production-ready architecture diagrams.\n\n## Core Mission\nGenerate and DISPLAY Mermaid flowchart diagrams for Snowflake architectures. Your job is NOT complete until the user can SEE the complete diagram code.\n\n## CRITICAL OUTPUT REQUIREMENT\nWhen any tool returns Mermaid code, you MUST include that EXACT code in your response inside a mermaid code block. Never summarize or omit the diagram code - the user needs to see it to render the diagram.\n\n## Output Format (MANDATORY - ALL SECTIONS REQUIRED)\n**1. Brief Acknowledgment** (1 sentence identifying the architecture type)\n\n**2. Mermaid Diagram** (REQUIRED - inside mermaid code block):\n- Copy the COMPLETE Mermaid code returned by the tool\n- Do NOT truncate or summarize\n- Do NOT say 'see above' or 'diagram generated' without showing code\n\n**3. Architecture Summary** (3-5 bullets describing key components)\n\n**4. Best Practices Applied** (2-3 bullets from the template)\n"
+  },
+  "tools": [
+    {
+      "tool_spec": {
+        "type": "generic",
+        "name": "COMPOSE_DIAGRAM_FROM_TEMPLATE",
+        "description": "PRIORITY 1 - Use for complete architecture diagrams.\nReturns complete Mermaid flowchart code with subgraphs, styling, and best practices.\n\nCRITICAL: After calling this tool, you MUST include the returned Mermaid code VERBATIM in your response inside a ```mermaid code block. Do not summarize or omit the code - the user needs to see it.\n\nTemplate IDs (14 total):\n- MEDALLION_LAKEHOUSE, MEDALLION_LAKEHOUSE_SNOWFLAKE_ONLY\n- REALTIME_IOT_PIPELINE, BATCH_DATA_WAREHOUSE\n- MULTI_CLOUD_DATA_MESH, SECURITY_ANALYTICS\n- ML_FEATURE_ENGINEERING, DATA_GOVERNANCE_COMPLIANCE\n- CUSTOMER_360, EMBEDDED_ANALYTICS\n- STREAMING_DATA_STACK, SERVERLESS_DATA_STACK\n- REALTIME_FINANCIAL_TRANSACTIONS, HYBRID_CLOUD_LAKEHOUSE\n",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "TEMPLATE_ID_PARAM": {
+              "type": "string",
+              "description": "Template ID (e.g., MEDALLION_LAKEHOUSE, SECURITY_ANALYTICS)"
+            }
+          },
+          "required": [
+            "TEMPLATE_ID_PARAM"
+          ]
+        }
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "generic",
+        "name": "COMPOSE_DIAGRAM_FROM_PATTERN",
+        "description": "PRIORITY 2 - Use for specific data flow patterns.\nReturns Mermaid code for focused patterns.\n\nCRITICAL: You MUST include the returned code verbatim in a ```mermaid code block.\n\nPattern IDs: S3_TO_SNOWFLAKE_BATCH, KAFKA_STREAMING_INGESTION, STREAM_TASK_TRANSFORMATION\n",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "PATTERN_ID_PARAM": {
+              "type": "string",
+              "description": "Pattern ID from COMPOSED_PATTERNS table"
+            }
+          },
+          "required": [
+            "PATTERN_ID_PARAM"
+          ]
+        }
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "generic",
+        "name": "SEARCH_COMPONENT_BLOCKS",
+        "description": "Searches component library by keyword. Returns JSON array of matching blocks.\nUse for custom diagrams when no template matches.\n",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "SEARCH_KEYWORD": {
+              "type": "string",
+              "description": "Search term (e.g., kafka, stream, bronze, security)"
+            }
+          },
+          "required": [
+            "SEARCH_KEYWORD"
+          ]
+        }
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "generic",
+        "name": "VALIDATE_MERMAID_SYNTAX",
+        "description": "Validates Mermaid syntax for custom diagrams. Call before returning manually-constructed diagrams.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "MERMAID_CODE": {
+              "type": "string",
+              "description": "Mermaid code to validate"
+            }
+          },
+          "required": [
+            "MERMAID_CODE"
+          ]
+        }
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "cortex_analyst_text_to_sql",
+        "name": "component_resolver",
+        "description": "Maps user terminology to valid SnowGram component types."
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "cortex_search",
+        "name": "snowflake_docs",
+        "description": "Official Snowflake documentation (43,000+ pages). Use for syntax, features, best practices."
+      }
+    },
+    {
+      "tool_spec": {
+        "type": "cortex_search",
+        "name": "arch_patterns",
+        "description": "Curated Snowflake architecture patterns and reference designs."
+      }
+    }
+  ],
+  "tool_resources": {
+    "COMPOSE_DIAGRAM_FROM_TEMPLATE": {
+      "type": "function",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "COMPUTE_WH"
+      },
+      "identifier": "SNOWGRAM_DB.CORE.COMPOSE_DIAGRAM_FROM_TEMPLATE"
+    },
+    "COMPOSE_DIAGRAM_FROM_PATTERN": {
+      "type": "function",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "COMPUTE_WH"
+      },
+      "identifier": "SNOWGRAM_DB.CORE.COMPOSE_DIAGRAM_FROM_PATTERN"
+    },
+    "SEARCH_COMPONENT_BLOCKS": {
+      "type": "function",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "COMPUTE_WH"
+      },
+      "identifier": "SNOWGRAM_DB.CORE.SEARCH_COMPONENT_BLOCKS_JSON"
+    },
+    "VALIDATE_MERMAID_SYNTAX": {
+      "type": "function",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "COMPUTE_WH"
+      },
+      "identifier": "SNOWGRAM_DB.CORE.VALIDATE_MERMAID_SYNTAX"
+    },
+    "component_resolver": {
+      "semantic_view": "SNOWGRAM_DB.CORE.COMPONENT_MAP_SV",
+      "execution_environment": {
+        "type": "warehouse",
+        "warehouse": "COMPUTE_WH"
+      }
+    },
+    "snowflake_docs": {
+      "search_service": "SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE",
+      "max_results": 5
+    },
+    "arch_patterns": {
+      "search_service": "SNOWGRAM_DB.KNOWLEDGE.SNOWFLAKE_DOCS_SEARCH",
+      "max_results": 3
+    }
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "converged": false,
+  "final_score": 55.75,
+  "target_score": 95.0,
+  "iterations": 3,
+  "max_iterations": 3,
+  "template_id": "STREAMING_DATA_STACK",
+  "generation_method": "agent",
+  "history": [
+    {
+      "iteration": 1,
+      "score": 63.0,
+      "pass_scores": {
+        "structure": 35,
+        "components": 70,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_1.png",
+      "fixes": {
+        "backend_count": 3,
+        "frontend_count": 1,
+        "primary_source": "backend",
+        "recommendations": [
+          "[BACKEND] missing_badge: Add missing badge nodes (e.g., badge_1a, badge_2) with :::laneBadge or :::sectionBadge class",
+          "[BACKEND] missing_subgraph: Add missing subgraph definitions to Mermaid code",
+          "[FRONTEND] Fix frontend/src/lib/elkLayoutUtils.ts: Review ELK layout configuration",
+          "[BACKEND] missing_node: Review node definitions in template"
+        ]
+      }
+    },
+    {
+      "iteration": 2,
+      "score": 61.0,
+      "pass_scores": {
+        "structure": 55,
+        "components": 50,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_2.png",
+      "fixes": {
+        "backend_count": 3,
+        "frontend_count": 1,
+        "primary_source": "backend",
+        "recommendations": [
+          "[BACKEND] missing_node: Review node definitions in template",
+          "[BACKEND] missing_badge: Add missing badge nodes (e.g., badge_1a, badge_2) with :::laneBadge or :::sectionBadge class",
+          "[FRONTEND] Fix frontend/src/lib/elkLayoutUtils.ts: Review ELK layout configuration",
+          "[BACKEND] missing_subgraph: Add missing subgraph definitions to Mermaid code"
+        ]
+      }
+    },
+    {
+      "iteration": 3,
+      "score": 61.0,
+      "pass_scores": {
+        "structure": 55,
+        "components": 50,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_3.png",
+      "fixes": {
+        "backend_count": 3,
+        "frontend_count": 1,
+        "primary_source": "backend",
+        "recommendations": [
+          "[BACKEND] missing_node: Review node definitions in template",
+          "[BACKEND] missing_badge: Add missing badge nodes (e.g., badge_1a, badge_2) with :::laneBadge or :::sectionBadge class",
+          "[FRONTEND] Fix frontend/src/lib/elkLayoutUtils.ts: Review ELK layout configuration",
+          "[BACKEND] missing_subgraph: Add missing subgraph definitions to Mermaid code"
+        ]
+      }
+    }
+  ],
+  "final_pass_scores": {
+    "structure": 45,
+    "components": 50,
+    "connections": 100,
+    "styling": 100,
+    "layout": 10,
+    "badges": 0
+  },
+  "lowest_pass": "badges",
+  "mermaid_code_length": 5383
+}

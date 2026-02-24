@@ -55,6 +55,10 @@ export function getFlowStageOrder(node: NodeLike): number {
   // 1. Keyword inference (most granular — fractional stages)
   const text = `${node.id} ${data.label || ''} ${data.componentType || ''}`.toLowerCase();
 
+
+  // Badges always go to column -1 (before sources)
+  if (/badge|laneBadge|sectionBadge/.test(text)) return -1;
+
   // External sources (Kafka, S3, etc.) - NOT "External Stage" which is a Snowflake object
   if (/ext_|kafka|azure.*blob|gcs|api/.test(text)) return 0;
   // S3/lake only if NOT preceded by "external" (to avoid matching "External Stage")

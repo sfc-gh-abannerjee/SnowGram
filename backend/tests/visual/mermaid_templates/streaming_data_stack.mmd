@@ -1,0 +1,142 @@
+flowchart LR
+    %% Lane Badges (Purple)
+    badge_1a([""1a""]):::laneBadge
+    badge_1b([""1b""]):::laneBadge
+    badge_1c([""1c""]):::laneBadge
+    badge_1d([""1d""]):::laneBadge
+    
+    subgraph producer[""Producer App""]
+        prod_app[""Producer App""]
+    end
+    
+    subgraph path_1a[""Kafka Path""]
+        firehose[""Amazon Data Firehose""]
+        kafka[""Kafka""]
+        kafka_connector[""Snowflake Connector for Kafka - Snowpipe Streaming built-in""]
+    end
+    
+    subgraph path_1b[""CSP Stream Processing""]
+        kinesis[""Amazon Kinesis""]
+        event_hubs[""Azure Event Hubs""]
+        pubsub[""Google Pub/Sub""]
+        compute[""Compute - VM, Container, Serverless""]
+    end
+    
+    subgraph path_1c[""Batch/Files""]
+        s3[""Amazon S3""]
+        azure_blob[""Azure Blob Storage""]
+        gcs[""Google Cloud Storage""]
+    end
+    
+    subgraph path_1d[""Native App Connector""]
+        industry_sources[""Industry Data Sources - ServiceNow, Salesforce, etc.""]
+        marketplace[""Snowflake Marketplace""]
+    end
+    
+    subgraph snowflake[""Snowflake""]
+        %% Section Badges (Blue)
+        badge_2([""2""]):::sectionBadge
+        badge_3([""3""]):::sectionBadge
+        badge_4([""4""]):::sectionBadge
+        badge_5([""5""]):::sectionBadge
+        
+        subgraph section_2[""Ingestion""]
+            snowpipe_streaming[""Snowpipe Streaming""]
+            snowpipe[""Snowpipe""]
+            native_connector[""Native App Connector""]
+        end
+        
+        subgraph section_3[""Aggregation Using Streams & Tasks""]
+            streams[""Streams""]
+            serverless_tasks[""Serverless Tasks""]
+        end
+        
+        subgraph section_4[""Tables""]
+            normalized_tables[""Normalized Tables""]
+            dynamic_tables[""Dynamic Tables""]
+            scalability[/""Instant Scalability""/]
+        end
+        
+        subgraph section_5[""Consumption""]
+            python_sp[""Python Stored Procedures""]
+            snowpark[""Snowpark""]
+            spcs[""Snowpark Container Services""]
+        end
+        
+        analytics[""In-app Analytics""]
+    end
+    
+    %% Badge positioning (invisible connections)
+    badge_1a ~~~ path_1a
+    badge_1b ~~~ path_1b
+    badge_1c ~~~ path_1c
+    badge_1d ~~~ path_1d
+    badge_2 ~~~ section_2
+    badge_3 ~~~ section_3
+    badge_4 ~~~ section_4
+    badge_5 ~~~ section_5
+    
+    %% Path 1a: Kafka
+    prod_app --> firehose
+    firehose --> kafka
+    kafka --> kafka_connector
+    kafka_connector -->|""Streaming/row-set""| snowpipe_streaming
+    
+    %% Path 1b: CSP Streaming
+    prod_app --> kinesis
+    prod_app --> event_hubs
+    prod_app --> pubsub
+    kinesis --> compute
+    event_hubs --> compute
+    pubsub --> compute
+    compute -->|""Streaming""| snowpipe_streaming
+    
+    %% Path 1c: Batch/Files
+    prod_app --> s3
+    prod_app --> azure_blob
+    prod_app --> gcs
+    s3 -->|""Batch/Files""| snowpipe
+    azure_blob --> snowpipe
+    gcs --> snowpipe
+    
+    %% Path 1d: Native App Connector
+    industry_sources --> marketplace
+    marketplace --> native_connector
+    
+    %% Section 2 to Section 3
+    snowpipe_streaming --> streams
+    snowpipe --> streams
+    native_connector --> dynamic_tables
+    
+    %% Section 3 processing
+    streams --> serverless_tasks
+    serverless_tasks --> normalized_tables
+    serverless_tasks --> dynamic_tables
+    
+    %% Section 4 scalability
+    normalized_tables --> scalability
+    dynamic_tables --> scalability
+    
+    %% Section 4 to Section 5
+    scalability --> python_sp
+    scalability --> snowpark
+    scalability --> spcs
+    
+    %% Section 5 to Analytics
+    python_sp --> analytics
+    snowpark --> analytics
+    spcs --> analytics
+    
+    %% Styling
+    classDef laneBadge fill:#7C3AED,stroke:#5B21B6,color:#fff,font-weight:bold
+    classDef sectionBadge fill:#2563EB,stroke:#1D4ED8,color:#fff,font-weight:bold
+    
+    style path_1a fill:#E3F2FD,stroke:#2196F3
+    style path_1b fill:#F3E5F5,stroke:#9C27B0
+    style path_1c fill:#E8F5E9,stroke:#4CAF50
+    style path_1d fill:#FFF8E1,stroke:#FFC107
+    style snowflake fill:#E0F7FA,stroke:#00ACC1
+    style section_2 fill:#E1F5FE,stroke:#03A9F4
+    style section_3 fill:#F3E5F5,stroke:#9C27B0
+    style section_4 fill:#E8F5E9,stroke:#4CAF50
+    style section_5 fill:#FFF3E0,stroke:#FF9800

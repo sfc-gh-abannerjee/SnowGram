@@ -5,15 +5,85 @@ description: |
   Use when: debugging agent responses, updating agent configuration, adding new components,
   testing diagram generation, or optimizing the dynamic component system.
   Triggers: snowgram, diagram agent, component mapping, agent spec, suggest components
+tools:
+  - snowflake_sql_execute
+  - read
+  - edit
+  - write
+  - bash
 ---
 
-# SnowGram Agent Management
+# SnowGram Agent Management & Autonomous Optimization
 
 ## Overview
 
 SnowGram uses a **template-first architecture** with 14 pre-built reference architectures. The agent selects the appropriate template and returns complete Mermaid diagrams.
 
 **Critical Principle**: Agent MUST output returned Mermaid code verbatim - never summarize or acknowledge without showing the actual diagram.
+
+---
+
+## Autonomous Optimization Loop
+
+This skill can be invoked by the convergence loop to **automatically improve** the Cortex Agent based on evaluation feedback.
+
+### When Invoked by Convergence Loop
+
+```yaml
+# Input from convergence loop:
+root_cause: agent_instructions
+defect: "Wrong component names - using 'Bronze' instead of 'Bronze Layer'"
+score_before: 78%
+```
+
+### Optimization Decision Tree
+
+```
+IF defect CONTAINS "wrong component names":
+    → Edit: instructions.orchestration → Add explicit name mapping
+    
+ELIF defect CONTAINS "tool not called":
+    → Edit: tools → Improve tool description/trigger words
+    
+ELIF defect CONTAINS "wrong tool order":
+    → Edit: instructions.orchestration → Add priority sequence
+    
+ELIF defect CONTAINS "missing boundary":
+    → Edit: instructions.orchestration → Add boundary determination rules
+    
+ELIF defect CONTAINS "connections wrong":
+    → Edit: instructions.orchestration → Clarify edge direction = data flow
+```
+
+### Auto-Fix Actions
+
+After identifying the fix, this skill will:
+
+1. **Read** current agent spec (`agent_spec_v5.yaml`)
+2. **Edit** the specific section identified by decision tree
+3. **Generate** deployment SQL
+4. **Execute** `ALTER AGENT` to redeploy
+5. **Output** YAML for convergence loop
+
+### Output Format (for convergence loop)
+
+```yaml
+---
+skill: snowgram-agent
+action: update_instructions
+status: success
+file: agent_spec_v5.yaml
+changes:
+  - section: instructions.orchestration
+    reason: "Wrong component names"
+    before: "Use Bronze, Silver, Gold layers"
+    after: "Use EXACT names: 'Bronze Layer', 'Silver Layer', 'Gold Layer'"
+deployed: true
+score_before: 78%
+---
+```
+
+---
 
 ## Quick Reference
 

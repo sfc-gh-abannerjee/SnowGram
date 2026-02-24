@@ -11,7 +11,88 @@ const boundarySvg = (stroke: string) =>
     </svg>`
   )}`;
 
+// Inline SVGs for shape/annotation palette icons
+const shapeSvg = {
+  textBox: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="8" width="40" height="32" rx="4" stroke="#64748b" stroke-width="2" fill="white"/>
+      <line x1="10" y1="18" x2="38" y2="18" stroke="#94a3b8" stroke-width="2"/>
+      <line x1="10" y1="24" x2="32" y2="24" stroke="#94a3b8" stroke-width="2"/>
+      <line x1="10" y1="30" x2="26" y2="30" stroke="#94a3b8" stroke-width="2"/>
+    </svg>`
+  )}`,
+  rectangle: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="10" width="36" height="28" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  roundedRect: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="10" width="36" height="28" rx="8" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  circle: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="24" cy="24" r="18" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  diamond: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 6 L42 24 L24 42 L6 24 Z" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  hexagon: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 8 H34 L44 24 L34 40 H14 L4 24 Z" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  cylinder: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="24" cy="12" rx="16" ry="6" stroke="#64748b" stroke-width="2" fill="white"/>
+      <path d="M8 12 V36" stroke="#64748b" stroke-width="2"/>
+      <path d="M40 12 V36" stroke="#64748b" stroke-width="2"/>
+      <ellipse cx="24" cy="36" rx="16" ry="6" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  triangle: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M24 6 L42 42 H6 Z" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  parallelogram: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 10 H42 L34 38 H6 Z" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  callout: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M8 8 H40 Q44 8 44 12 V28 Q44 32 40 32 H22 L16 40 L16 32 H8 Q4 32 4 28 V12 Q4 8 8 8 Z" stroke="#64748b" stroke-width="2" fill="white"/>
+    </svg>`
+  )}`,
+  stickyNote: `data:image/svg+xml;utf8,${encodeURIComponent(
+    `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="6" y="6" width="36" height="36" fill="#fef9c3" stroke="#fde047" stroke-width="2"/>
+      <path d="M30 6 H42 V18" fill="#fde047"/>
+      <line x1="12" y1="18" x2="36" y2="18" stroke="#ca8a04" stroke-width="1.5" opacity="0.5"/>
+      <line x1="12" y1="26" x2="30" y2="26" stroke="#ca8a04" stroke-width="1.5" opacity="0.5"/>
+    </svg>`
+  )}`,
+};
+
 export const SNOWFLAKE_ICONS: Record<string, string> = {
+  // ===== SHAPES & ANNOTATIONS =====
+  shape_textbox: shapeSvg.textBox,
+  shape_rectangle: shapeSvg.rectangle,
+  shape_roundedrect: shapeSvg.roundedRect,
+  shape_circle: shapeSvg.circle,
+  shape_diamond: shapeSvg.diamond,
+  shape_hexagon: shapeSvg.hexagon,
+  shape_cylinder: shapeSvg.cylinder,
+  shape_triangle: shapeSvg.triangle,
+  shape_parallelogram: shapeSvg.parallelogram,
+  shape_callout: shapeSvg.callout,
+  shape_stickynote: shapeSvg.stickyNote,
+
   // ===== CORE SNOWFLAKE OBJECTS (RA - Resource Access) =====
   
   // Data Sources & Stages
@@ -296,6 +377,20 @@ export const SNOWFLAKE_ICONS: Record<string, string> = {
 
 // Component categories - Organized by use case
 export const COMPONENT_CATEGORIES = {
+  'Shapes & Annotations': [
+    { id: 'shape_textbox', name: 'Text Box', icon: SNOWFLAKE_ICONS.shape_textbox, nodeType: 'textBox' },
+    { id: 'shape_stickynote', name: 'Sticky Note', icon: SNOWFLAKE_ICONS.shape_stickynote, nodeType: 'stickyNote' },
+    { id: 'shape_rectangle', name: 'Rectangle', icon: SNOWFLAKE_ICONS.shape_rectangle, nodeType: 'shape', shapeType: 'rectangle' },
+    { id: 'shape_roundedrect', name: 'Rounded Rect', icon: SNOWFLAKE_ICONS.shape_roundedrect, nodeType: 'shape', shapeType: 'roundedRect' },
+    { id: 'shape_circle', name: 'Circle', icon: SNOWFLAKE_ICONS.shape_circle, nodeType: 'shape', shapeType: 'circle' },
+    { id: 'shape_diamond', name: 'Diamond', icon: SNOWFLAKE_ICONS.shape_diamond, nodeType: 'shape', shapeType: 'diamond' },
+    { id: 'shape_hexagon', name: 'Hexagon', icon: SNOWFLAKE_ICONS.shape_hexagon, nodeType: 'shape', shapeType: 'hexagon' },
+    { id: 'shape_cylinder', name: 'Cylinder', icon: SNOWFLAKE_ICONS.shape_cylinder, nodeType: 'shape', shapeType: 'cylinder' },
+    { id: 'shape_triangle', name: 'Triangle', icon: SNOWFLAKE_ICONS.shape_triangle, nodeType: 'shape', shapeType: 'triangle' },
+    { id: 'shape_parallelogram', name: 'Parallelogram', icon: SNOWFLAKE_ICONS.shape_parallelogram, nodeType: 'shape', shapeType: 'parallelogram' },
+    { id: 'shape_callout', name: 'Callout', icon: SNOWFLAKE_ICONS.shape_callout, nodeType: 'shape', shapeType: 'callout' },
+  ],
+  
   'Core Objects': [
     { id: 'database', name: 'Database', icon: SNOWFLAKE_ICONS.database },
     { id: 'schema', name: 'Schema', icon: SNOWFLAKE_ICONS.schema },

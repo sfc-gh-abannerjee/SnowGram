@@ -1,0 +1,59 @@
+name: COMPONENT_MAP_SV
+description: SnowGram component synonym resolver for Cortex Analyst/Agent - maps user terms to valid componentTypes
+tables:
+  - name: SYNONYMS
+    synonyms:
+      - term_mapping
+      - component_lookup
+      - type_resolver
+    description: Maps user search terms to canonical Snowflake component types
+    base_table:
+      database: SNOWGRAM_DB
+      schema: CORE
+      table: COMPONENT_SYNONYMS
+    primary_key:
+      columns:
+        - SYNONYM
+    dimensions:
+      - name: COMPONENT_TYPE
+        synonyms:
+          - snowflake_component
+          - block_type
+          - diagram_element
+          - node_type
+        expr: component_type
+        data_type: VARCHAR(16777216)
+      - name: SYNONYM
+        synonyms:
+          - search_term
+          - input_word
+          - user_term
+          - keyword
+        expr: synonym
+        data_type: VARCHAR(16777216)
+      - name: WEIGHT
+        expr: weight
+        data_type: "NUMBER(38,0)"
+    metrics:
+      - name: COUNT_ENTRIES
+        expr: COUNT(*)
+        access_modifier: public_access
+module_custom_instructions:
+  sql_generation: |-
+    ## Purpose
+    This semantic view maps user terminology to valid SnowGram component types.
+    Use it to resolve ambiguous or varied user input to canonical component names.
+
+    ## Query Patterns
+    - Find component type for a user term: SELECT component_type WHERE synonym = user_term
+    - Find all synonyms for a component: SELECT synonym WHERE component_type = ComponentType
+    - Search for partial matches: SELECT DISTINCT component_type WHERE synonym LIKE pattern
+
+    ## Data Coverage
+    - 100+ synonyms covering 40+ component types
+    - Includes: Snowflake native components, external systems, AI/ML, cloud providers
+    - Case-insensitive matching recommended
+
+    ## Important Notes
+    - Always use the returned component_type in diagram generation
+    - Multiple synonyms may map to the same component_type (that is expected)

@@ -1,0 +1,46 @@
+{
+  "converged": false,
+  "final_score": 67.5,
+  "target_score": 95.0,
+  "iterations": 1,
+  "max_iterations": 1,
+  "template_id": "STREAMING_DATA_STACK",
+  "generation_method": "agent",
+  "history": [
+    {
+      "iteration": 1,
+      "score": 67.5,
+      "pass_scores": {
+        "structure": 65,
+        "components": 70,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_1.png",
+      "fixes": {
+        "backend_count": 3,
+        "frontend_count": 1,
+        "primary_source": "backend",
+        "recommendations": [
+          "[BACKEND] missing_badge: Add missing badge nodes (e.g., badge_1a, badge_2) with :::laneBadge or :::sectionBadge class",
+          "[FRONTEND] Fix frontend/src/lib/elkLayoutUtils.ts: Review ELK layout configuration",
+          "[BACKEND] missing_node: Review node definitions in template",
+          "[BACKEND] missing_subgraph: Add missing subgraph definitions to Mermaid code"
+        ]
+      }
+    }
+  ],
+  "final_pass_scores": {
+    "structure": 65,
+    "components": 70,
+    "connections": 100,
+    "styling": 100,
+    "layout": 35,
+    "badges": 0
+  },
+  "lowest_pass": "badges",
+  "mermaid_code_length": 9753
+}

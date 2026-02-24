@@ -1,0 +1,34 @@
+{
+  "converged": true,
+  "final_score": 100.0,
+  "target_score": 95.0,
+  "iterations": 1,
+  "max_iterations": 3,
+  "template_id": "STREAMING_DATA_STACK",
+  "history": [
+    {
+      "iteration": 1,
+      "score": 100.0,
+      "pass_scores": {
+        "structure": 100,
+        "components": 100.0,
+        "connections": 100,
+        "styling": 100,
+        "layout": 100,
+        "badges": 100
+      },
+      "converged": true,
+      "screenshot": "output/iteration_1.png"
+    }
+  ],
+  "final_pass_scores": {
+    "structure": 100,
+    "components": 100.0,
+    "connections": 100,
+    "styling": 100,
+    "layout": 100,
+    "badges": 100
+  },
+  "lowest_pass": "structure",
+  "mermaid_code_length": 4265
+}

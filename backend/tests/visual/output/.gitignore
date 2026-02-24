@@ -1,0 +1,4 @@
+# Visual test outputs
+generated.png
+*.png
+!.gitkeep

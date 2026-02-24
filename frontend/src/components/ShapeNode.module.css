@@ -1,0 +1,115 @@
+/* ShapeNode.module.css - Styles for multi-purpose shape nodes */
+
+.shapeContainer {
+  position: relative;
+  cursor: pointer;
+  /* PERF: Specific transitions */
+  transition: filter 0.2s ease;
+}
+
+.shapeContainer:hover {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+}
+
+.darkMode.shapeContainer:hover {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.shapeSvg {
+  display: block;
+  overflow: visible;
+}
+
+.shapePath {
+  /* PERF: Specific transitions */
+  transition: fill 0.15s ease, stroke 0.15s ease;
+}
+
+/* Highlight stroke on hover/selection */
+.shapeContainer:hover .shapePath {
+  stroke: #29B5E8;
+}
+
+/* Label container - centered overlay */
+.labelContainer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 80%;
+  text-align: center;
+  pointer-events: none;
+}
+
+.labelText {
+  display: block;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: none;
+}
+
+.labelInput {
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #29B5E8;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.95);
+  text-align: center;
+  font-weight: 500;
+  outline: none;
+  pointer-events: auto;
+}
+
+.darkMode .labelInput {
+  background: rgba(30, 41, 59, 0.95);
+  border-color: #29B5E8;
+}
+
+.labelInput::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+/* Connection handles */
+.handle {
+  width: 14px !important;
+  height: 14px !important;
+  background: #29B5E8 !important;
+  border: 2px solid white !important;
+  border-radius: 50% !important;
+  cursor: crosshair !important;
+  pointer-events: all !important;
+  z-index: 10 !important;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.shapeContainer:hover .handle,
+.handle:hover {
+  opacity: 1;
+}
+
+.handle:hover {
+  background: #0F4C75 !important;
+}
+
+/* Selection indicator - scoped to container */
+.shapeContainer:global(.selected) {
+  filter: drop-shadow(0 0 0 2px #29B5E8);
+}
+
+.shapeContainer:global(.selected) .shapePath {
+  stroke: #29B5E8;
+  stroke-width: 3;
+}
+
+/* Resizer styling - scoped to container */
+.shapeContainer :global(.react-flow__resize-control) {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #29B5E8 !important;
+  border: 1px solid white !important;
+}

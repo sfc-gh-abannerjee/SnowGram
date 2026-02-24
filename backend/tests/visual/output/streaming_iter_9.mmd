@@ -1,0 +1,193 @@
+flowchart LR
+    %% ═══════════════════════════════════════════════════════════════════
+    %% STREAMING DATA STACK REFERENCE ARCHITECTURE
+    %% Horizontal Lane Layout - Matching Reference PDF Page 4
+    %% ═══════════════════════════════════════════════════════════════════
+
+    %% ─────────────────────────────────────────────────────────────────
+    %% LANE 1a: Streaming Services Path
+    %% Badge -> Producer -> Streaming Services -> Snowpipe Streaming
+    %% ─────────────────────────────────────────────────────────────────
+    subgraph lane_1a[" "]
+        direction LR
+        badge_1a(["1a"]):::laneBadge
+        producer["Producer\nApp"]:::external
+        subgraph streaming_svcs["Streaming"]
+            kafka["Kafka"]:::streaming
+            firehose["Amazon Data\nFirehose"]:::streaming
+            kinesis["Amazon\nKinesis"]:::streaming
+            eventhubs["Azure\nEvent Hubs"]:::streaming
+            pubsub["Google\nPub/Sub"]:::streaming
+        end
+        kafka_connector["Snowflake Connector\nfor Kafka"]:::connector
+    end
+    
+    %% ─────────────────────────────────────────────────────────────────
+    %% LANE 1b: CSP Stream Processing Path
+    %% Badge -> CSP Processing -> Streaming Row-set
+    %% ─────────────────────────────────────────────────────────────────
+    subgraph lane_1b[" "]
+        direction LR
+        badge_1b(["1b"]):::laneBadge
+        subgraph csp_processing["CSP Stream Processing"]
+            compute["Compute\n(VM, Container, Serverless)"]:::processing
+        end
+        streaming_rowset["Streaming/\nrow-set"]:::connector
+    end
+    
+    %% ─────────────────────────────────────────────────────────────────
+    %% LANE 1c: Batch/Files Path (Cloud Storage)
+    %% Badge -> Cloud Storage -> Batch/Files
+    %% ─────────────────────────────────────────────────────────────────
+    subgraph lane_1c[" "]
+        direction LR
+        badge_1c(["1c"]):::laneBadge
+        subgraph cloud_storage["Cloud Storage"]
+            s3["Amazon S3"]:::storage
+            azure_blob["Azure Blob\nStorage"]:::storage
+            gcs["Google Cloud\nStorage"]:::storage
+        end
+        batch_files["Batch/Files"]:::connector
+    end
+    
+    %% ─────────────────────────────────────────────────────────────────
+    %% LANE 1d: Industry Data Sources (Marketplace)
+    %% Badge -> Industry Sources -> Marketplace
+    %% ─────────────────────────────────────────────────────────────────
+    subgraph lane_1d[" "]
+        direction LR
+        badge_1d(["1d"]):::laneBadge
+        industry_sources["Industry Data Sources/Providers\nlike ServiceNow, Salesforce, etc."]:::external
+        marketplace_badge["Snowflake\nMARKETPLACE"]:::marketplace
+    end
+    
+    %% ═══════════════════════════════════════════════════════════════════
+    %% SNOWFLAKE PLATFORM (Center-Right Region)
+    %% ═══════════════════════════════════════════════════════════════════
+    subgraph snowflake["❄️ snowflake"]
+        direction TB
+        
+        %% Section 2: Ingestion Layer
+        subgraph section_2["  "]
+            badge_2(["2"]):::sectionBadge
+            snowpipe_streaming["Snowpipe\nStreaming"]:::snowflake_comp
+            snowpipe["Snowpipe"]:::snowflake_comp
+        end
+        
+        %% Section 3: Processing Layer  
+        subgraph section_3["  "]
+            badge_3(["3"]):::sectionBadge
+            aggregation["Aggregation Using\nStreams & Tasks"]:::snowflake_comp
+            serverless_tasks["Serverless Tasks"]:::snowflake_comp
+        end
+        
+        %% Section 4: Storage Layer
+        subgraph section_4["  "]
+            badge_4(["4"]):::sectionBadge
+            normalized_tables["Normalized\nTables"]:::snowflake_comp
+            dynamic_tables["Dynamic\nTables"]:::snowflake_comp
+            instant_scale["Instant\nScalability"]:::snowflake_comp
+        end
+        
+        %% Section 5: Compute Layer
+        subgraph section_5["  "]
+            badge_5(["5"]):::sectionBadge
+            python_sp["Python Stored\nProcedures"]:::snowflake_comp
+            snowpark["Snowpark"]:::snowflake_comp
+            spcs["Snowpark Container\nServices"]:::snowflake_comp
+        end
+        
+        %% Native Connector at bottom
+        native_connector["Snowflake Native App Connector\nfrom Snowflake Marketplace"]:::snowflake_comp
+    end
+    
+    %% ─────────────────────────────────────────────────────────────────
+    %% OUTPUT: In-App Analytics (Right Edge)
+    %% ─────────────────────────────────────────────────────────────────
+    analytics["In-app\nAnalytics"]:::output
+    
+    %% ═══════════════════════════════════════════════════════════════════
+    %% CONNECTIONS - Left to Right Flow
+    %% ═══════════════════════════════════════════════════════════════════
+    
+    %% Lane 1a flow
+    badge_1a ~~~ producer
+    producer --> kafka
+    producer --> firehose
+    producer --> kinesis
+    producer --> eventhubs
+    producer --> pubsub
+    kafka --> kafka_connector
+    firehose --> kafka_connector
+    kinesis --> kafka_connector
+    eventhubs --> kafka_connector
+    pubsub --> kafka_connector
+    kafka_connector --> snowpipe_streaming
+    
+    %% Lane 1b flow
+    badge_1b ~~~ compute
+    compute --> streaming_rowset
+    streaming_rowset --> snowpipe_streaming
+    
+    %% Lane 1c flow
+    badge_1c ~~~ s3
+    s3 --> batch_files
+    azure_blob --> batch_files
+    gcs --> batch_files
+    batch_files --> snowpipe
+    
+    %% Lane 1d flow
+    badge_1d ~~~ industry_sources
+    industry_sources --> marketplace_badge
+    marketplace_badge --> native_connector
+    
+    %% Internal Snowflake flow
+    snowpipe_streaming --> aggregation
+    snowpipe --> serverless_tasks
+    aggregation --> normalized_tables
+    serverless_tasks --> dynamic_tables
+    normalized_tables --> instant_scale
+    dynamic_tables --> instant_scale
+    instant_scale --> python_sp
+    instant_scale --> snowpark
+    instant_scale --> spcs
+    native_connector --> dynamic_tables
+    
+    %% Output flow
+    python_sp --> analytics
+    snowpark --> analytics
+    spcs --> analytics
+    
+    %% ═══════════════════════════════════════════════════════════════════
+    %% VERTICAL ORDERING (Force lanes to stack top-to-bottom)
+    %% ═══════════════════════════════════════════════════════════════════
+    lane_1a ~~~ lane_1b
+    lane_1b ~~~ lane_1c
+    lane_1c ~~~ lane_1d
+    
+    %% ═══════════════════════════════════════════════════════════════════
+    %% STYLING
+    %% ═══════════════════════════════════════════════════════════════════
+    classDef laneBadge fill:#7C3AED,stroke:#5B21B6,color:#fff,font-weight:bold,font-size:14px
+    classDef sectionBadge fill:#2563EB,stroke:#1D4ED8,color:#fff,font-weight:bold,font-size:14px
+    classDef external fill:#f3f4f6,stroke:#9ca3af,color:#374151
+    classDef streaming fill:#dbeafe,stroke:#3b82f6,color:#1e40af
+    classDef processing fill:#fef3c7,stroke:#f59e0b,color:#92400e
+    classDef storage fill:#d1fae5,stroke:#10b981,color:#065f46
+    classDef marketplace fill:#7C3AED,stroke:#5B21B6,color:#fff
+    classDef connector fill:#e5e7eb,stroke:#6b7280,color:#374151
+    classDef snowflake_comp fill:#e0f2fe,stroke:#0ea5e9,color:#0369a1
+    classDef output fill:#fce7f3,stroke:#ec4899,color:#9d174d
+    
+    style snowflake fill:#f0f9ff,stroke:#0284c7,stroke-width:3px
+    style section_2 fill:#e0f2fe,stroke:#0ea5e9
+    style section_3 fill:#e0f2fe,stroke:#0ea5e9
+    style section_4 fill:#e0f2fe,stroke:#0ea5e9
+    style section_5 fill:#e0f2fe,stroke:#0ea5e9
+    style lane_1a fill:#fafafa,stroke:#e5e7eb,stroke-dasharray:5 5
+    style lane_1b fill:#fafafa,stroke:#e5e7eb,stroke-dasharray:5 5
+    style lane_1c fill:#fafafa,stroke:#e5e7eb,stroke-dasharray:5 5
+    style lane_1d fill:#fafafa,stroke:#e5e7eb,stroke-dasharray:5 5
+    style streaming_svcs fill:#eff6ff,stroke:#3b82f6
+    style csp_processing fill:#fef9c3,stroke:#eab308
+    style cloud_storage fill:#dcfce7,stroke:#22c55e

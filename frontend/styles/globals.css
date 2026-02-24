@@ -219,3 +219,37 @@ body {
   fill: #4ADE80 !important;
   stroke: #4ADE80 !important;
 }
+
+/* ===== Lane Label Node Styling ===== */
+/* Force correct styling for badge nodes - purple for lanes, blue for sections */
+.react-flow__node-laneLabelNode {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+.react-flow__node-laneLabelNode > div {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 4px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-weight: bold !important;
+  font-size: 14px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+}
+
+/* Lane badges (1A, 1B, 1C, 1D) - Purple */
+.react-flow__node-laneLabelNode[data-id^="lane_label_"] > div {
+  background: #7C3AED !important;
+  color: #FFFFFF !important;
+}
+
+/* Section badges (2, 3, 4, 5, ANALYTICS) - Blue */
+.react-flow__node-laneLabelNode[data-id^="section_label_"] > div {
+  background: #2563EB !important;
+  color: #FFFFFF !important;
+}

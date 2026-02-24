@@ -1,0 +1,91 @@
+{
+  "converged": false,
+  "final_score": 63.0,
+  "target_score": 95.0,
+  "iterations": 5,
+  "max_iterations": 5,
+  "template_id": "STREAMING_DATA_STACK",
+  "generation_method": "agent",
+  "history": [
+    {
+      "iteration": 1,
+      "score": 63.0,
+      "pass_scores": {
+        "structure": 35,
+        "components": 70,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_1.png"
+    },
+    {
+      "iteration": 2,
+      "score": 63.0,
+      "pass_scores": {
+        "structure": 35,
+        "components": 70,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_2.png"
+    },
+    {
+      "iteration": 3,
+      "score": 63.0,
+      "pass_scores": {
+        "structure": 35,
+        "components": 70,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_3.png"
+    },
+    {
+      "iteration": 4,
+      "score": 63.0,
+      "pass_scores": {
+        "structure": 35,
+        "components": 70,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_4.png"
+    },
+    {
+      "iteration": 5,
+      "score": 63.0,
+      "pass_scores": {
+        "structure": 35,
+        "components": 70,
+        "connections": 100,
+        "styling": 100,
+        "layout": 35,
+        "badges": 0
+      },
+      "converged": false,
+      "screenshot": "output/iteration_5.png"
+    }
+  ],
+  "final_pass_scores": {
+    "structure": 35,
+    "components": 70,
+    "connections": 100,
+    "styling": 100,
+    "layout": 35,
+    "badges": 0
+  },
+  "lowest_pass": "badges",
+  "mermaid_code_length": 4265
+}

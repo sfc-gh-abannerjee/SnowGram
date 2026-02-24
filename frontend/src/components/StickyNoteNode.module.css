@@ -1,0 +1,108 @@
+/* StickyNoteNode.module.css - Styles for sticky note annotations */
+
+.stickyContainer {
+  position: relative;
+  min-width: 100px;
+  min-height: 80px;
+  padding: 16px;
+  padding-top: 24px; /* Extra space for folded corner */
+  border-radius: 2px;
+  cursor: text;
+  box-shadow: 
+    2px 2px 4px rgba(0, 0, 0, 0.1),
+    0 0 1px rgba(0, 0, 0, 0.1);
+  /* PERF: Specific transitions */
+  transition: box-shadow 0.2s ease, transform 0.15s ease;
+  /* Slight rotation for organic feel */
+  transform: rotate(-0.5deg);
+}
+
+.stickyContainer:hover {
+  box-shadow: 
+    3px 3px 8px rgba(0, 0, 0, 0.15),
+    0 0 1px rgba(0, 0, 0, 0.1);
+  transform: rotate(0deg) scale(1.02);
+}
+
+/* Folded corner effect */
+.foldedCorner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 20px 20px 0 0;
+  /* Colors set dynamically via inline style */
+}
+
+.content {
+  width: 100%;
+  height: 100%;
+}
+
+.text {
+  width: 100%;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+  font-family: 'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive, sans-serif;
+  user-select: none;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  resize: none;
+  outline: none;
+  font-family: 'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive, sans-serif;
+  line-height: 1.5;
+  overflow: hidden;
+}
+
+.textarea::placeholder {
+  opacity: 0.6;
+}
+
+/* Connection handles */
+.handle {
+  width: 14px !important;
+  height: 14px !important;
+  background: #29B5E8 !important;
+  border: 2px solid white !important;
+  border-radius: 50% !important;
+  cursor: crosshair !important;
+  pointer-events: all !important;
+  z-index: 10 !important;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.2s ease;
+}
+
+.stickyContainer:hover .handle,
+.handle:hover {
+  opacity: 1;
+}
+
+.handle:hover {
+  background: #0F4C75 !important;
+}
+
+/* Selection indicator - scoped to container */
+.stickyContainer:global(.selected) {
+  box-shadow: 
+    0 0 0 2px #29B5E8,
+    3px 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Resizer styling - scoped to container */
+.stickyContainer :global(.react-flow__resize-control) {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #29B5E8 !important;
+  border: 1px solid white !important;
+}

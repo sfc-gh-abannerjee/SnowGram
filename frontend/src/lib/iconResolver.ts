@@ -11,8 +11,20 @@
  * agent prefixes (sf_, ext_) so "sf_warehouse" → "warehouse" hits Tier 1.
  * Compound keywords ("transform_task", "analytics_views") are placed first
  * in KEYWORD_MAP so they win over partial matches in Tier 2.
+ *
+ * PERFORMANCE: Results are cached to avoid 40+ keyword iterations per node on re-renders.
  */
 import { SNOWFLAKE_ICONS } from '../components/iconMap';
+
+// ---------------------------------------------------------------------------
+// Performance: Icon resolution cache
+// ---------------------------------------------------------------------------
+const iconCache = new Map<string, string>();
+
+// Cache key builder for consistent lookups
+function buildCacheKey(componentType?: string, label?: string, flowStageOrder?: number): string {
+  return `${componentType || ''}|${label || ''}|${flowStageOrder ?? ''}`;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -203,6 +215,13 @@ export function resolveIcon(
   label?: string,
   flowStageOrder?: number,
 ): string {
+  // Check cache first for performance
+  const cacheKey = buildCacheKey(componentType, label, flowStageOrder);
+  const cached = iconCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   // Build a combined input from whatever is available
   const raw = componentType || label || '';
   if (!raw) {
@@ -210,9 +229,12 @@ export function resolveIcon(
     if (flowStageOrder != null) {
       const stageKey = STAGE_DEFAULTS[Math.floor(flowStageOrder)];
       if (stageKey) {
-        return SNOWFLAKE_ICONS[stageKey];
+        const result = SNOWFLAKE_ICONS[stageKey];
+        iconCache.set(cacheKey, result);
+        return result;
       }
     }
+    iconCache.set(cacheKey, GENERIC_FALLBACK);
     return GENERIC_FALLBACK;
   }
 
@@ -221,14 +243,18 @@ export function resolveIcon(
   // ── Tier 1: Exact match against SNOWFLAKE_ICONS keys ──────────────
   // normalise() strips sf_/ext_ prefixes, so "sf_warehouse" → "warehouse"
   if (normalised in SNOWFLAKE_ICONS) {
-    return SNOWFLAKE_ICONS[normalised as keyof typeof SNOWFLAKE_ICONS];
+    const result = SNOWFLAKE_ICONS[normalised as keyof typeof SNOWFLAKE_ICONS];
+    iconCache.set(cacheKey, result);
+    return result;
   }
 
   // Also try Tier 1 on the label (e.g. label "Snowpipe" → "snowpipe" → exact match)
   if (label && label !== componentType) {
     const normLabel = normalise(label);
     if (normLabel in SNOWFLAKE_ICONS) {
-      return SNOWFLAKE_ICONS[normLabel as keyof typeof SNOWFLAKE_ICONS];
+      const result = SNOWFLAKE_ICONS[normLabel as keyof typeof SNOWFLAKE_ICONS];
+      iconCache.set(cacheKey, result);
+      return result;
     }
   }
 
@@ -246,6 +272,7 @@ export function resolveIcon(
     .sort((a, b) => b.score - a.score)[0];
 
   if (bestKeyword) {
+    iconCache.set(cacheKey, bestKeyword.icon);
     return bestKeyword.icon;
   }
 
@@ -254,10 +281,13 @@ export function resolveIcon(
   if (flowStageOrder != null) {
     const stageKey = STAGE_DEFAULTS[Math.floor(flowStageOrder)];
     if (stageKey) {
-      return SNOWFLAKE_ICONS[stageKey];
+      const result = SNOWFLAKE_ICONS[stageKey];
+      iconCache.set(cacheKey, result);
+      return result;
     }
   }
 
   // ── Tier 4: Generic fallback ──────────────────────────────────────
+  iconCache.set(cacheKey, GENERIC_FALLBACK);
   return GENERIC_FALLBACK;
 }
