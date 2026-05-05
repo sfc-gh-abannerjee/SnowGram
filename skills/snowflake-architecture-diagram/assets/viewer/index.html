@@ -1,236 +1,480 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Snowflake Architecture Diagram</title>
-  <style>
-    :root {
-      --sf-blue: #29B5E8;
-      --sf-text: #1B2A4A;
-      --sf-subtle: #5A6B7D;
-      --sf-bg: #F7F9FC;
-      --sf-border: #E1E8F0;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--sf-text); }
-    body { display: flex; flex-direction: column; background: var(--sf-bg); }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snowflake Architecture Diagram</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sf-blue: #29B5E8;
+    --sf-mid-blue: #11567F;
+    --sf-iceberg: #003545;
+    --sf-winter: #24323D;
+    --sf-star-blue: #71D3DC;
+    --sf-orange: #FF9F36;
+    --sf-windy: #8A999E;
+    --sf-midnight: #000000;
+    --surface: #FFFFFF;
+    --page-bg: #F4F7FA;
+    --text-primary: #1A2332;
+    --text-secondary: #5A6A7A;
+    --text-muted: #8A999E;
+    --border-subtle: rgba(0,53,69,0.08);
+    --shadow-card: 0 1px 2px rgba(0,53,69,0.05), 0 4px 16px rgba(0,53,69,0.06);
+    --radius-card: 12px;
+    --radius-node: 10px;
+    --radius-badge: 6px;
+    --connector-color: #8A999E;
+  }
 
-    header {
-      display: flex; align-items: center; gap: 16px;
-      padding: 14px 24px;
-      background: white;
-      border-bottom: 1px solid var(--sf-border);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-    }
-    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-    header .subtitle { color: var(--sf-subtle); font-size: 13px; margin-left: 8px; }
-    header .actions { margin-left: auto; display: flex; gap: 8px; }
-    header button {
-      padding: 8px 14px;
-      background: var(--sf-blue);
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 13px;
-      cursor: pointer;
-      font-weight: 500;
-    }
-    header button:hover { background: #1FA4D4; }
-    header button.secondary {
-      background: white;
-      color: var(--sf-blue);
-      border: 1px solid var(--sf-blue);
-    }
-    header button.secondary:hover { background: #F0F9FD; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    main {
-      flex: 1; display: flex; overflow: hidden;
-    }
-    #diagram-pane {
-      flex: 1; padding: 24px; overflow: auto;
-      background: white; margin: 16px; border-radius: 8px;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-    }
-    #diagram-pane .mermaid svg { display: block; margin: auto; max-width: 100%; height: auto; }
+  body {
+    font-family: 'Lato', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--page-bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+  }
 
-    aside {
-      width: 360px; padding: 16px 20px;
-      background: white; margin: 16px 16px 16px 0;
-      border-radius: 8px; overflow-y: auto;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
-    }
-    aside h2 { font-size: 14px; margin: 0 0 12px; color: var(--sf-subtle); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-    aside .citation {
-      padding: 10px 0;
-      border-bottom: 1px solid var(--sf-border);
-    }
-    aside .citation:last-child { border-bottom: none; }
-    aside .citation a { color: var(--sf-blue); text-decoration: none; font-weight: 500; font-size: 13px; }
-    aside .citation a:hover { text-decoration: underline; }
-    aside .citation .excerpt { font-size: 12px; color: var(--sf-subtle); margin-top: 4px; line-height: 1.5; }
-    aside .empty { color: var(--sf-subtle); font-style: italic; font-size: 13px; }
+  /* ── Header band (gradient) ── */
+  .header-band {
+    background: linear-gradient(135deg, var(--sf-iceberg) 0%, var(--sf-mid-blue) 60%, var(--sf-blue) 100%);
+    padding: 36px 24px 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .header-band::after {
+    content: "";
+    position: absolute;
+    top: -40%; right: -5%;
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(41,181,232,0.18) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .header-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .header-text h1 {
+    font-size: 26px;
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    color: #FFFFFF;
+    margin-bottom: 4px;
+  }
+  .header-text .sub {
+    font-size: 12px;
+    color: var(--sf-star-blue);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+  .header-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+  .header-actions button {
+    background: rgba(255,255,255,0.10);
+    color: #FFFFFF;
+    border: 1px solid rgba(255,255,255,0.25);
+    padding: 8px 14px;
+    border-radius: var(--radius-badge);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  .header-actions button:hover { background: rgba(255,255,255,0.18); }
 
-    footer {
-      padding: 8px 24px;
-      background: white;
-      border-top: 1px solid var(--sf-border);
-      font-size: 12px;
-      color: var(--sf-subtle);
-      display: flex; justify-content: space-between;
-    }
-    footer code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; }
+  /* ── Page ── */
+  .page { max-width: 1200px; margin: 0 auto; padding: 24px; }
 
-    .error {
-      background: #fee; border: 1px solid #fcc; color: #900;
-      padding: 12px 16px; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px;
-      white-space: pre-wrap;
-    }
-  </style>
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 28px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-onprem  { background: var(--sf-orange); }
+  .dot-bridge  { background: var(--sf-mid-blue); }
+  .dot-snow    { background: var(--sf-blue); }
+  .dot-outcome { background: var(--sf-star-blue); }
+
+  /* ── Diagram card ── */
+  .diagram-card {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--border-subtle);
+    padding: 28px 24px;
+    margin-bottom: 20px;
+    overflow-x: auto;
+  }
+
+  /* ── Flow row ── */
+  .flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    flex-wrap: nowrap;
+  }
+  .flow-node {
+    flex: 1;
+    min-width: 140px;
+    text-align: center;
+    padding: 16px 12px;
+    border-radius: var(--radius-node);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    position: relative;
+  }
+  .flow-node:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 24px rgba(0,53,69,0.12);
+    z-index: 2;
+  }
+  .flow-node .icon {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1.5px solid transparent;
+    padding: 10px;
+  }
+  .flow-node .icon img { width: 100%; height: 100%; object-fit: contain; }
+  .flow-node .label {
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.3;
+    color: var(--text-primary);
+    margin-top: 6px;
+  }
+  .flow-node .detail {
+    font-size: 11px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    max-width: 165px;
+  }
+
+  .node-onprem  { background: rgba(255,159,54,0.05); border: 1.5px solid rgba(255,159,54,0.18); }
+  .node-onprem  .icon { background: rgba(255,159,54,0.10); border-color: rgba(255,159,54,0.20); }
+  .node-bridge  { background: rgba(17,86,127,0.04); border: 1.5px solid rgba(17,86,127,0.14); }
+  .node-bridge  .icon { background: rgba(17,86,127,0.08); border-color: rgba(17,86,127,0.15); }
+  .node-snow    { background: rgba(41,181,232,0.05); border: 1.5px solid rgba(41,181,232,0.16); }
+  .node-snow    .icon { background: rgba(41,181,232,0.10); border-color: rgba(41,181,232,0.18); }
+  .node-outcome { background: rgba(113,211,220,0.06); border: 1.5px solid rgba(113,211,220,0.20); }
+  .node-outcome .icon { background: rgba(113,211,220,0.12); border-color: rgba(113,211,220,0.20); }
+
+  /* ── Animated connectors ── */
+  .arrow-wrap {
+    display: flex; align-items: center; justify-content: center;
+    min-width: 44px;
+    flex-shrink: 0;
+  }
+  @keyframes flow-dash { to { stroke-dashoffset: -14; } }
+  .flow-line { animation: flow-dash 1.4s linear infinite; }
+
+  /* ── Citations panel ── */
+  .citations {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--border-subtle);
+    padding: 22px 24px;
+  }
+  .citations h2 {
+    font-size: 12px;
+    color: var(--sf-mid-blue);
+    margin: 0 0 14px;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .citation {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .citation:last-child { border-bottom: none; }
+  .citation a {
+    color: var(--sf-blue);
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 13px;
+  }
+  .citation a:hover { text-decoration: underline; }
+  .citation .excerpt {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    line-height: 1.5;
+  }
+  .citations-empty { color: var(--text-muted); font-style: italic; font-size: 13px; }
+
+  /* ── Mermaid fallback panel (legacy state.json without nodes/edges) ── */
+  .mermaid-fallback {
+    background: var(--surface);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
+    border: 1px solid var(--border-subtle);
+    padding: 22px 24px;
+  }
+  .mermaid-fallback .note {
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .mermaid-fallback pre {
+    background: var(--page-bg);
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    overflow-x: auto;
+  }
+
+  /* ── Footer ── */
+  footer {
+    text-align: center;
+    padding: 16px 0 32px;
+    color: var(--text-muted);
+    font-size: 11px;
+  }
+  footer code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  /* ── Error ── */
+  .error {
+    background: #FEE; border: 1px solid #FCC; color: #900;
+    padding: 12px 16px; border-radius: 6px;
+    font-family: ui-monospace, monospace; font-size: 12px;
+    white-space: pre-wrap;
+  }
+</style>
 </head>
 <body>
-  <header>
-    <h1>Snowflake Architecture Diagram</h1>
-    <span id="title" class="subtitle"></span>
-    <div class="actions">
-      <button id="btn-mmd" class="secondary">Download .mmd</button>
-      <button id="btn-svg" class="secondary">Download .svg</button>
+
+<div class="header-band">
+  <div class="header-inner">
+    <div class="header-text">
+      <h1 id="title">Snowflake Architecture Diagram</h1>
+      <div class="sub" id="subtitle"></div>
+    </div>
+    <div class="header-actions">
+      <button id="btn-mmd">Download .mmd</button>
+      <button id="btn-svg">Download .svg</button>
       <button id="btn-png">Download .png</button>
+      <button id="btn-html">Download .html</button>
     </div>
-  </header>
-  <main>
-    <div id="diagram-pane">
-      <div class="mermaid" id="diagram-target">flowchart LR
-    LOADING[Loading…]</div>
-    </div>
-    <aside id="citations-pane">
-      <h2>Documentation</h2>
-      <div id="citations-list"><div class="empty">No citations attached.</div></div>
-    </aside>
-  </main>
-  <footer>
-    <span>Source: <code id="source-tag">unknown</code></span>
-    <span>snowflake-architecture-diagram skill</span>
-  </footer>
+  </div>
+</div>
 
-  <script src="lib/mermaid.min.js"></script>
-  <script src="lib/html-to-image.min.js"></script>
-  <script>
-    // ---------------------------------------------------------------------
-    // Initialize Mermaid with Snowflake-aligned theme
-    // ---------------------------------------------------------------------
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: 'default',
-      themeVariables: {
-        primaryColor: '#29B5E8',
-        primaryTextColor: '#fff',
-        primaryBorderColor: '#1FA4D4',
-        lineColor: '#5A6B7D',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      },
-      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
-      securityLevel: 'loose',
-    });
+<div class="page">
 
-    // ---------------------------------------------------------------------
-    // Load state.json (skill writes this before launching the viewer)
-    // ---------------------------------------------------------------------
-    async function loadState() {
-      try {
-        const r = await fetch('state.json', { cache: 'no-store' });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return await r.json();
-      } catch (e) {
-        return { mermaid: '', title: 'No state.json', source: 'fallback', citations: [] };
-      }
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot dot-onprem"></div>External / On-Prem</div>
+    <div class="legend-item"><div class="legend-dot dot-bridge"></div>Ingestion / Bridge</div>
+    <div class="legend-item"><div class="legend-dot dot-snow"></div>Snowflake</div>
+    <div class="legend-item"><div class="legend-dot dot-outcome"></div>Business Outcome</div>
+  </div>
+
+  <div class="diagram-card">
+    <div class="flow" id="diagram-flow"></div>
+    <div id="diagram-fallback" style="display:none;"></div>
+  </div>
+
+  <div class="citations">
+    <h2>Documentation</h2>
+    <div id="citations-list"><div class="citations-empty">No citations attached.</div></div>
+  </div>
+
+</div>
+
+<footer>
+  Source: <code id="source-tag">unknown</code> &nbsp;·&nbsp; snowflake-architecture-diagram skill
+</footer>
+
+<script src="lib/mermaid.min.js"></script>
+<script src="lib/html-to-image.min.js"></script>
+<script>
+  // ---------------------------------------------------------------------
+  // State loader
+  // ---------------------------------------------------------------------
+  async function loadState() {
+    try {
+      const r = await fetch('state.json', { cache: 'no-store' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } catch (e) {
+      return { title: 'No state.json', subtitle: '', source: 'fallback', nodes: [], edges: [], citations: [] };
     }
+  }
 
-    // ---------------------------------------------------------------------
-    // Render
-    // ---------------------------------------------------------------------
-    let currentMermaid = '';
-    let currentTitle = '';
+  // ---------------------------------------------------------------------
+  // Renderers
+  // ---------------------------------------------------------------------
+  let currentState = null;
 
-    async function render(state) {
-      currentMermaid = state.mermaid || 'flowchart LR\n    EMPTY[No diagram]';
-      currentTitle = state.title || '';
-      document.getElementById('title').textContent = currentTitle;
-      document.getElementById('source-tag').textContent = state.source || 'unknown';
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
 
-      const target = document.getElementById('diagram-target');
-      try {
-        const { svg } = await mermaid.render('diagram-svg', currentMermaid);
-        target.innerHTML = svg;
-      } catch (e) {
-        target.innerHTML = `<div class="error">Mermaid render error:\n${e.message || e}</div>`;
-      }
+  function arrowSvg() {
+    return `<svg width="44" height="20" viewBox="0 0 44 20" fill="none">
+      <line x1="2" y1="10" x2="30" y2="10"
+            stroke="var(--connector-color)" stroke-width="1.5"
+            stroke-dasharray="4 3" class="flow-line"/>
+      <path d="M30 5l8 5-8 5"
+            stroke="var(--connector-color)" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg>`;
+  }
 
-      // Citations drawer
-      const citations = state.citations || [];
-      const list = document.getElementById('citations-list');
-      if (!citations.length) {
-        list.innerHTML = '<div class="empty">No citations attached.</div>';
+  function renderFlow(state) {
+    const flow = document.getElementById('diagram-flow');
+    const fallback = document.getElementById('diagram-fallback');
+    flow.innerHTML = '';
+    fallback.style.display = 'none';
+
+    const nodes = state.nodes || [];
+    if (!nodes.length) {
+      // No structured nodes -> fall back to Mermaid (legacy state)
+      flow.style.display = 'none';
+      if (state.mermaid) {
+        fallback.style.display = 'block';
+        fallback.innerHTML = '<div class="mermaid">' + escapeHtml(state.mermaid) + '</div>';
+        try {
+          mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+          mermaid.run({ nodes: fallback.querySelectorAll('.mermaid') });
+        } catch (e) {
+          fallback.innerHTML = '<div class="error">Mermaid error: ' + escapeHtml(e.message || e) + '</div>';
+        }
       } else {
-        list.innerHTML = citations.map(c => `
-          <div class="citation">
-            <a href="${c.url}" target="_blank" rel="noopener">${escapeHtml(c.title || c.url)}</a>
-            ${c.excerpt ? `<div class="excerpt">${escapeHtml(c.excerpt)}</div>` : ''}
-          </div>
-        `).join('');
+        fallback.style.display = 'block';
+        fallback.innerHTML = '<div class="error">No nodes or Mermaid in state.json</div>';
       }
+      return;
     }
 
-    function escapeHtml(s) {
-      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
+    flow.style.display = 'flex';
+    nodes.forEach((node, i) => {
+      const div = document.createElement('div');
+      div.className = 'flow-node node-' + (node.category || 'snow');
+      div.innerHTML = `
+        <div class="icon"><img src="icons/${escapeHtml(node.icon)}" alt="" onerror="this.src='icons/Snowflake_ICON_Architecture.svg'"></div>
+        <div class="label">${escapeHtml(node.label)}</div>
+        <div class="detail">${escapeHtml(node.detail || '')}</div>
+      `;
+      flow.appendChild(div);
 
-    // ---------------------------------------------------------------------
-    // Downloads
-    // ---------------------------------------------------------------------
-    function download(filename, blob) {
-      const url = URL.createObjectURL(blob);
+      if (i < nodes.length - 1) {
+        const arrow = document.createElement('div');
+        arrow.className = 'arrow-wrap';
+        arrow.innerHTML = arrowSvg();
+        flow.appendChild(arrow);
+      }
+    });
+  }
+
+  function renderCitations(citations) {
+    const list = document.getElementById('citations-list');
+    if (!citations || !citations.length) {
+      list.innerHTML = '<div class="citations-empty">No citations attached.</div>';
+      return;
+    }
+    list.innerHTML = citations.map(c => `
+      <div class="citation">
+        <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener">${escapeHtml(c.title || c.url)}</a>
+        ${c.excerpt ? `<div class="excerpt">${escapeHtml(c.excerpt)}</div>` : ''}
+      </div>
+    `).join('');
+  }
+
+  function render(state) {
+    currentState = state;
+    document.getElementById('title').textContent = state.title || 'Snowflake Architecture Diagram';
+    document.getElementById('subtitle').textContent = state.subtitle || '';
+    document.getElementById('source-tag').textContent = state.source || 'unknown';
+    renderFlow(state);
+    renderCitations(state.citations);
+  }
+
+  // ---------------------------------------------------------------------
+  // Downloads
+  // ---------------------------------------------------------------------
+  function safeName() {
+    return ((currentState && currentState.title) || 'diagram').replace(/[^a-z0-9_-]+/gi, '_');
+  }
+
+  function download(filename, blob) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    a.remove(); setTimeout(() => URL.revokeObjectURL(url), 100);
+  }
+
+  document.getElementById('btn-mmd').addEventListener('click', () => {
+    const m = (currentState && currentState.mermaid) || '';
+    if (!m) return alert('No Mermaid attached to this state. (Skill writes mermaid alongside nodes for export.)');
+    download(safeName() + '.mmd', new Blob([m], { type: 'text/plain;charset=utf-8' }));
+  });
+
+  document.getElementById('btn-svg').addEventListener('click', async () => {
+    const target = document.querySelector('.diagram-card');
+    try {
+      const dataUrl = await htmlToImage.toSvg(target);
+      const blob = await fetch(dataUrl).then(r => r.blob());
+      download(safeName() + '.svg', blob);
+    } catch (e) { alert('SVG export failed: ' + (e.message || e)); }
+  });
+
+  document.getElementById('btn-png').addEventListener('click', async () => {
+    const target = document.querySelector('.diagram-card');
+    try {
+      const dataUrl = await htmlToImage.toPng(target, { backgroundColor: 'white', pixelRatio: 2 });
       const a = document.createElement('a');
-      a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click();
-      a.remove(); setTimeout(() => URL.revokeObjectURL(url), 100);
-    }
+      a.download = safeName() + '.png';
+      a.href = dataUrl;
+      a.click();
+    } catch (e) { alert('PNG export failed: ' + (e.message || e)); }
+  });
 
-    document.getElementById('btn-mmd').addEventListener('click', () => {
-      const blob = new Blob([currentMermaid], { type: 'text/plain;charset=utf-8' });
-      const safe = (currentTitle || 'diagram').replace(/[^a-z0-9_-]+/gi, '_');
-      download(`${safe}.mmd`, blob);
-    });
+  document.getElementById('btn-html').addEventListener('click', () => {
+    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+    download(safeName() + '.html', new Blob([html], { type: 'text/html;charset=utf-8' }));
+  });
 
-    document.getElementById('btn-svg').addEventListener('click', () => {
-      const svg = document.querySelector('#diagram-target svg');
-      if (!svg) return alert('No diagram to download.');
-      const ser = new XMLSerializer();
-      const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + ser.serializeToString(svg);
-      const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
-      const safe = (currentTitle || 'diagram').replace(/[^a-z0-9_-]+/gi, '_');
-      download(`${safe}.svg`, blob);
-    });
-
-    document.getElementById('btn-png').addEventListener('click', async () => {
-      const target = document.getElementById('diagram-target');
-      if (!target.querySelector('svg')) return alert('No diagram to download.');
-      try {
-        const dataUrl = await htmlToImage.toPng(target, { backgroundColor: 'white', pixelRatio: 2 });
-        const link = document.createElement('a');
-        const safe = (currentTitle || 'diagram').replace(/[^a-z0-9_-]+/gi, '_');
-        link.download = `${safe}.png`;
-        link.href = dataUrl;
-        link.click();
-      } catch (e) {
-        alert('PNG export failed: ' + (e.message || e));
-      }
-    });
-
-    // ---------------------------------------------------------------------
-    // Boot
-    // ---------------------------------------------------------------------
-    loadState().then(render);
-  </script>
+  // ---------------------------------------------------------------------
+  // Boot
+  // ---------------------------------------------------------------------
+  loadState().then(render);
+</script>
 </body>
 </html>
