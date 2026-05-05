@@ -1,0 +1,3 @@
+# Runtime files (PIDs, transient state)
+.runtime/
+state.json

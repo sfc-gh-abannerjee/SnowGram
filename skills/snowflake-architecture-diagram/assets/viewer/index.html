@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Snowflake Architecture Diagram</title>
+  <style>
+    :root {
+      --sf-blue: #29B5E8;
+      --sf-text: #1B2A4A;
+      --sf-subtle: #5A6B7D;
+      --sf-bg: #F7F9FC;
+      --sf-border: #E1E8F0;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--sf-text); }
+    body { display: flex; flex-direction: column; background: var(--sf-bg); }
+
+    header {
+      display: flex; align-items: center; gap: 16px;
+      padding: 14px 24px;
+      background: white;
+      border-bottom: 1px solid var(--sf-border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+    header .subtitle { color: var(--sf-subtle); font-size: 13px; margin-left: 8px; }
+    header .actions { margin-left: auto; display: flex; gap: 8px; }
+    header button {
+      padding: 8px 14px;
+      background: var(--sf-blue);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    header button:hover { background: #1FA4D4; }
+    header button.secondary {
+      background: white;
+      color: var(--sf-blue);
+      border: 1px solid var(--sf-blue);
+    }
+    header button.secondary:hover { background: #F0F9FD; }
+
+    main {
+      flex: 1; display: flex; overflow: hidden;
+    }
+    #diagram-pane {
+      flex: 1; padding: 24px; overflow: auto;
+      background: white; margin: 16px; border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    #diagram-pane .mermaid svg { display: block; margin: auto; max-width: 100%; height: auto; }
+
+    aside {
+      width: 360px; padding: 16px 20px;
+      background: white; margin: 16px 16px 16px 0;
+      border-radius: 8px; overflow-y: auto;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    aside h2 { font-size: 14px; margin: 0 0 12px; color: var(--sf-subtle); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    aside .citation {
+      padding: 10px 0;
+      border-bottom: 1px solid var(--sf-border);
+    }
+    aside .citation:last-child { border-bottom: none; }
+    aside .citation a { color: var(--sf-blue); text-decoration: none; font-weight: 500; font-size: 13px; }
+    aside .citation a:hover { text-decoration: underline; }
+    aside .citation .excerpt { font-size: 12px; color: var(--sf-subtle); margin-top: 4px; line-height: 1.5; }
+    aside .empty { color: var(--sf-subtle); font-style: italic; font-size: 13px; }
+
+    footer {
+      padding: 8px 24px;
+      background: white;
+      border-top: 1px solid var(--sf-border);
+      font-size: 12px;
+      color: var(--sf-subtle);
+      display: flex; justify-content: space-between;
+    }
+    footer code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; }
+
+    .error {
+      background: #fee; border: 1px solid #fcc; color: #900;
+      padding: 12px 16px; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 12px;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Snowflake Architecture Diagram</h1>
+    <span id="title" class="subtitle"></span>
+    <div class="actions">
+      <button id="btn-mmd" class="secondary">Download .mmd</button>
+      <button id="btn-svg" class="secondary">Download .svg</button>
+      <button id="btn-png">Download .png</button>
+    </div>
+  </header>
+  <main>
+    <div id="diagram-pane">
+      <div class="mermaid" id="diagram-target">flowchart LR
+    LOADING[Loading…]</div>
+    </div>
+    <aside id="citations-pane">
+      <h2>Documentation</h2>
+      <div id="citations-list"><div class="empty">No citations attached.</div></div>
+    </aside>
+  </main>
+  <footer>
+    <span>Source: <code id="source-tag">unknown</code></span>
+    <span>snowflake-architecture-diagram skill</span>
+  </footer>
+
+  <script src="lib/mermaid.min.js"></script>
+  <script src="lib/html-to-image.min.js"></script>
+  <script>
+    // ---------------------------------------------------------------------
+    // Initialize Mermaid with Snowflake-aligned theme
+    // ---------------------------------------------------------------------
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      themeVariables: {
+        primaryColor: '#29B5E8',
+        primaryTextColor: '#fff',
+        primaryBorderColor: '#1FA4D4',
+        lineColor: '#5A6B7D',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      },
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' },
+      securityLevel: 'loose',
+    });
+
+    // ---------------------------------------------------------------------
+    // Load state.json (skill writes this before launching the viewer)
+    // ---------------------------------------------------------------------
+    async function loadState() {
+      try {
+        const r = await fetch('state.json', { cache: 'no-store' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return await r.json();
+      } catch (e) {
+        return { mermaid: '', title: 'No state.json', source: 'fallback', citations: [] };
+      }
+    }
+
+    // ---------------------------------------------------------------------
+    // Render
+    // ---------------------------------------------------------------------
+    let currentMermaid = '';
+    let currentTitle = '';
+
+    async function render(state) {
+      currentMermaid = state.mermaid || 'flowchart LR\n    EMPTY[No diagram]';
+      currentTitle = state.title || '';
+      document.getElementById('title').textContent = currentTitle;
+      document.getElementById('source-tag').textContent = state.source || 'unknown';
+
+      const target = document.getElementById('diagram-target');
+      try {
+        const { svg } = await mermaid.render('diagram-svg', currentMermaid);
+        target.innerHTML = svg;
+      } catch (e) {
+        target.innerHTML = `<div class="error">Mermaid render error:\n${e.message || e}</div>`;
+      }
+
+      // Citations drawer
+      const citations = state.citations || [];
+      const list = document.getElementById('citations-list');
+      if (!citations.length) {
+        list.innerHTML = '<div class="empty">No citations attached.</div>';
+      } else {
+        list.innerHTML = citations.map(c => `
+          <div class="citation">
+            <a href="${c.url}" target="_blank" rel="noopener">${escapeHtml(c.title || c.url)}</a>
+            ${c.excerpt ? `<div class="excerpt">${escapeHtml(c.excerpt)}</div>` : ''}
+          </div>
+        `).join('');
+      }
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // ---------------------------------------------------------------------
+    // Downloads
+    // ---------------------------------------------------------------------
+    function download(filename, blob) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click();
+      a.remove(); setTimeout(() => URL.revokeObjectURL(url), 100);
+    }
+
+    document.getElementById('btn-mmd').addEventListener('click', () => {
+      const blob = new Blob([currentMermaid], { type: 'text/plain;charset=utf-8' });
+      const safe = (currentTitle || 'diagram').replace(/[^a-z0-9_-]+/gi, '_');
+      download(`${safe}.mmd`, blob);
+    });
+
+    document.getElementById('btn-svg').addEventListener('click', () => {
+      const svg = document.querySelector('#diagram-target svg');
+      if (!svg) return alert('No diagram to download.');
+      const ser = new XMLSerializer();
+      const xml = '<?xml version="1.0" encoding="UTF-8"?>\n' + ser.serializeToString(svg);
+      const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+      const safe = (currentTitle || 'diagram').replace(/[^a-z0-9_-]+/gi, '_');
+      download(`${safe}.svg`, blob);
+    });
+
+    document.getElementById('btn-png').addEventListener('click', async () => {
+      const target = document.getElementById('diagram-target');
+      if (!target.querySelector('svg')) return alert('No diagram to download.');
+      try {
+        const dataUrl = await htmlToImage.toPng(target, { backgroundColor: 'white', pixelRatio: 2 });
+        const link = document.createElement('a');
+        const safe = (currentTitle || 'diagram').replace(/[^a-z0-9_-]+/gi, '_');
+        link.download = `${safe}.png`;
+        link.href = dataUrl;
+        link.click();
+      } catch (e) {
+        alert('PNG export failed: ' + (e.message || e));
+      }
+    });
+
+    // ---------------------------------------------------------------------
+    // Boot
+    // ---------------------------------------------------------------------
+    loadState().then(render);
+  </script>
+</body>
+</html>

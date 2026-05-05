@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Expanded_Icons" data-name="Expanded Icons" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: #29b5e8;
+        stroke-width: 0px;
+      }
+    </style>
+  </defs>
+  <path class="cls-1" d="M54.25,12.4H9.75c-2.76,0-5,2.24-5,5v29.2c0,2.76,2.24,5,5,5h44.5c2.76,0,5-2.24,5-5v-29.2c0-2.76-2.24-5-5-5ZM9.75,16.4h44.5c.54,0,1,.46,1,1v6.1H8.75v-6.1c0-.54.46-1,1-1ZM54.25,47.6H9.75c-.54,0-1-.46-1-1v-20.6h46.5v20.6c0,.54-.46,1-1,1Z"/>
+  <path class="cls-1" d="M12.73,21.59c.81,0,1.47-.66,1.47-1.47s-.66-1.47-1.47-1.47-1.47.66-1.47,1.47.66,1.47,1.47,1.47Z"/>
+  <path class="cls-1" d="M17.34,21.59c.81,0,1.47-.66,1.47-1.47s-.66-1.47-1.47-1.47-1.47.66-1.47,1.47.66,1.47,1.47,1.47Z"/>
+  <rect class="cls-1" x="14.69" y="28.56" width="6.8" height="6.8" rx="1.43" ry="1.43"/>
+  <rect class="cls-1" x="33.24" y="28.56" width="6.8" height="6.8" rx="1.43" ry="1.43"/>
+  <rect class="cls-1" x="23.96" y="28.56" width="6.8" height="6.8" rx="1.43" ry="1.43"/>
+  <rect class="cls-1" x="42.51" y="28.56" width="6.8" height="6.8" rx="1.43" ry="1.43"/>
+  <rect class="cls-1" x="14.69" y="37.73" width="6.8" height="6.8" rx="1.43" ry="1.43"/>
+  <rect class="cls-1" x="33.24" y="37.73" width="6.8" height="6.8" rx="1.43" ry="1.43"/>
+  <rect class="cls-1" x="23.96" y="37.73" width="6.8" height="6.8" rx="1.43" ry="1.43"/>
+  <rect class="cls-1" x="42.51" y="37.73" width="6.8" height="6.8" rx="1.43" ry="1.43"/>
+</svg>

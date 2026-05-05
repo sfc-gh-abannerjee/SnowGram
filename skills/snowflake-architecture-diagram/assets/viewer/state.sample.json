@@ -1,0 +1,12 @@
+{
+  "mermaid": "flowchart LR\n    A[Source] --> B[Snowflake]\n    B --> C[Dashboard]\n    classDef sf fill:#29B5E8,stroke:#fff,color:#fff\n    class A,B,C sf",
+  "title": "Sample diagram",
+  "source": "demo",
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-overview",
+      "title": "Loading data into Snowflake",
+      "excerpt": "Overview of supported sources and ingestion options."
+    }
+  ]
+}

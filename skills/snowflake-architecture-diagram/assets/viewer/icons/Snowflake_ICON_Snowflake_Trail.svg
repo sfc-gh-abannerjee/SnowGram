@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 64 64">
+  <!-- Generator: Adobe Illustrator 29.7.1, SVG Export Plug-In . SVG Version: 2.1.1 Build 8)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #fff;
+        stroke-width: 4px;
+      }
+
+      .st0, .st1, .st2, .st3, .st4 {
+        stroke: #29b5e8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .st5 {
+        fill: #ec008c;
+      }
+
+      .st1 {
+        stroke-dasharray: 1 4.9;
+      }
+
+      .st1, .st2, .st3, .st4 {
+        fill: none;
+        stroke-width: 2.5px;
+      }
+
+      .st2 {
+        stroke-dasharray: 1 5;
+      }
+
+      .st6 {
+        display: none;
+      }
+
+      .st4 {
+        stroke-dasharray: 1 4.9;
+      }
+    </style>
+  </defs>
+  <g id="ARTWORK">
+    <g class="st6">
+      <circle class="st4" cx="-9" cy="-468.6" r="25.5"/>
+    </g>
+    <g class="st6">
+      <circle class="st1" cx="-13.9" cy="-380.1" r="18.8"/>
+    </g>
+    <g class="st6">
+      <circle class="st2" cx="74.3" cy="-468.3" r="26.6" transform="translate(8.1 1.2) rotate(-1)"/>
+    </g>
+    <line class="st0" x1="14.2" y1="46.5" x2="25.4" y2="35.3"/>
+    <path class="st0" d="M25.4,22.1c-3.6,3.6-3.6,9.5,0,13.1,3.6,3.6,9.5,3.6,13.1,0,3.6-3.6,3.6-9.5,0-13.1-3.6-3.6-9.5-3.6-13.1,0Z"/>
+    <g>
+      <polyline class="st3" points="52 23.3 46.9 23.3 46.9 47.2 52 47.2"/>
+      <circle class="st3" cx="55.2" cy="23.3" r="3"/>
+      <circle class="st3" cx="55.2" cy="35.3" r="3"/>
+      <circle class="st3" cx="55.2" cy="47.2" r="3"/>
+      <line class="st3" x1="52" y1="35.3" x2="47.2" y2="35.3"/>
+    </g>
+    <g>
+      <line class="st3" x1="6.3" y1="23.7" x2="7.6" y2="23.7"/>
+      <line class="st3" x1="10.8" y1="23.7" x2="12.8" y2="23.7"/>
+      <line class="st3" x1="16" y1="23.7" x2="18.9" y2="23.7"/>
+      <line class="st3" x1="6.8" y1="32.2" x2="10.5" y2="32.2"/>
+      <line class="st3" x1="13.7" y1="32.2" x2="18.5" y2="32.2"/>
+      <line class="st3" x1="5.6" y1="28" x2="6.7" y2="28"/>
+      <line class="st3" x1="9.8" y1="28" x2="14.4" y2="28"/>
+      <line class="st3" x1="17.6" y1="28" x2="18.2" y2="28"/>
+    </g>
+  </g>
+  <g id="GUIDES" class="st6">
+    <path class="st5" d="M-24.5-579.6v55h-55v-55H-24.5M-24-580.1h-56v56H-24v-56h0Z"/>
+    <path class="st5" d="M59.5-579.6v55H4.5v-55h55M60-580.1H4v56h56v-56h0Z"/>
+    <path class="st5" d="M-24.5-495.6v55h-55v-55H-24.5M-24-496.1h-56v56H-24v-56h0Z"/>
+    <path class="st5" d="M59.5-495.6v55H4.5v-55h55M60-496.1H4v56h56v-56h0Z"/>
+    <path class="st5" d="M-24.5-411.6v55h-55v-55H-24.5M-24-412.1h-56v56H-24v-56h0Z"/>
+    <path class="st5" d="M-24.5-327.6v55h-55v-55H-24.5M-24-328.1h-56v56H-24v-56h0Z"/>
+    <path class="st5" d="M-24.5-243.6v55h-55v-55H-24.5M-24-244.1h-56v56H-24v-56h0Z"/>
+    <path class="st5" d="M-24.5-159.6v55h-55v-55H-24.5M-24-160.1h-56v56H-24v-56h0Z"/>
+    <path class="st5" d="M59.5-411.6v55H4.5v-55h55M60-412.1H4v56h56v-56h0Z"/>
+    <path class="st5" d="M59.5-327.6v55H4.5v-55h55M60-328.1H4v56h56v-56h0Z"/>
+    <path class="st5" d="M59.5-243.6v55H4.5v-55h55M60-244.1H4v56h56v-56h0Z"/>
+    <path class="st5" d="M59.5-159.6v55H4.5v-55h55M60-160.1H4v56h56v-56h0Z"/>
+    <path class="st5" d="M59.5,4.5v55H4.5V4.5h55M60,4H4v56h56V4h0Z"/>
+    <path class="st5" d="M-24.5-77.8V-22.8h-55v-55H-24.5M-24-78.3h-56V-22.3H-24v-56h0Z"/>
+    <path class="st5" d="M59.5-77.8V-22.8H4.5v-55h55M60-78.3H4V-22.3h56v-56h0Z"/>
+    <path class="st5" d="M32,15.6c7.2,0,13.1,5.9,13.1,13.1s-5.9,13.1-13.1,13.1-13.1-5.9-13.1-13.1,5.9-13.1,13.1-13.1M32,15.1c-7.5,0-13.6,6.1-13.6,13.6s6.1,13.6,13.6,13.6,13.6-6.1,13.6-13.6-6.1-13.6-13.6-13.6h0Z"/>
+  </g>
+</svg>
