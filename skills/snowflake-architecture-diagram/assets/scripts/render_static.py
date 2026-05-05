@@ -73,10 +73,14 @@ def render(state: dict) -> str:
         count=1,
     )
 
-    # Swap the icon src lookup so it uses node.icon_data when present
+    # Swap the icon src lookup so it uses node.icon_data when present.
+    # NOTE: replacement MUST include the closing ">" — otherwise the browser
+    # tries to absorb sibling elements into this img's attribute list and
+    # the entire flow-node DOM becomes malformed (label width collapses to
+    # the intrinsic width of its text instead of filling the card).
     icon_src_swap = (
         '<img src="${(node.icon_data || (\'icons/\' + escapeHtml(node.icon)))}"'
-        ' alt="" onerror="this.style.display=\'none\'"'
+        ' alt="" onerror="this.style.display=\'none\'">'
     )
     html = re.sub(
         r'<img src="icons/\$\{escapeHtml\(node\.icon\)\}"[^>]*>',

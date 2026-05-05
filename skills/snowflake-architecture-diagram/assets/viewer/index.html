@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700;900&display=swap" rel="stylesheet">
 <style>
+  /* ────────────────────────── Tokens ────────────────────────── */
   :root {
     --sf-blue: #29B5E8;
     --sf-mid-blue: #11567F;
@@ -17,17 +18,72 @@
     --sf-orange: #FF9F36;
     --sf-windy: #8A999E;
     --sf-midnight: #000000;
+
     --surface: #FFFFFF;
+    --surface-soft: #F4F7FA;
     --page-bg: #F4F7FA;
     --text-primary: #1A2332;
     --text-secondary: #5A6A7A;
     --text-muted: #8A999E;
     --border-subtle: rgba(0,53,69,0.08);
     --shadow-card: 0 1px 2px rgba(0,53,69,0.05), 0 4px 16px rgba(0,53,69,0.06);
+    --connector-color: #8A999E;
+
+    --node-onprem-bg:     rgba(255,159,54,0.06);
+    --node-onprem-border: rgba(255,159,54,0.22);
+    --node-onprem-icon-bg:     rgba(255,159,54,0.12);
+    --node-onprem-icon-border: rgba(255,159,54,0.30);
+
+    --node-bridge-bg:     rgba(17,86,127,0.05);
+    --node-bridge-border: rgba(17,86,127,0.18);
+    --node-bridge-icon-bg:     rgba(17,86,127,0.10);
+    --node-bridge-icon-border: rgba(17,86,127,0.22);
+
+    --node-snow-bg:     rgba(41,181,232,0.06);
+    --node-snow-border: rgba(41,181,232,0.20);
+    --node-snow-icon-bg:     rgba(41,181,232,0.12);
+    --node-snow-icon-border: rgba(41,181,232,0.26);
+
+    --node-outcome-bg:     rgba(113,211,220,0.07);
+    --node-outcome-border: rgba(113,211,220,0.24);
+    --node-outcome-icon-bg:     rgba(113,211,220,0.16);
+    --node-outcome-icon-border: rgba(113,211,220,0.32);
+
     --radius-card: 12px;
     --radius-node: 10px;
     --radius-badge: 6px;
-    --connector-color: #8A999E;
+  }
+
+  [data-theme="dark"] {
+    --surface: #1B252E;
+    --surface-soft: #243140;
+    --page-bg: #0F1820;
+    --text-primary: #E8EEF4;
+    --text-secondary: #9DB0C0;
+    --text-muted: #6F7E8E;
+    --border-subtle: rgba(255,255,255,0.08);
+    --shadow-card: 0 1px 2px rgba(0,0,0,0.40), 0 6px 22px rgba(0,0,0,0.30);
+    --connector-color: #5A6A7A;
+
+    --node-onprem-bg:     rgba(255,159,54,0.10);
+    --node-onprem-border: rgba(255,159,54,0.30);
+    --node-onprem-icon-bg:     rgba(255,159,54,0.18);
+    --node-onprem-icon-border: rgba(255,159,54,0.40);
+
+    --node-bridge-bg:     rgba(41,181,232,0.10);
+    --node-bridge-border: rgba(41,181,232,0.32);
+    --node-bridge-icon-bg:     rgba(41,181,232,0.18);
+    --node-bridge-icon-border: rgba(41,181,232,0.40);
+
+    --node-snow-bg:     rgba(41,181,232,0.10);
+    --node-snow-border: rgba(41,181,232,0.30);
+    --node-snow-icon-bg:     rgba(41,181,232,0.20);
+    --node-snow-icon-border: rgba(41,181,232,0.45);
+
+    --node-outcome-bg:     rgba(113,211,220,0.12);
+    --node-outcome-border: rgba(113,211,220,0.34);
+    --node-outcome-icon-bg:     rgba(113,211,220,0.22);
+    --node-outcome-icon-border: rgba(113,211,220,0.45);
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -37,12 +93,13 @@
     background: var(--page-bg);
     color: var(--text-primary);
     min-height: 100vh;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
-  /* ── Header band (gradient) ── */
+  /* ────────────────────────── Header band ────────────────────────── */
   .header-band {
     background: linear-gradient(135deg, var(--sf-iceberg) 0%, var(--sf-mid-blue) 60%, var(--sf-blue) 100%);
-    padding: 36px 24px 32px;
+    padding: 36px 32px 32px;
     position: relative;
     overflow: hidden;
   }
@@ -56,20 +113,23 @@
     pointer-events: none;
   }
   .header-inner {
-    max-width: 1200px;
+    max-width: 1320px;
     margin: 0 auto;
     position: relative;
     z-index: 1;
     display: flex;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;
   }
+  .header-text { min-width: 280px; }
   .header-text h1 {
     font-size: 26px;
     font-weight: 900;
     letter-spacing: -0.02em;
     color: #FFFFFF;
     margin-bottom: 4px;
+    line-height: 1.2;
   }
   .header-text .sub {
     font-size: 12px;
@@ -78,10 +138,13 @@
     text-transform: uppercase;
     font-weight: 700;
   }
+
   .header-actions {
     margin-left: auto;
     display: flex;
     gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
   }
   .header-actions button {
     background: rgba(255,255,255,0.10);
@@ -94,13 +157,32 @@
     font-weight: 700;
     cursor: pointer;
     letter-spacing: 0.02em;
+    transition: background 0.2s ease;
   }
-  .header-actions button:hover { background: rgba(255,255,255,0.18); }
+  .header-actions button:hover { background: rgba(255,255,255,0.20); }
 
-  /* ── Page ── */
-  .page { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .theme-toggle {
+    width: 36px;
+    height: 36px;
+    padding: 0 !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .theme-toggle svg { width: 16px; height: 16px; }
+  .theme-toggle .moon { display: inline; }
+  .theme-toggle .sun  { display: none; }
+  [data-theme="dark"] .theme-toggle .moon { display: none; }
+  [data-theme="dark"] .theme-toggle .sun  { display: inline; }
 
-  /* ── Legend ── */
+  /* ────────────────────────── Page ────────────────────────── */
+  .page {
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 28px 24px;
+  }
+
+  /* ────────────────────────── Legend ────────────────────────── */
   .legend {
     display: flex;
     justify-content: center;
@@ -115,7 +197,7 @@
     font-size: 12px;
     color: var(--text-secondary);
     font-weight: 700;
-    letter-spacing: 0.01em;
+    letter-spacing: 0.02em;
   }
   .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
   .dot-onprem  { background: var(--sf-orange); }
@@ -123,106 +205,127 @@
   .dot-snow    { background: var(--sf-blue); }
   .dot-outcome { background: var(--sf-star-blue); }
 
-  /* ── Diagram card ── */
+  /* ────────────────────────── Diagram card ────────────────────────── */
   .diagram-card {
     background: var(--surface);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
     border: 1px solid var(--border-subtle);
-    padding: 28px 24px;
+    padding: 32px 28px;
     margin-bottom: 20px;
     overflow-x: auto;
+    transition: background-color 0.25s ease, border-color 0.25s ease;
   }
 
-  /* ── Flow row ── */
+  /* ────────────────────────── Flow row + nodes ────────────────────────── */
   .flow {
     display: flex;
     align-items: stretch;
     gap: 0;
     flex-wrap: nowrap;
+    min-width: max-content;
   }
+
   .flow-node {
-    flex: 1;
-    min-width: 140px;
-    text-align: center;
-    padding: 16px 12px;
+    /* Fixed minimum width prevents label wrapping into icon space */
+    min-width: 200px;
+    width: 200px;
+    flex: 0 0 auto;
+    padding: 20px 14px 18px;
     border-radius: var(--radius-node);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 6px;
+    background: var(--surface);
+    border: 1.5px solid transparent;
+    /* Plain block layout — children (icon, label, detail) stack as block elements
+       at full content-area width. No flex on the card itself: flex would interact
+       with explicit width:100% on the children and produce intrinsic widths. */
+    display: block;
     transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-    position: relative;
+    text-align: center;
   }
   .flow-node:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 24px rgba(0,53,69,0.12);
+    box-shadow: 0 10px 28px rgba(0,53,69,0.12);
     z-index: 2;
   }
+
   .flow-node .icon {
-    width: 56px;
-    height: 56px;
+    /* 64x64 circle, centered horizontally as a block */
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
     border: 1.5px solid transparent;
-    padding: 10px;
+    padding: 12px;
   }
-  .flow-node .icon img { width: 100%; height: 100%; object-fit: contain; }
+  .flow-node .icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: var(--icon-filter, none);
+  }
+  [data-theme="dark"] .flow-node .icon img { filter: brightness(1.15); }
+
   .flow-node .label {
-    font-size: 13px;
+    display: block;
+    margin-bottom: 4px;
+    font-size: 14px;
     font-weight: 700;
     line-height: 1.3;
     color: var(--text-primary);
-    margin-top: 6px;
+    text-align: center;
   }
   .flow-node .detail {
-    font-size: 11px;
+    display: block;
+    font-size: 12px;
     color: var(--text-secondary);
-    line-height: 1.4;
-    max-width: 165px;
+    line-height: 1.45;
+    text-align: center;
+    word-break: normal;
+    overflow-wrap: break-word;
   }
 
-  .node-onprem  { background: rgba(255,159,54,0.05); border: 1.5px solid rgba(255,159,54,0.18); }
-  .node-onprem  .icon { background: rgba(255,159,54,0.10); border-color: rgba(255,159,54,0.20); }
-  .node-bridge  { background: rgba(17,86,127,0.04); border: 1.5px solid rgba(17,86,127,0.14); }
-  .node-bridge  .icon { background: rgba(17,86,127,0.08); border-color: rgba(17,86,127,0.15); }
-  .node-snow    { background: rgba(41,181,232,0.05); border: 1.5px solid rgba(41,181,232,0.16); }
-  .node-snow    .icon { background: rgba(41,181,232,0.10); border-color: rgba(41,181,232,0.18); }
-  .node-outcome { background: rgba(113,211,220,0.06); border: 1.5px solid rgba(113,211,220,0.20); }
-  .node-outcome .icon { background: rgba(113,211,220,0.12); border-color: rgba(113,211,220,0.20); }
+  /* Category styling */
+  .node-onprem  { background: var(--node-onprem-bg); border-color: var(--node-onprem-border); }
+  .node-onprem  .icon { background: var(--node-onprem-icon-bg); border-color: var(--node-onprem-icon-border); }
+  .node-bridge  { background: var(--node-bridge-bg); border-color: var(--node-bridge-border); }
+  .node-bridge  .icon { background: var(--node-bridge-icon-bg); border-color: var(--node-bridge-icon-border); }
+  .node-snow    { background: var(--node-snow-bg); border-color: var(--node-snow-border); }
+  .node-snow    .icon { background: var(--node-snow-icon-bg); border-color: var(--node-snow-icon-border); }
+  .node-outcome { background: var(--node-outcome-bg); border-color: var(--node-outcome-border); }
+  .node-outcome .icon { background: var(--node-outcome-icon-bg); border-color: var(--node-outcome-icon-border); }
 
-  /* ── Animated connectors ── */
+  /* ────────────────────────── Animated connectors ────────────────────────── */
   .arrow-wrap {
-    display: flex; align-items: center; justify-content: center;
-    min-width: 44px;
-    flex-shrink: 0;
+    flex: 0 0 auto;
+    width: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   @keyframes flow-dash { to { stroke-dashoffset: -14; } }
   .flow-line { animation: flow-dash 1.4s linear infinite; }
 
-  /* ── Citations panel ── */
+  /* ────────────────────────── Citations panel ────────────────────────── */
   .citations {
     background: var(--surface);
     border-radius: var(--radius-card);
     box-shadow: var(--shadow-card);
     border: 1px solid var(--border-subtle);
     padding: 22px 24px;
+    transition: background-color 0.25s ease, border-color 0.25s ease;
   }
   .citations h2 {
     font-size: 12px;
-    color: var(--sf-mid-blue);
+    color: var(--sf-blue);
     margin: 0 0 14px;
     font-weight: 900;
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
-  .citation {
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border-subtle);
-  }
+  .citation { padding: 10px 0; border-bottom: 1px solid var(--border-subtle); }
   .citation:last-child { border-bottom: none; }
   .citation a {
     color: var(--sf-blue);
@@ -239,7 +342,7 @@
   }
   .citations-empty { color: var(--text-muted); font-style: italic; font-size: 13px; }
 
-  /* ── Mermaid fallback panel (legacy state.json without nodes/edges) ── */
+  /* ────────────────────────── Mermaid fallback ────────────────────────── */
   .mermaid-fallback {
     background: var(--surface);
     border-radius: var(--radius-card);
@@ -247,35 +350,33 @@
     border: 1px solid var(--border-subtle);
     padding: 22px 24px;
   }
-  .mermaid-fallback .note {
-    margin-bottom: 12px;
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
   .mermaid-fallback pre {
-    background: var(--page-bg);
+    background: var(--surface-soft);
     padding: 12px;
     border-radius: 6px;
     font-size: 12px;
     overflow-x: auto;
   }
 
-  /* ── Footer ── */
   footer {
     text-align: center;
-    padding: 16px 0 32px;
+    padding: 16px 0 36px;
     color: var(--text-muted);
     font-size: 11px;
   }
   footer code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
 
-  /* ── Error ── */
   .error {
-    background: #FEE; border: 1px solid #FCC; color: #900;
-    padding: 12px 16px; border-radius: 6px;
-    font-family: ui-monospace, monospace; font-size: 12px;
+    background: rgba(255,0,0,0.08);
+    border: 1px solid rgba(255,0,0,0.25);
+    color: #C62828;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
     white-space: pre-wrap;
   }
+  [data-theme="dark"] .error { color: #FFB4AB; background: rgba(255,80,80,0.10); }
 </style>
 </head>
 <body>
@@ -291,6 +392,13 @@
       <button id="btn-svg">Download .svg</button>
       <button id="btn-png">Download .png</button>
       <button id="btn-html">Download .html</button>
+      <button id="btn-theme" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg class="moon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
+        <svg class="sun"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+        </svg>
+      </button>
     </div>
   </div>
 </div>
@@ -323,9 +431,33 @@
 <script src="lib/mermaid.min.js"></script>
 <script src="lib/html-to-image.min.js"></script>
 <script>
-  // ---------------------------------------------------------------------
+  // ────────────────────────────────────────────────────────
+  // Theme handling
+  // ────────────────────────────────────────────────────────
+  const THEME_KEY = 'snowgram.theme';
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* ignore */ }
+  }
+  (function bootTheme() {
+    let theme = 'light';
+    try { theme = localStorage.getItem(THEME_KEY) || 'light'; } catch (_) {}
+    if (theme !== 'dark') {
+      // Respect system preference for first-load only
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        try { if (!localStorage.getItem(THEME_KEY)) theme = 'dark'; } catch (_) {}
+      }
+    }
+    applyTheme(theme);
+  })();
+  document.getElementById('btn-theme').addEventListener('click', () => {
+    const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+  });
+
+  // ────────────────────────────────────────────────────────
   // State loader
-  // ---------------------------------------------------------------------
+  // ────────────────────────────────────────────────────────
   async function loadState() {
     try {
       const r = await fetch('state.json', { cache: 'no-store' });
@@ -336,9 +468,6 @@
     }
   }
 
-  // ---------------------------------------------------------------------
-  // Renderers
-  // ---------------------------------------------------------------------
   let currentState = null;
 
   function escapeHtml(s) {
@@ -346,11 +475,11 @@
   }
 
   function arrowSvg() {
-    return `<svg width="44" height="20" viewBox="0 0 44 20" fill="none">
-      <line x1="2" y1="10" x2="30" y2="10"
+    return `<svg width="56" height="20" viewBox="0 0 56 20" fill="none">
+      <line x1="2" y1="10" x2="40" y2="10"
             stroke="var(--connector-color)" stroke-width="1.5"
             stroke-dasharray="4 3" class="flow-line"/>
-      <path d="M30 5l8 5-8 5"
+      <path d="M40 5l8 5-8 5"
             stroke="var(--connector-color)" stroke-width="2"
             stroke-linecap="round" stroke-linejoin="round" fill="none"/>
     </svg>`;
@@ -364,7 +493,6 @@
 
     const nodes = state.nodes || [];
     if (!nodes.length) {
-      // No structured nodes -> fall back to Mermaid (legacy state)
       flow.style.display = 'none';
       if (state.mermaid) {
         fallback.style.display = 'block';
@@ -425,13 +553,12 @@
     renderCitations(state.citations);
   }
 
-  // ---------------------------------------------------------------------
+  // ────────────────────────────────────────────────────────
   // Downloads
-  // ---------------------------------------------------------------------
+  // ────────────────────────────────────────────────────────
   function safeName() {
     return ((currentState && currentState.title) || 'diagram').replace(/[^a-z0-9_-]+/gi, '_');
   }
-
   function download(filename, blob) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -439,13 +566,11 @@
     document.body.appendChild(a); a.click();
     a.remove(); setTimeout(() => URL.revokeObjectURL(url), 100);
   }
-
   document.getElementById('btn-mmd').addEventListener('click', () => {
     const m = (currentState && currentState.mermaid) || '';
-    if (!m) return alert('No Mermaid attached to this state. (Skill writes mermaid alongside nodes for export.)');
+    if (!m) return alert('No Mermaid attached. Skill writes mermaid alongside nodes for export.');
     download(safeName() + '.mmd', new Blob([m], { type: 'text/plain;charset=utf-8' }));
   });
-
   document.getElementById('btn-svg').addEventListener('click', async () => {
     const target = document.querySelector('.diagram-card');
     try {
@@ -454,26 +579,24 @@
       download(safeName() + '.svg', blob);
     } catch (e) { alert('SVG export failed: ' + (e.message || e)); }
   });
-
   document.getElementById('btn-png').addEventListener('click', async () => {
     const target = document.querySelector('.diagram-card');
     try {
-      const dataUrl = await htmlToImage.toPng(target, { backgroundColor: 'white', pixelRatio: 2 });
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const dataUrl = await htmlToImage.toPng(target, {
+        backgroundColor: isDark ? '#1B252E' : '#FFFFFF',
+        pixelRatio: 2,
+      });
       const a = document.createElement('a');
-      a.download = safeName() + '.png';
-      a.href = dataUrl;
-      a.click();
+      a.download = safeName() + '.png'; a.href = dataUrl; a.click();
     } catch (e) { alert('PNG export failed: ' + (e.message || e)); }
   });
-
   document.getElementById('btn-html').addEventListener('click', () => {
     const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
     download(safeName() + '.html', new Blob([html], { type: 'text/html;charset=utf-8' }));
   });
 
-  // ---------------------------------------------------------------------
   // Boot
-  // ---------------------------------------------------------------------
   loadState().then(render);
 </script>
 </body>
