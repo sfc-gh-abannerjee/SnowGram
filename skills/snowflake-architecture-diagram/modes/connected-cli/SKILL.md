@@ -14,6 +14,18 @@ Calls the deployed SnowGram agent directly via the Cortex Agents API and renders
 - Agent `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT` deployed and reachable from the active role
 - Function grants verified during the parent skill's mode-detection probe
 
+## Path resolution (do this once)
+
+This sub-skill uses `$SKILL_DIR/...` paths. Resolve them by sourcing the canonical helper. The absolute path to that helper is `<SKILL_BASE_DIR>/assets/scripts/skill_paths.sh`, where `<SKILL_BASE_DIR>` is the path the skill loader prints as `Base directory for this skill:` when this skill is loaded (or the path returned by `cortex skill list` for `snowflake-architecture-diagram`).
+
+```bash
+source "<SKILL_BASE_DIR>/assets/scripts/skill_paths.sh"
+# Now: $SKILL_DIR, $TEMPLATES_DIR, $COMPOSER_DIR, $VIEWER_DIR, $SCRIPTS_DIR,
+#      $STATE_FILE are all set. See the parent SKILL.md for the full table.
+```
+
+For Python helpers, import `assets/scripts/skill_paths.py` analogously. The parent SKILL.md shows the importlib pattern.
+
 ## Workflow
 
 ### Step 1: Invoke the agent
@@ -44,7 +56,7 @@ mermaid = m.group(1) if m else None
 **If Mermaid is missing** (agent answered in prose only):
 - The agent's tool description may not be enforcing Mermaid output (see `snowgram-agent` skill for the fix)
 - Fall through to standalone mode using the agent's textual response as a hint:
-  - Pass the agent's response to a freeform composer call: extract any component names mentioned, look them up in `<DIR>/assets/component_synonyms.json`, and feed BLOCK_IDs to `composer.py`
+  - Pass the agent's response to a freeform composer call: extract any component names mentioned, look them up in `$SKILL_DIR/assets/component_synonyms.json`, and feed BLOCK_IDs to `composer.py`
   - Tag the result `source: "connected-cli:fallback-to-standalone"`
 
 **⚠️ STOP**: confirm the extracted Mermaid (or the fallback's component selection) with the user before launching the viewer.
@@ -70,7 +82,7 @@ Collect 3-5 citations.
 ### Step 5: Write state.json + launch viewer
 
 ```bash
-cat > <DIR>/assets/viewer/state.json <<EOF
+cat > $SKILL_DIR/assets/viewer/state.json <<EOF
 {
   "mermaid": "<Mermaid extracted or composed>",
   "title": "<short title from user prompt>",
@@ -79,7 +91,7 @@ cat > <DIR>/assets/viewer/state.json <<EOF
 }
 EOF
 
-<DIR>/assets/scripts/launch_viewer.sh
+$SKILL_DIR/assets/scripts/launch_viewer.sh
 ```
 
 ### Step 6: Iteration
@@ -95,8 +107,8 @@ For threaded refinement, escape to `connected-ui` mode where the live frontend h
 | `cortex agents run SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT "<q>"` | Primary agent invocation |
 | `cortex semantic-views query COMPONENT_MAP_SV "<q>"` | Synonym enrichment |
 | `cortex search docs "<q>"` | Citations |
-| `python3 <DIR>/assets/composer/composer.py` | Fallback when agent omits Mermaid |
-| `<DIR>/assets/scripts/launch_viewer.sh` | Render |
+| `python3 $SKILL_DIR/assets/composer/composer.py` | Fallback when agent omits Mermaid |
+| `$SKILL_DIR/assets/scripts/launch_viewer.sh` | Render |
 
 ## Stopping points
 

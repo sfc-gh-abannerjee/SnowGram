@@ -21,6 +21,18 @@ Generates a diagram of a real, deployed data flow by walking `cortex lineage` fr
 - Current role has `USAGE` on the target object's database/schema
 - Target object exists (table, view, materialized view, dynamic table, or stream)
 
+## Path resolution (do this once)
+
+This sub-skill uses `$SKILL_DIR/...` paths. Resolve them by sourcing the canonical helper. The absolute path to that helper is `<SKILL_BASE_DIR>/assets/scripts/skill_paths.sh`, where `<SKILL_BASE_DIR>` is the path the skill loader prints as `Base directory for this skill:` when this skill is loaded (or the path returned by `cortex skill list` for `snowflake-architecture-diagram`).
+
+```bash
+source "<SKILL_BASE_DIR>/assets/scripts/skill_paths.sh"
+# Now: $SKILL_DIR, $TEMPLATES_DIR, $COMPOSER_DIR, $VIEWER_DIR, $SCRIPTS_DIR,
+#      $STATE_FILE are all set. See the parent SKILL.md for the full table.
+```
+
+For Python helpers, import `assets/scripts/skill_paths.py` analogously. The parent SKILL.md shows the importlib pattern.
+
 ## Workflow
 
 ### Step 1: Identify the target object
@@ -55,7 +67,7 @@ Capture: column count, key columns, last-modified timestamp, row estimate. These
 
 ### Step 4: Map object types to canonical component types
 
-Read `<DIR>/assets/component_synonyms.json`. For each lineage node, infer the most appropriate component type:
+Read `$SKILL_DIR/assets/component_synonyms.json`. For each lineage node, infer the most appropriate component type:
 
 | Snowflake object kind | Default component type |
 |---|---|
@@ -73,9 +85,9 @@ Read `<DIR>/assets/component_synonyms.json`. For each lineage node, infer the mo
 | PROCEDURE | `stored_procedure` |
 | STAGE | `external_stage` |
 
-Refine via name heuristics: `*_BRONZE` -> `bronze_table`, `*_SILVER` -> `silver_table`, `*_GOLD`/`MART_*`/`FACT_*`/`DIM_*` -> `gold_table`. Use `<DIR>/assets/component_synonyms.json` for additional fuzzy matches.
+Refine via name heuristics: `*_BRONZE` -> `bronze_table`, `*_SILVER` -> `silver_table`, `*_GOLD`/`MART_*`/`FACT_*`/`DIM_*` -> `gold_table`. Use `$SKILL_DIR/assets/component_synonyms.json` for additional fuzzy matches.
 
-For each component type, find the best matching `BLOCK_ID` in `<DIR>/assets/component_blocks.json`. If no exact match exists, fall back to a generic `snowflake_component` style with the object's actual name as the label.
+For each component type, find the best matching `BLOCK_ID` in `$SKILL_DIR/assets/component_blocks.json`. If no exact match exists, fall back to a generic `snowflake_component` style with the object's actual name as the label.
 
 ### Step 5: Compose the diagram
 
@@ -84,7 +96,7 @@ Two sub-options:
 **5a. Use the local composer with mapped BLOCK_IDs:**
 
 ```bash
-python3 <DIR>/assets/composer/composer.py BLOCK_ID_1 BLOCK_ID_2 ...
+python3 $SKILL_DIR/assets/composer/composer.py BLOCK_ID_1 BLOCK_ID_2 ...
 ```
 
 This produces a styled Mermaid flowchart but loses the actual object names. Best when the user wants a **stylized** diagram.
@@ -115,7 +127,7 @@ Best when the user wants documentation of their **actual** pipeline. This is the
 ### Step 6: Render
 
 ```bash
-cat > <DIR>/assets/viewer/state.json <<EOF
+cat > $SKILL_DIR/assets/viewer/state.json <<EOF
 {
   "mermaid": "<the synthesized Mermaid>",
   "title": "Lineage of <object_name>",
@@ -124,7 +136,7 @@ cat > <DIR>/assets/viewer/state.json <<EOF
 }
 EOF
 
-<DIR>/assets/scripts/launch_viewer.sh
+$SKILL_DIR/assets/scripts/launch_viewer.sh
 ```
 
 ### Step 7: Iteration
@@ -141,11 +153,11 @@ EOF
 | `cortex search object "<q>"` | Disambiguate partial object names |
 | `cortex lineage <fqn> --direction upstream --distance N --tree` | Walk lineage |
 | `cortex search table-details "<fqn>"` | Per-node column metadata |
-| `<DIR>/assets/component_synonyms.json` | Object-kind to component-type mapping |
-| `<DIR>/assets/component_blocks.json` | BLOCK_ID lookup (when using 5a) |
-| `python3 <DIR>/assets/composer/composer.py` | Compose styled Mermaid (5a) |
+| `$SKILL_DIR/assets/component_synonyms.json` | Object-kind to component-type mapping |
+| `$SKILL_DIR/assets/component_blocks.json` | BLOCK_ID lookup (when using 5a) |
+| `python3 $SKILL_DIR/assets/composer/composer.py` | Compose styled Mermaid (5a) |
 | Inline lineage-to-Mermaid synthesizer | Preserve real names (5b) |
-| `<DIR>/assets/scripts/launch_viewer.sh` | Render |
+| `$SKILL_DIR/assets/scripts/launch_viewer.sh` | Render |
 
 ## Stopping points
 

@@ -26,6 +26,45 @@ Trigger this skill when the user wants to:
 | `from-lineage` | Active `cortex` connection with lineage access (any account) |
 | `bootstrap` | Active connection with privileges to deploy SnowGram into a target DB |
 
+## Path resolution (READ THIS FIRST)
+
+All sub-skills reference assets via `$SKILL_DIR/...` (bash) or `SKILL_DIR/...` (Python). Resolve these once at the top of any workflow:
+
+```bash
+# Bash — source the canonical resolver, then use $SKILL_DIR / $VIEWER_DIR / etc.
+source "<absolute path to assets/scripts/skill_paths.sh>"
+echo "$SKILL_DIR"   # absolute path to the skill root
+```
+
+```python
+# Python — import skill_paths from assets/scripts/
+import sys, importlib.util
+spec = importlib.util.spec_from_file_location(
+    "skill_paths",
+    "<absolute path to assets/scripts/skill_paths.py>",
+)
+sp = importlib.util.module_from_spec(spec); spec.loader.exec_module(sp)
+TEMPLATES_DIR = sp.TEMPLATES_DIR  # etc.
+```
+
+Where to find the absolute path of `assets/scripts/skill_paths.sh`:
+- The skill loader's preamble shows `Base directory for this skill: <PATH>`. Take that path and append `/assets/scripts/skill_paths.sh`.
+- Or call `cortex skill list` and find the `snowflake-architecture-diagram:` line.
+
+Once sourced/imported, the following names are available:
+
+| Name | Value (after resolution) |
+|------|--------------------------|
+| `SKILL_DIR` | absolute path to skill root |
+| `ASSETS_DIR` | `$SKILL_DIR/assets` |
+| `TEMPLATES_DIR` | `$ASSETS_DIR/templates` |
+| `COMPOSER_DIR` | `$ASSETS_DIR/composer` |
+| `VIEWER_DIR` | `$ASSETS_DIR/viewer` |
+| `SCRIPTS_DIR` | `$ASSETS_DIR/scripts` |
+| `STATE_FILE` | `$VIEWER_DIR/state.json` |
+
+Sub-skills assume these are set. If you see `$SKILL_DIR/...` in a sub-skill, you must have sourced `skill_paths.sh` (or imported `skill_paths.py`) first.
+
 ## Workflow
 
 ### Step 1: Mode detection

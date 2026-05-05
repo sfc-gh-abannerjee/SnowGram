@@ -8,13 +8,44 @@ parent_skill: snowflake-architecture-diagram
 
 Generate exportable Snowflake architecture diagrams without needing a deployed SnowGram agent or any Snowflake connection. Uses 14 bundled templates + a Python composer that mirrors the deployed Mermaid generation logic byte-for-byte.
 
+## Path resolution (do this once)
+
+This sub-skill uses `$SKILL_DIR/...` paths. Resolve them by sourcing the canonical helper. The absolute path to that helper is `<SKILL_BASE_DIR>/assets/scripts/skill_paths.sh`, where `<SKILL_BASE_DIR>` is the path the skill loader prints as `Base directory for this skill:` when this skill is loaded (or the path returned by `cortex skill list` for `snowflake-architecture-diagram`).
+
+```bash
+source "<SKILL_BASE_DIR>/assets/scripts/skill_paths.sh"
+# Now: $SKILL_DIR, $TEMPLATES_DIR, $COMPOSER_DIR, $VIEWER_DIR, $SCRIPTS_DIR,
+#      $STATE_FILE are all set. See the parent SKILL.md for the full table.
+```
+
+For Python helpers, import `assets/scripts/skill_paths.py` analogously. The parent SKILL.md shows the importlib pattern.
+
 ## Workflow
 
 ### Step 1: Match prompt to a template OR collect components
 
 **Goal:** decide whether the user wants a canned reference architecture or a custom component list.
 
-Use this routing table on the user's prompt:
+**Preferred path — automated routing via the intent router:**
+
+```bash
+python3 "$COMPOSER_DIR/intent_router.py" "<user's prompt verbatim>"
+```
+
+The router returns one of two decisions as JSON:
+
+```jsonc
+// Single-template path (clear, single-source prompt)
+{"type": "template", "template_id": "MEDALLION_LAKEHOUSE", "confidence": 0.6, "rationale": "..."}
+
+// Compose path (multi-source or ambiguous prompt)
+{"type": "compose", "block_ids": ["S3_BUCKET_BLOCK", "KAFKA_CONNECTOR_BLOCK", ...],
+ "confidence": 0.66, "rationale": "...", "covered_terms": [...]}
+```
+
+The router automatically detects multi-source prompts (e.g. "S3 and Kafka", "Snowpipe and Iceberg") and falls into compose mode because no single canned template covers multiple source classes. It also handles all unambiguous single-template prompts. Use this in preference to manual keyword matching — it produces the right routing for prompts the keyword table alone would mis-fit.
+
+**Manual fallback — keyword routing table (only if the router is unavailable):**
 
 | Keywords (any) | Template ID |
 |---|---|
@@ -33,15 +64,15 @@ Use this routing table on the user's prompt:
 | financial, fraud, transactions | `REALTIME_FINANCIAL_TRANSACTIONS` |
 | iceberg, hybrid cloud, external catalog | `HYBRID_CLOUD_LAKEHOUSE` |
 
-If the prompt matches a template strongly: load `<DIR>/assets/templates/<id>.json` and use its `FULL_MERMAID_CODE` as the diagram source.
+If the prompt matches a template strongly: load `$SKILL_DIR/assets/templates/<id>.json` and use its `FULL_MERMAID_CODE` as the diagram source.
 
 If the prompt does NOT cleanly match a template (e.g. user lists specific components), use the **freeform composer**:
 
 ```bash
-python3 <DIR>/assets/composer/composer.py <BLOCK_ID_1> <BLOCK_ID_2> ...
+python3 $SKILL_DIR/assets/composer/composer.py <BLOCK_ID_1> <BLOCK_ID_2> ...
 ```
 
-To find BLOCK_IDs: read `<DIR>/assets/component_blocks.json` (42 blocks across categories: external, ingestion, bronze, silver, gold, transformation, security, compute, bi, storage). Use `<DIR>/assets/component_synonyms.json` (202 synonyms) for fuzzy term resolution — match the user's words against the `SYNONYM` column to find the corresponding `COMPONENT_TYPE`, then map to a block.
+To find BLOCK_IDs: read `$SKILL_DIR/assets/component_blocks.json` (42 blocks across categories: external, ingestion, bronze, silver, gold, transformation, security, compute, bi, storage). Use `$SKILL_DIR/assets/component_synonyms.json` (202 synonyms) for fuzzy term resolution — match the user's words against the `SYNONYM` column to find the corresponding `COMPONENT_TYPE`, then map to a block.
 
 **⚠️ STOP**: confirm the chosen template OR component list with the user before rendering.
 
@@ -61,7 +92,7 @@ Collect up to 5 citations as `[{url, title, excerpt}]` objects.
 
 ```bash
 # Write state.json
-cat > <DIR>/assets/viewer/state.json <<EOF
+cat > $SKILL_DIR/assets/viewer/state.json <<EOF
 {
   "mermaid": "<the Mermaid code>",
   "title": "<template name or freeform title>",
@@ -71,7 +102,7 @@ cat > <DIR>/assets/viewer/state.json <<EOF
 EOF
 
 # Launch
-<DIR>/assets/scripts/launch_viewer.sh
+$SKILL_DIR/assets/scripts/launch_viewer.sh
 ```
 
 The viewer opens at `http://localhost:<port>/`. User can download `.mmd`, `.svg`, `.png`.
@@ -90,13 +121,13 @@ Always rewrite `state.json` and reload the viewer (the user can refresh the brow
 
 | Tool | Used for |
 |---|---|
-| `python3 <DIR>/assets/composer/composer.py` | Compose Mermaid from BLOCK_IDs |
-| `<DIR>/assets/templates/<id>.json` | Pre-built template Mermaid |
-| `<DIR>/assets/component_blocks.json` | BLOCK_ID lookup |
-| `<DIR>/assets/component_synonyms.json` | Term -> component_type fuzzy match |
+| `python3 $SKILL_DIR/assets/composer/composer.py` | Compose Mermaid from BLOCK_IDs |
+| `$SKILL_DIR/assets/templates/<id>.json` | Pre-built template Mermaid |
+| `$SKILL_DIR/assets/component_blocks.json` | BLOCK_ID lookup |
+| `$SKILL_DIR/assets/component_synonyms.json` | Term -> component_type fuzzy match |
 | `cortex search docs "<query>"` | Documentation enrichment |
-| `<DIR>/assets/scripts/launch_viewer.sh` | Spawn viewer + open browser |
-| `<DIR>/assets/scripts/stop_viewer.sh` | Stop viewer |
+| `$SKILL_DIR/assets/scripts/launch_viewer.sh` | Spawn viewer + open browser |
+| `$SKILL_DIR/assets/scripts/stop_viewer.sh` | Stop viewer |
 
 ## Stopping points
 
@@ -112,8 +143,8 @@ Always rewrite `state.json` and reload the viewer (the user can refresh the brow
 
 ## Stale snapshot warning
 
-If `<DIR>/assets/_snapshot_meta.json` is older than 30 days OR the `source_sql_sha256` no longer matches the SQL files in the SnowGram repo, surface a one-line warning to the user:
+If `$SKILL_DIR/assets/_snapshot_meta.json` is older than 30 days OR the `source_sql_sha256` no longer matches the SQL files in the SnowGram repo, surface a one-line warning to the user:
 
-> Snapshot is N days old. Run `python3 <DIR>/assets/scripts/snapshot.py -c <connection>` to refresh.
+> Snapshot is N days old. Run `python3 $SKILL_DIR/assets/scripts/snapshot.py -c <connection>` to refresh.
 
 Continue rendering anyway.
