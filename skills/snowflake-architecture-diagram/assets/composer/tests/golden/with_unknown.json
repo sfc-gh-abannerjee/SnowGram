@@ -1,0 +1,12 @@
+{
+  "case": "with_unknown",
+  "input": {
+    "block_ids": [
+      "S3_BUCKET_BLOCK",
+      "DOES_NOT_EXIST",
+      "SNOWPIPE_BLOCK"
+    ],
+    "connections": null
+  },
+  "expected_output": "flowchart LR\n    S3[(\"AWS S3<br/>Bucket\")]:::awsStyle\n    PIPE[(\"Snowpipe<br/>Auto-Ingest\")]:::snowflakeStyle\n    S3 --> PIPE\n    %% Styling\n    classDef snowflakeStyle fill:#29B5E8,stroke:#fff,stroke-width:2px,color:#fff\n    classDef awsStyle fill:#FF9900,stroke:#232F3E,stroke-width:2px,color:#fff\n    classDef bronzeStyle fill:#CD7F32,stroke:#fff,stroke-width:2px,color:#fff\n    classDef silverStyle fill:#C0C0C0,stroke:#333,stroke-width:2px,color:#333\n    classDef goldStyle fill:#FFD700,stroke:#333,stroke-width:2px,color:#333\n    classDef warehouseStyle fill:#0066CC,stroke:#fff,stroke-width:2px,color:#fff\n    classDef secureStyle fill:#4ECDC4,stroke:#fff,stroke-width:2px,color:#fff\n    classDef biStyle fill:#E97627,stroke:#fff,stroke-width:2px,color:#fff\n    classDef transformStyle fill:#7B68EE,stroke:#fff,stroke-width:2px,color:#fff"
+}
