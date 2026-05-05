@@ -1,0 +1,83 @@
+{
+  "title": "Acme Retail \u2014 Multi-Source Medallion",
+  "subtitle": "Standalone mode \u00b7 S3 + Kafka \u2192 Bronze/Silver/Gold",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "s3_bucket",
+      "label": "AWS S3",
+      "detail": "Object store / data lake",
+      "icon": "Snowflake_ICON_3rd_Party.svg",
+      "category": "onprem"
+    },
+    {
+      "id": "kafka_connector",
+      "label": "Kafka",
+      "detail": "Streaming topic",
+      "icon": "Snowflake_ICON_Kafka_Connectors.svg",
+      "category": "onprem"
+    },
+    {
+      "id": "snowpipe_streaming",
+      "label": "Snowpipe Streaming",
+      "detail": "Sub-second row-level ingest",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge"
+    },
+    {
+      "id": "stream",
+      "label": "Stream",
+      "detail": "Change data capture",
+      "icon": "Snowflake_ICON_RA_Stream.svg",
+      "category": "snow"
+    },
+    {
+      "id": "silver_table",
+      "label": "Silver Table",
+      "detail": "Cleaned, deduped",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow"
+    },
+    {
+      "id": "gold_table",
+      "label": "Gold Table",
+      "detail": "Business-ready output",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "outcome"
+    }
+  ],
+  "edges": [
+    {
+      "source": "s3_bucket",
+      "target": "kafka_connector"
+    },
+    {
+      "source": "kafka_connector",
+      "target": "snowpipe_streaming"
+    },
+    {
+      "source": "snowpipe_streaming",
+      "target": "stream"
+    },
+    {
+      "source": "stream",
+      "target": "silver_table"
+    },
+    {
+      "source": "silver_table",
+      "target": "gold_table"
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
+      "title": "Snowpipe Streaming overview",
+      "excerpt": "Sub-second row-level ingestion for high-volume streaming workloads."
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/streams-intro",
+      "title": "Streams (CDC) introduction",
+      "excerpt": "Track row-level changes for incremental processing."
+    }
+  ]
+}

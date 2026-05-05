@@ -1,0 +1,21 @@
+{
+  "type": "compose",
+  "block_ids": [
+    "S3_BUCKET_BLOCK",
+    "KAFKA_CONNECTOR_BLOCK",
+    "SNOWPIPE_STREAMING_BLOCK",
+    "STREAM_BLOCK",
+    "SILVER_TABLE_BLOCK",
+    "GOLD_TABLE_BLOCK"
+  ],
+  "confidence": 0.6666666666666666,
+  "rationale": "Prompt mentions 2 distinct source classes (s3, kafka); a single canned template would not cover all of them. Composing from blocks.",
+  "covered_terms": [
+    "s3",
+    "kafka",
+    "snowpipe_streaming_block",
+    "cdc_stream",
+    "silver",
+    "gold"
+  ]
+}

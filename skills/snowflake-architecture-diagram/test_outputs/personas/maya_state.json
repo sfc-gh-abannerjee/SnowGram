@@ -1,0 +1,105 @@
+{
+  "title": "Finovate \u2014 Real-Time Fraud Detection",
+  "subtitle": "Standalone mode \u00b7 Kafka \u2192 Fraud scoring \u2192 RLS analyst views",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "kafka_connector",
+      "label": "Kafka",
+      "detail": "Streaming topic",
+      "icon": "Snowflake_ICON_Kafka_Connectors.svg",
+      "category": "onprem"
+    },
+    {
+      "id": "snowpipe_streaming",
+      "label": "Snowpipe Streaming",
+      "detail": "Sub-second row-level ingest",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge"
+    },
+    {
+      "id": "bronze_table",
+      "label": "Bronze Table",
+      "detail": "Raw, append-only",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow"
+    },
+    {
+      "id": "external_function",
+      "label": "External Function",
+      "detail": "API / model service",
+      "icon": "Snowflake_ICON_RA_Function_External.svg",
+      "category": "onprem"
+    },
+    {
+      "id": "stream",
+      "label": "Stream",
+      "detail": "Change data capture",
+      "icon": "Snowflake_ICON_RA_Stream.svg",
+      "category": "snow"
+    },
+    {
+      "id": "task",
+      "label": "Task",
+      "detail": "Scheduled transform",
+      "icon": "Snowflake_ICON_RA_Task.svg",
+      "category": "snow"
+    },
+    {
+      "id": "secure_view",
+      "label": "Secure View",
+      "detail": "RLS-enforcing view",
+      "icon": "Snowflake_ICON_RA_View_Secure.svg",
+      "category": "snow"
+    },
+    {
+      "id": "rls_view",
+      "label": "RLS View",
+      "detail": "Row-level secured BI view",
+      "icon": "Snowflake_ICON_RA_View_Secure.svg",
+      "category": "outcome"
+    }
+  ],
+  "edges": [
+    {
+      "source": "kafka_connector",
+      "target": "snowpipe_streaming"
+    },
+    {
+      "source": "snowpipe_streaming",
+      "target": "bronze_table"
+    },
+    {
+      "source": "bronze_table",
+      "target": "external_function"
+    },
+    {
+      "source": "external_function",
+      "target": "stream"
+    },
+    {
+      "source": "stream",
+      "target": "task"
+    },
+    {
+      "source": "task",
+      "target": "secure_view"
+    },
+    {
+      "source": "secure_view",
+      "target": "rls_view"
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function",
+      "title": "External Functions",
+      "excerpt": "Call external services from SQL for scoring and enrichment."
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/security-row-intro",
+      "title": "Row Access Policies",
+      "excerpt": "Enforce per-user row-level access on PII."
+    }
+  ]
+}

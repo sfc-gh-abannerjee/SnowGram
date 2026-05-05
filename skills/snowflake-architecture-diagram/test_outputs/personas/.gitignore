@@ -1,0 +1,8 @@
+# Self-contained HTML files are big (3.3 MB) and fully regenerable from
+# the corresponding _state.json via run_personas.py.
+# Keep state.json + decision.json + .mmd + .png as committed fixtures.
+*_v3.html
+*.html
+
+# Anything you want to scratchpad
+scratch/

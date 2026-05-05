@@ -1,0 +1,94 @@
+{
+  "title": "MedTech \u2014 Real-Time IoT Telemetry",
+  "subtitle": "Standalone mode \u00b7 MQTT \u2192 Snowpipe Streaming \u2192 Tableau",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "snowpipe_streaming",
+      "label": "Snowpipe Streaming",
+      "detail": "Sub-second row-level ingest",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge"
+    },
+    {
+      "id": "bronze_table",
+      "label": "Bronze Table",
+      "detail": "Raw, append-only",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow"
+    },
+    {
+      "id": "stream",
+      "label": "Stream",
+      "detail": "Change data capture",
+      "icon": "Snowflake_ICON_RA_Stream.svg",
+      "category": "snow"
+    },
+    {
+      "id": "task",
+      "label": "Task",
+      "detail": "Scheduled transform",
+      "icon": "Snowflake_ICON_RA_Task.svg",
+      "category": "snow"
+    },
+    {
+      "id": "silver_table",
+      "label": "Silver Table",
+      "detail": "Cleaned, deduped",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow"
+    },
+    {
+      "id": "dynamic_table",
+      "label": "Dynamic Table",
+      "detail": "Declarative refresh",
+      "icon": "Snowflake_ICON_Dynamic_Tables.svg",
+      "category": "snow"
+    },
+    {
+      "id": "tableau",
+      "label": "Tableau",
+      "detail": "BI dashboards",
+      "icon": "Snowflake_ICON_Analytics.svg",
+      "category": "outcome"
+    }
+  ],
+  "edges": [
+    {
+      "source": "snowpipe_streaming",
+      "target": "bronze_table"
+    },
+    {
+      "source": "bronze_table",
+      "target": "stream"
+    },
+    {
+      "source": "stream",
+      "target": "task"
+    },
+    {
+      "source": "task",
+      "target": "silver_table"
+    },
+    {
+      "source": "silver_table",
+      "target": "dynamic_table"
+    },
+    {
+      "source": "dynamic_table",
+      "target": "tableau"
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
+      "title": "Snowpipe Streaming overview",
+      "excerpt": "Sub-second row-level ingestion for high-volume streaming workloads."
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "title": "Dynamic Tables",
+      "excerpt": "Declarative pipelines with managed refresh."
+    }
+  ]
+}
