@@ -1,0 +1,13 @@
+{
+  "TEMPLATE_ID": "MULTI_CLOUD_DATA_MESH",
+  "TEMPLATE_NAME": "Multi-Cloud Data Mesh with Secure Sharing",
+  "DESCRIPTION": "Multi-Cloud Data Mesh: Best practices: Domain-oriented ownership per cloud, Database Roles for sharing (not account roles), CURRENT_ACCOUNT in policy conditions for shares, Reader Accounts with resource monitors for external consumers, Cross-region replication for global access, unified governance with tags and masking policies.",
+  "COMPOSED_PATTERNS": "[\n  \"S3_TO_SNOWFLAKE_BATCH\",\n  \"AZURE_TO_SNOWFLAKE_BATCH\",\n  \"GCS_TO_SNOWFLAKE_BATCH\",\n  \"SECURE_DATA_SHARING\"\n]",
+  "FULL_MERMAID_CODE": "flowchart LR\n    subgraph aws[\"AWS Domain\"]\n        s3[\"S3 Bucket<br/>Sales Data\"]\n        stage_aws[\"Stage @AWS\"]\n        db_aws[\"Sales Domain DB\"]\n    end\n    \n    subgraph azure[\"Azure Domain\"]\n        blob[\"Azure Blob<br/>Marketing Data\"]\n        stage_azure[\"Stage @AZURE\"]\n        db_azure[\"Marketing Domain DB\"]\n    end\n    \n    subgraph gcp[\"GCP Domain\"]\n        gcs[\"GCS Bucket<br/>Product Data\"]\n        stage_gcp[\"Stage @GCP\"]\n        db_gcp[\"Product Domain DB\"]\n    end\n    \n    subgraph mesh[\"Data Mesh Hub\"]\n        subgraph governance[\"Governance\"]\n            tags[\"Domain Tags\"]\n            policies[\"Masking Policies<br/>CURRENT_ACCOUNT check\"]\n            catalog[\"Data Catalog\"]\n        end\n        \n        subgraph sharing[\"Federated Sharing\"]\n            share_sales[\"Sales Share<br/>Database Roles\"]\n            share_mkt[\"Marketing Share\"]\n            share_prod[\"Product Share\"]\n        end\n        \n        subgraph consume[\"Consumer Layer\"]\n            reader[\"Reader Accounts<br/>Resource Monitors\"]\n            cross_cloud[\"Cross-Region<br/>Replication\"]\n        end\n    end\n    \n    s3 --> stage_aws --> db_aws\n    blob --> stage_azure --> db_azure\n    gcs --> stage_gcp --> db_gcp\n    \n    db_aws --> tags\n    db_azure --> tags\n    db_gcp --> tags\n    tags --> policies --> catalog\n    \n    db_aws --> share_sales\n    db_azure --> share_mkt\n    db_gcp --> share_prod\n    \n    share_sales & share_mkt & share_prod --> reader\n    share_sales & share_mkt & share_prod --> cross_cloud\n    \n    style aws fill:#FF9900,stroke:#fff\n    style azure fill:#0089D6,stroke:#fff\n    style gcp fill:#4285F4,stroke:#fff\n    style mesh fill:#E0F7FA,stroke:#00ACC1",
+  "USE_CASE_CATEGORY": "data_mesh",
+  "INDUSTRY": "Enterprise, Technology, Consulting",
+  "TIMES_USED": 0,
+  "AVG_GENERATION_TIME_MS": null,
+  "CREATED_AT": "2025-11-07T09:45:49.262000-08:00",
+  "UPDATED_AT": "2026-02-17T21:54:45.914000-08:00"
+}

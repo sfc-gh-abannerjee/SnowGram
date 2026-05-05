@@ -1,0 +1,13 @@
+{
+  "TEMPLATE_ID": "EMBEDDED_ANALYTICS",
+  "TEMPLATE_NAME": "Embedded Analytics Reference Architecture",
+  "DESCRIPTION": "Embedded Analytics: In-app visualizations with Hybrid Tables for operational workloads. Best practices: Hybrid Tables with index-based reads and row locking, CTAS for bulk loading empty tables, X-Small Multi-Cluster warehouse with Standard scaling for operational queries, separate warehouse sized for BI working set, Streamlit for custom apps.",
+  "COMPOSED_PATTERNS": "[\n  \"api_gateway\",\n  \"web_tier\",\n  \"oltp_database\",\n  \"hybrid_tables\",\n  \"etl_partners\",\n  \"fivetran\",\n  \"matillion\",\n  \"dbt\",\n  \"hvr\",\n  \"virtual_warehouses\",\n  \"workload_isolation\",\n  \"autoscaling\",\n  \"streamlit\",\n  \"embedded_bi\",\n  \"charting_libraries\"\n]",
+  "FULL_MERMAID_CODE": "flowchart LR\n    subgraph application[\"Application Layer\"]\n        api[\"API / Web Tier<br/>SLA Enforcement\"]\n        app[\"Application<br/>User Requests\"]\n    end\n    \n    subgraph transactional[\"Transactional Layer\"]\n        oltp[\"OLTP Database<br/>SQL or NoSQL\"]\n        hybrid[\"Snowflake Hybrid Tables<br/>Index-Based Reads<br/>Row Locking\"]\n    end\n    \n    subgraph etl[\"ETL / Data Integration\"]\n        fivetran[\"FiveTran\"]\n        matillion[\"Matillion\"]\n        dbt[\"dbt\"]\n        hvr[\"HVR\"]\n    end\n    \n    subgraph snowflake[\"Snowflake\"]\n        subgraph storage[\"Historical Data\"]\n            historical[\"Historical Data<br/>CTAS Bulk Loading\"]\n        end\n        \n        subgraph compute[\"Compute Isolation\"]\n            vw_app[\"WH_APP_QUERIES<br/>X-Small Multi-Cluster<br/>Standard Scaling\"]\n            vw_bi[\"WH_BI_ANALYTICS<br/>Sized for Working Set\"]\n        end\n    end\n    \n    subgraph visualization[\"Visualization\"]\n        streamlit[\"Streamlit in Snowflake\"]\n        embedded_bi[\"Embedded BI Tools\"]\n    end\n    \n    app --> api\n    api --> oltp\n    api --> hybrid\n    oltp --> fivetran & matillion & dbt & hvr\n    fivetran & matillion & dbt & hvr --> historical\n    historical --> vw_app\n    historical --> vw_bi\n    vw_app --> streamlit\n    vw_bi --> embedded_bi\n    hybrid --> vw_app\n    \n    style application fill:#E8F4FD,stroke:#29B5E8\n    style transactional fill:#FFE4B5,stroke:#FFA500\n    style etl fill:#E6E6FA,stroke:#9370DB\n    style snowflake fill:#E0F7FA,stroke:#00ACC1\n    style visualization fill:#FFE4E1,stroke:#FF6B6B",
+  "USE_CASE_CATEGORY": "Analytics",
+  "INDUSTRY": "All",
+  "TIMES_USED": 0,
+  "AVG_GENERATION_TIME_MS": null,
+  "CREATED_AT": "2026-02-17T19:38:04.825000-08:00",
+  "UPDATED_AT": "2026-02-17T21:53:02.753000-08:00"
+}

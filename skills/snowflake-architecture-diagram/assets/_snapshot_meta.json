@@ -1,0 +1,31 @@
+{
+  "snapshot_version": 1,
+  "snapshot_at": "2026-05-05T20:04:08.803899+00:00",
+  "source_connection": "se_demo",
+  "source_db": "SNOWGRAM_DB",
+  "tables": {
+    "ARCHITECTURE_TEMPLATES": {
+      "row_count": 14,
+      "sha256": "73bc2b19ed0b8f7152503c8804319cbf34a0b663723a1feecbeab638c2ade2c1"
+    },
+    "COMPONENT_BLOCKS": {
+      "row_count": 42,
+      "sha256": "8f88c02ed437f9e1d59dbb1ee42b8b99a173a3ca260d133f63581eaddd6f1f9c"
+    },
+    "COMPONENT_SYNONYMS": {
+      "row_count": 202,
+      "sha256": "5a5978653bf82bec7e2ac5dfb7970a2e574b27ded0221c127a7610ef196c43c3"
+    }
+  },
+  "functions": {
+    "GENERATE_MERMAID_FROM_COMPONENTS": "472eff200c3b9b68ed66cc10e00ad78462d70c86eb1cfe57d735eed11d393979",
+    "SUGGEST_COMPONENTS_FOR_USE_CASE": "e434177b34a5b7d849f7ad60d3b95bb9be6c9f02b814aaeb35fb3b52fe516970",
+    "MAP_COMPONENT": "e09104b2e543bd261753b9d13210ce38253079c176b407ad0a1dda36dd0a9461",
+    "VALIDATE_MERMAID_SYNTAX": "f16afc12f29824746006f3c06a4eb0935a2cbf210900a8701a5e8d92335f2974",
+    "COMPOSE_DIAGRAM_FROM_TEMPLATE": "afb99de6e04c8978e5f2f004e2bc280e2c636bfb6e495efd8af979e84afaecc0",
+    "GET_ARCHITECTURE_BEST_PRACTICE": "541d789c7af91625b30e05ae3e0812aea24c9efe006aef0936d7ade5d7bccb4a"
+  },
+  "semantic_view_sha256": "b9a241ed02ca56f0d7b19c9293063988f6e81399958421f62cd87b93b8e1bb71",
+  "source_sql_sha256": "f9b4a954fcf2a06f33889b46531a68dd980779f180fe24f454cbc421f6f73901",
+  "captured_by": "snapshot.py"
+}

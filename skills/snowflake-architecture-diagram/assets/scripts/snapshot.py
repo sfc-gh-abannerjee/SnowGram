@@ -92,12 +92,15 @@ def _run(cmd: list[str], *, check: bool = True, env_extra: Optional[dict] = None
     )
 
 
-def _snow_sql_json(query: str, connection: str) -> list[dict[str, Any]]:
+def _snow_sql_json(query: str, connection: str, warehouse: Optional[str] = None) -> list[dict[str, Any]]:
     """
     Run a SELECT and return rows as list[dict] using `snow sql --format json`.
     Snowflake CLI must be installed and configured with the target connection.
     """
-    cmd = ["snow", "sql", "-c", connection, "--format", "json", "-q", query]
+    cmd = ["snow", "sql", "-c", connection, "--format", "json"]
+    if warehouse:
+        cmd += ["--warehouse", warehouse]
+    cmd += ["-q", query]
     result = _run(cmd)
     out = result.stdout.strip()
     if not out:
@@ -110,9 +113,9 @@ def _snow_sql_json(query: str, connection: str) -> list[dict[str, Any]]:
         ) from e
 
 
-def _snow_sql_scalar(query: str, connection: str) -> str:
+def _snow_sql_scalar(query: str, connection: str, warehouse: Optional[str] = None) -> str:
     """Run a query that returns one VARCHAR scalar; return the value."""
-    rows = _snow_sql_json(query, connection)
+    rows = _snow_sql_json(query, connection, warehouse=warehouse)
     if not rows:
         return ""
     first = rows[0]
@@ -130,12 +133,14 @@ def _cortex(args: list[str]) -> str:
 # --------------------------------------------------------------------------- #
 # Capture routines
 # --------------------------------------------------------------------------- #
-def capture_tables(connection: str) -> dict[str, Any]:
+def capture_tables(connection: str, warehouse: Optional[str] = None) -> dict[str, Any]:
     """Snapshot the three core tables."""
     captured: dict[str, Any] = {}
 
     for table_name, _label in TABLES:
-        rows = _snow_sql_json(f"SELECT * FROM {CORE_SCHEMA}.{table_name}", connection)
+        rows = _snow_sql_json(
+            f"SELECT * FROM {CORE_SCHEMA}.{table_name}", connection, warehouse=warehouse
+        )
         captured[table_name] = rows
         print(f"  ✓ {table_name}: {len(rows)} rows", file=sys.stderr)
 
@@ -170,7 +175,7 @@ def fan_out_templates(rows: list[dict[str, Any]]) -> int:
     return written
 
 
-def capture_function_ddls(connection: str) -> dict[str, str]:
+def capture_function_ddls(connection: str, warehouse: Optional[str] = None) -> dict[str, str]:
     """GET_DDL for each composer/router function. Critical for portable composer."""
     FUNCTIONS_DIR.mkdir(parents=True, exist_ok=True)
     ddls: dict[str, str] = {}
@@ -180,7 +185,7 @@ def capture_function_ddls(connection: str) -> dict[str, str]:
         # Use parameterless arg form for GET_DDL — pass FQN via single quotes
         query = f"SELECT GET_DDL('FUNCTION', '{fqn}', TRUE)"
         try:
-            ddl = _snow_sql_scalar(query, connection)
+            ddl = _snow_sql_scalar(query, connection, warehouse=warehouse)
         except Exception as e:  # noqa: BLE001
             print(f"  ⚠ {name}: {e}", file=sys.stderr)
             continue
@@ -268,13 +273,15 @@ def _sha256_of_repo_sql() -> Optional[str]:
     Hash the SQL files in the SnowGram repo whose content the snapshot is
     expected to mirror. Used by CI to detect drift.
     """
+    # SKILL_DIR = <repo>/skills/<name>; repo root is two levels up.
+    repo_root = SKILL_DIR.parent.parent
     candidates = [
-        SKILL_DIR.parent / "backend" / "modular" / "full_templates.sql",
-        SKILL_DIR.parent / "backend" / "modular" / "composed_patterns.sql",
-        SKILL_DIR.parent / "backend" / "modular" / "component_blocks.sql",
-        SKILL_DIR.parent / "backend" / "sql" / "component_synonyms.sql",
-        SKILL_DIR.parent / "backend" / "agent" / "custom_tools.sql",
-        SKILL_DIR.parent / "backend" / "agent" / "agent_fixes_jan2026.sql",
+        repo_root / "backend" / "modular" / "full_templates.sql",
+        repo_root / "backend" / "modular" / "composed_patterns.sql",
+        repo_root / "backend" / "modular" / "component_blocks.sql",
+        repo_root / "backend" / "sql" / "component_synonyms.sql",
+        repo_root / "backend" / "agent" / "custom_tools.sql",
+        repo_root / "backend" / "agent" / "agent_fixes_jan2026.sql",
     ]
     h = hashlib.sha256()
     seen_any = False
@@ -325,6 +332,7 @@ def write_meta(
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description="Snapshot deployed SnowGram into skill assets.")
     ap.add_argument("--connection", "-c", required=True, help="cortex/snow connection name")
+    ap.add_argument("--warehouse", "-w", default="SNOWGRAM_WH", help="Warehouse to use (default: SNOWGRAM_WH)")
     ap.add_argument("--skip-functions", action="store_true", help="Skip GET_DDL function capture")
     ap.add_argument("--skip-semantic-view", action="store_true")
     ap.add_argument("--skip-agent", action="store_true")
@@ -333,9 +341,9 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"Snapshotting from connection: {args.connection}", file=sys.stderr)
+    print(f"Snapshotting from connection: {args.connection} (warehouse: {args.warehouse})", file=sys.stderr)
     print("[tables]", file=sys.stderr)
-    table_payloads = capture_tables(args.connection)
+    table_payloads = capture_tables(args.connection, warehouse=args.warehouse)
 
     if not args.dry_run:
         # Save raw payloads
@@ -353,7 +361,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     function_ddls: dict[str, str] = {}
     if not args.skip_functions:
         print("[functions]", file=sys.stderr)
-        function_ddls = capture_function_ddls(args.connection)
+        function_ddls = capture_function_ddls(args.connection, warehouse=args.warehouse)
 
     semantic_view: Optional[str] = None
     if not args.skip_semantic_view:

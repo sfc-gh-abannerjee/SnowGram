@@ -1,0 +1,13 @@
+{
+  "TEMPLATE_ID": "MEDALLION_LAKEHOUSE",
+  "TEMPLATE_NAME": "Medallion Architecture (Bronze-Silver-Gold)",
+  "DESCRIPTION": "Medallion Architecture (Bronze-Silver-Gold): Best practices: Separate batch/streaming tables (dont mix), VARIANT for JSON in Bronze, Serverless Tasks for Silver transforms, Dynamic Tables for Gold with DOWNSTREAM lag and dedicated refresh warehouse, explicitly set refresh mode for production DTs, isolated warehouses (WH_LOADING, WH_TRANSFORM, WH_BI_ANALYTICS).",
+  "COMPOSED_PATTERNS": "[\n  \"S3_TO_SNOWFLAKE_BATCH\",\n  \"STREAM_TASK_TRANSFORMATION\",\n  \"BI_TOOL_INTEGRATION\"\n]",
+  "FULL_MERMAID_CODE": "flowchart LR\n    subgraph source[\"Data Sources\"]\n        s3[\"AWS S3<br/>Data Lake\"]\n    end\n\n    subgraph bronze[\"Bronze Layer (Raw)\"]\n        pipe[\"Snowpipe<br/>Auto-Ingest<br/>Separate from Streaming\"]\n        bronze_db[\"BRONZE_DB\"]\n        bronze_raw[\"Raw Tables<br/>Append-Only<br/>VARIANT for JSON\"]\n    end\n\n    subgraph silver[\"Silver Layer (Cleaned)\"]\n        stream_b[\"Stream<br/>Bronze CDC\"]\n        task_clean[\"Serverless Task<br/>Data Quality\"]\n        silver_db[\"SILVER_DB\"]\n        silver_tables[\"Cleaned Tables<br/>SCD Type 2\"]\n    end\n\n    subgraph gold[\"Gold Layer (Business)\"]\n        dyn_table[\"Dynamic Tables<br/>TARGET_LAG=DOWNSTREAM<br/>Dedicated WH<br/>Set Refresh Mode\"]\n        gold_db[\"GOLD_DB\"]\n        gold_agg[\"Aggregated Facts<br/>Business Metrics\"]\n    end\n\n    subgraph compute[\"Warehouse Strategy\"]\n        wh_load[\"WH_LOADING<br/>Ingestion\"]\n        wh_transform[\"WH_TRANSFORM<br/>DT Refresh\"]\n        wh_bi[\"WH_BI_ANALYTICS<br/>Multi-Cluster\"]\n    end\n\n    subgraph bi[\"Analytics\"]\n        bi_tools[\"BI Tools<br/>Dashboards\"]\n    end\n\n    s3 --> pipe\n    pipe --> bronze_raw\n    bronze_raw --> stream_b\n    stream_b --> task_clean\n    task_clean --> silver_tables\n    silver_tables --> dyn_table\n    dyn_table --> gold_agg\n    gold_agg --> bi_tools\n    \n    wh_load -.-> pipe\n    wh_transform -.-> dyn_table\n    wh_bi -.-> bi_tools\n\n    style source fill:#FF9900,stroke:#fff\n    style bronze fill:#CD7F32,stroke:#8B4513\n    style silver fill:#C0C0C0,stroke:#808080\n    style gold fill:#FFD700,stroke:#DAA520\n    style compute fill:#E6E6FA,stroke:#9370DB\n    style bi fill:#F2C94C,stroke:#333",
+  "USE_CASE_CATEGORY": "medallion_architecture",
+  "INDUSTRY": "Enterprise, Retail, Financial Services",
+  "TIMES_USED": 0,
+  "AVG_GENERATION_TIME_MS": null,
+  "CREATED_AT": "2026-01-26T13:24:58.900000-08:00",
+  "UPDATED_AT": "2026-02-17T21:53:46.264000-08:00"
+}

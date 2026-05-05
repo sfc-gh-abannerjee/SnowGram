@@ -1,0 +1,13 @@
+{
+  "TEMPLATE_ID": "DATA_GOVERNANCE_COMPLIANCE",
+  "TEMPLATE_NAME": "Data Governance & Compliance Framework",
+  "DESCRIPTION": "Data Governance & Compliance: Best practices: Auto-classification with SYSTEM$CLASSIFY, Object Tags for PII tracking, Dynamic Data Masking with owner rights, Row Access Policies with mapping tables (use IS_ROLE_IN_SESSION not CURRENT_ROLE), Database Roles for sharing, CURRENT_ACCOUNT for share policies, Reader Accounts with resource monitors, ACCESS_HISTORY for audit trails.",
+  "COMPOSED_PATTERNS": "[\n  \"RBAC_SECURITY_LAYER\",\n  \"ROW_LEVEL_SECURITY\",\n  \"SECURE_DATA_SHARING\"\n]",
+  "FULL_MERMAID_CODE": "flowchart TD\n    subgraph sources[\"Source Data\"]\n        source_table[\"Source Tables<br/>CUSTOMER_PII\"]\n    end\n    \n    subgraph classification[\"Data Classification\"]\n        classify[\"SYSTEM$CLASSIFY<br/>Auto-Classification\"]\n        tags[\"Object Tags<br/>PII, SENSITIVE\"]\n    end\n    \n    subgraph policies[\"Policy Layer\"]\n        masking[\"Dynamic Data Masking<br/>Owner Rights\"]\n        row_access[\"Row Access Policy<br/>Mapping Tables\"]\n        projection[\"Projection Policy\"]\n    end\n    \n    subgraph access[\"Access Control\"]\n        roles[\"Functional Roles<br/>ANALYST, MANAGER\"]\n        db_roles[\"Database Roles<br/>For Sharing\"]\n        is_role[\"IS_ROLE_IN_SESSION<br/>Not CURRENT_ROLE\"]\n    end\n    \n    subgraph audit[\"Audit & Compliance\"]\n        access_history[\"ACCESS_HISTORY<br/>Account Usage\"]\n        query_history[\"QUERY_HISTORY<br/>Who Queried What\"]\n        login_history[\"LOGIN_HISTORY\"]\n    end\n    \n    subgraph sharing[\"Secure Sharing\"]\n        share[\"Secure Share<br/>CURRENT_ACCOUNT Check\"]\n        reader[\"Reader Accounts<br/>Resource Monitors\"]\n    end\n    \n    source_table --> classify\n    classify --> tags\n    tags --> masking & row_access & projection\n    masking --> roles\n    row_access --> roles\n    roles --> db_roles\n    db_roles --> is_role\n    is_role --> access_history\n    access_history --> query_history\n    query_history --> login_history\n    roles --> share\n    share --> reader\n    \n    style sources fill:#E8F4FD,stroke:#29B5E8\n    style classification fill:#FFE4B5,stroke:#FFA500\n    style policies fill:#FF6B6B,stroke:#CC0000\n    style access fill:#E6E6FA,stroke:#9370DB\n    style audit fill:#98D8C8,stroke:#2ECC71\n    style sharing fill:#DDA0DD,stroke:#8B008B",
+  "USE_CASE_CATEGORY": "governance",
+  "INDUSTRY": "Financial Services, Healthcare, Government",
+  "TIMES_USED": 0,
+  "AVG_GENERATION_TIME_MS": null,
+  "CREATED_AT": "2025-11-07T09:45:50.710000-08:00",
+  "UPDATED_AT": "2026-02-17T21:53:16.742000-08:00"
+}

@@ -1,0 +1,1214 @@
+[
+  {
+    "SYNONYM": "database",
+    "COMPONENT_TYPE": "Database",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "db",
+    "COMPONENT_TYPE": "Database",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "datastore",
+    "COMPONENT_TYPE": "Database",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "schema",
+    "COMPONENT_TYPE": "Schema",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "schemas",
+    "COMPONENT_TYPE": "Schema",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "table",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "tables",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "view",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "views",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "stage",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "staging",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "landing",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "rawdata",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "curateddata",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "csv",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "csvfiles",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "file",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "files",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "warehouse",
+    "COMPONENT_TYPE": "Warehouse",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "wh",
+    "COMPONENT_TYPE": "Warehouse",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "datawarehouse",
+    "COMPONENT_TYPE": "Data WH",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "datawh",
+    "COMPONENT_TYPE": "Data WH",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "virtualwh",
+    "COMPONENT_TYPE": "Virtual WH",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "snowparkwh",
+    "COMPONENT_TYPE": "Snowpark WH",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "adaptivewh",
+    "COMPONENT_TYPE": "Adaptive WH",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "snowflake",
+    "COMPONENT_TYPE": "Warehouse",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "stream",
+    "COMPONENT_TYPE": "Stream",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "streams",
+    "COMPONENT_TYPE": "Stream",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "api",
+    "COMPONENT_TYPE": "Stream",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "apis",
+    "COMPONENT_TYPE": "Stream",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "source",
+    "COMPONENT_TYPE": "Stream",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "sources",
+    "COMPONENT_TYPE": "Stream",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "ingest",
+    "COMPONENT_TYPE": "Snowpipe",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "ingestion",
+    "COMPONENT_TYPE": "Snowpipe",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "snowpipe",
+    "COMPONENT_TYPE": "Snowpipe",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "extract",
+    "COMPONENT_TYPE": "Snowpipe",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "pull",
+    "COMPONENT_TYPE": "Snowpipe",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "connect",
+    "COMPONENT_TYPE": "Snowpipe",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "load",
+    "COMPONENT_TYPE": "Snowpipe",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "task",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "tasks",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "transform",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "transformation",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "clean",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "validate",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "aggregate",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "format",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "process",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "businessrules",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "analytics",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "report",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "reports",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "reporting",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "dashboard",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "metrics",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "monitor",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "monitoring",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "logging",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "cortexsearch",
+    "COMPONENT_TYPE": "Cortex Search",
+    "WEIGHT": 1,
+    "COMMENT": "Cortex Search Service"
+  },
+  {
+    "SYNONYM": "container",
+    "COMPONENT_TYPE": "SPCS",
+    "WEIGHT": 1,
+    "COMMENT": "Container service"
+  },
+  {
+    "SYNONYM": "icebergtable",
+    "COMPONENT_TYPE": "Iceberg Table",
+    "WEIGHT": 1,
+    "COMMENT": "Iceberg table format"
+  },
+  {
+    "SYNONYM": "iceberg",
+    "COMPONENT_TYPE": "Iceberg Table",
+    "WEIGHT": 1,
+    "COMMENT": "Apache Iceberg table"
+  },
+  {
+    "SYNONYM": "kubernetes",
+    "COMPONENT_TYPE": "SPCS",
+    "WEIGHT": 1,
+    "COMMENT": "K8s workload"
+  },
+  {
+    "SYNONYM": "cortex",
+    "COMPONENT_TYPE": "Cortex",
+    "WEIGHT": 1,
+    "COMMENT": "Snowflake Cortex AI"
+  },
+  {
+    "SYNONYM": "spcs",
+    "COMPONENT_TYPE": "SPCS",
+    "WEIGHT": 1,
+    "COMMENT": "Snowpark Container Services"
+  },
+  {
+    "SYNONYM": "cortexanalyst",
+    "COMPONENT_TYPE": "Cortex Analyst",
+    "WEIGHT": 1,
+    "COMMENT": "Cortex Analyst"
+  },
+  {
+    "SYNONYM": "dynamictable",
+    "COMPONENT_TYPE": "Dynamic Table",
+    "WEIGHT": 1,
+    "COMMENT": "Real-time materialized view"
+  },
+  {
+    "SYNONYM": "docker",
+    "COMPONENT_TYPE": "SPCS",
+    "WEIGHT": 1,
+    "COMMENT": "Docker container"
+  },
+  {
+    "SYNONYM": "streamlit",
+    "COMPONENT_TYPE": "Streamlit",
+    "WEIGHT": 1,
+    "COMMENT": "Streamlit app"
+  },
+  {
+    "SYNONYM": "llm",
+    "COMPONENT_TYPE": "Cortex",
+    "WEIGHT": 1,
+    "COMMENT": "Large Language Model"
+  },
+  {
+    "SYNONYM": "dynamictables",
+    "COMPONENT_TYPE": "Dynamic Table",
+    "WEIGHT": 1,
+    "COMMENT": "Real-time materialized views"
+  },
+  {
+    "SYNONYM": "ai",
+    "COMPONENT_TYPE": "Cortex",
+    "WEIGHT": 1,
+    "COMMENT": "Artificial Intelligence"
+  },
+  {
+    "SYNONYM": "ml",
+    "COMPONENT_TYPE": "ML Model",
+    "WEIGHT": 1,
+    "COMMENT": "Machine Learning"
+  },
+  {
+    "SYNONYM": "app",
+    "COMPONENT_TYPE": "Streamlit",
+    "WEIGHT": 1,
+    "COMMENT": "Application"
+  },
+  {
+    "SYNONYM": "rag",
+    "COMPONENT_TYPE": "Cortex Search",
+    "WEIGHT": 1,
+    "COMMENT": "Retrieval Augmented Generation"
+  },
+  {
+    "SYNONYM": "dt",
+    "COMPONENT_TYPE": "Dynamic Table",
+    "WEIGHT": 1,
+    "COMMENT": "Abbreviation"
+  },
+  {
+    "SYNONYM": "parquet",
+    "COMPONENT_TYPE": "Iceberg Table",
+    "WEIGHT": 1,
+    "COMMENT": "Parquet-backed table"
+  },
+  {
+    "SYNONYM": "realtimetable",
+    "COMPONENT_TYPE": "Dynamic Table",
+    "WEIGHT": 1,
+    "COMMENT": "Real-time table synonym"
+  },
+  {
+    "SYNONYM": "ui",
+    "COMPONENT_TYPE": "Streamlit",
+    "WEIGHT": 1,
+    "COMMENT": "User interface"
+  },
+  {
+    "SYNONYM": "embedding",
+    "COMPONENT_TYPE": "Cortex Search",
+    "WEIGHT": 1,
+    "COMMENT": "Vector embedding"
+  },
+  {
+    "SYNONYM": "listing",
+    "COMPONENT_TYPE": "Share",
+    "WEIGHT": 1,
+    "COMMENT": "Marketplace listing"
+  },
+  {
+    "SYNONYM": "function",
+    "COMPONENT_TYPE": "UDF",
+    "WEIGHT": 1,
+    "COMMENT": "Function"
+  },
+  {
+    "SYNONYM": "internalstage",
+    "COMPONENT_TYPE": "Internal Stage",
+    "WEIGHT": 1,
+    "COMMENT": "Internal stage"
+  },
+  {
+    "SYNONYM": "awss3",
+    "COMPONENT_TYPE": "S3",
+    "WEIGHT": 1,
+    "COMMENT": "AWS S3 storage"
+  },
+  {
+    "SYNONYM": "kafkaconnector",
+    "COMPONENT_TYPE": "Kafka",
+    "WEIGHT": 1,
+    "COMMENT": "Kafka connector"
+  },
+  {
+    "SYNONYM": "udf",
+    "COMPONENT_TYPE": "UDF",
+    "WEIGHT": 1,
+    "COMMENT": "User-defined function"
+  },
+  {
+    "SYNONYM": "gcsstage",
+    "COMPONENT_TYPE": "External Stage",
+    "WEIGHT": 1,
+    "COMMENT": "GCS stage"
+  },
+  {
+    "SYNONYM": "eventstream",
+    "COMPONENT_TYPE": "Kafka",
+    "WEIGHT": 1,
+    "COMMENT": "Event streaming"
+  },
+  {
+    "SYNONYM": "tablestage",
+    "COMPONENT_TYPE": "Internal Stage",
+    "WEIGHT": 1,
+    "COMMENT": "Table stage"
+  },
+  {
+    "SYNONYM": "restapi",
+    "COMPONENT_TYPE": "External Function",
+    "WEIGHT": 1,
+    "COMMENT": "REST API call"
+  },
+  {
+    "SYNONYM": "sv",
+    "COMPONENT_TYPE": "Secure View",
+    "WEIGHT": 1,
+    "COMMENT": "Secure view abbrev"
+  },
+  {
+    "SYNONYM": "transactional",
+    "COMPONENT_TYPE": "Hybrid Table",
+    "WEIGHT": 1,
+    "COMMENT": "Transactional table"
+  },
+  {
+    "SYNONYM": "procedure",
+    "COMPONENT_TYPE": "Stored Procedure",
+    "WEIGHT": 1,
+    "COMMENT": "Procedure"
+  },
+  {
+    "SYNONYM": "azurestage",
+    "COMPONENT_TYPE": "External Stage",
+    "WEIGHT": 1,
+    "COMMENT": "Azure stage"
+  },
+  {
+    "SYNONYM": "s3bucket",
+    "COMPONENT_TYPE": "S3",
+    "WEIGHT": 1,
+    "COMMENT": "S3 bucket"
+  },
+  {
+    "SYNONYM": "marketplace",
+    "COMPONENT_TYPE": "Share",
+    "WEIGHT": 1,
+    "COMMENT": "Snowflake Marketplace"
+  },
+  {
+    "SYNONYM": "mv",
+    "COMPONENT_TYPE": "Materialized View",
+    "WEIGHT": 1,
+    "COMMENT": "MV abbreviation"
+  },
+  {
+    "SYNONYM": "externalfunction",
+    "COMPONENT_TYPE": "External Function",
+    "WEIGHT": 1,
+    "COMMENT": "External function"
+  },
+  {
+    "SYNONYM": "share",
+    "COMPONENT_TYPE": "Share",
+    "WEIGHT": 1,
+    "COMMENT": "Data share"
+  },
+  {
+    "SYNONYM": "s3",
+    "COMPONENT_TYPE": "S3",
+    "WEIGHT": 1,
+    "COMMENT": "AWS S3"
+  },
+  {
+    "SYNONYM": "materializedview",
+    "COMPONENT_TYPE": "Materialized View",
+    "WEIGHT": 1,
+    "COMMENT": "Materialized view"
+  },
+  {
+    "SYNONYM": "datashare",
+    "COMPONENT_TYPE": "Share",
+    "WEIGHT": 1,
+    "COMMENT": "Data sharing"
+  },
+  {
+    "SYNONYM": "notebook",
+    "COMPONENT_TYPE": "Notebook",
+    "WEIGHT": 1,
+    "COMMENT": "Snowflake Notebook"
+  },
+  {
+    "SYNONYM": "secureview",
+    "COMPONENT_TYPE": "Secure View",
+    "WEIGHT": 1,
+    "COMMENT": "Secure view"
+  },
+  {
+    "SYNONYM": "sproc",
+    "COMPONENT_TYPE": "Stored Procedure",
+    "WEIGHT": 1,
+    "COMMENT": "Sproc"
+  },
+  {
+    "SYNONYM": "storedprocedure",
+    "COMPONENT_TYPE": "Stored Procedure",
+    "WEIGHT": 1,
+    "COMMENT": "Stored procedure"
+  },
+  {
+    "SYNONYM": "matview",
+    "COMPONENT_TYPE": "Materialized View",
+    "WEIGHT": 1,
+    "COMMENT": "Mat view"
+  },
+  {
+    "SYNONYM": "externalstage",
+    "COMPONENT_TYPE": "External Stage",
+    "WEIGHT": 1,
+    "COMMENT": "External stage"
+  },
+  {
+    "SYNONYM": "s3stage",
+    "COMPONENT_TYPE": "External Stage",
+    "WEIGHT": 1,
+    "COMMENT": "S3 stage"
+  },
+  {
+    "SYNONYM": "userstage",
+    "COMPONENT_TYPE": "Internal Stage",
+    "WEIGHT": 1,
+    "COMMENT": "User stage"
+  },
+  {
+    "SYNONYM": "unistore",
+    "COMPONENT_TYPE": "Hybrid Table",
+    "WEIGHT": 1,
+    "COMMENT": "Unistore workload"
+  },
+  {
+    "SYNONYM": "confluent",
+    "COMPONENT_TYPE": "Kafka",
+    "WEIGHT": 1,
+    "COMMENT": "Confluent Kafka"
+  },
+  {
+    "SYNONYM": "jupyter",
+    "COMPONENT_TYPE": "Notebook",
+    "WEIGHT": 1,
+    "COMMENT": "Jupyter-style notebook"
+  },
+  {
+    "SYNONYM": "apiintegration",
+    "COMPONENT_TYPE": "External Function",
+    "WEIGHT": 1,
+    "COMMENT": "API integration"
+  },
+  {
+    "SYNONYM": "sp",
+    "COMPONENT_TYPE": "Stored Procedure",
+    "WEIGHT": 1,
+    "COMMENT": "SP abbreviation"
+  },
+  {
+    "SYNONYM": "kafka",
+    "COMPONENT_TYPE": "Kafka",
+    "WEIGHT": 1,
+    "COMMENT": "Apache Kafka"
+  },
+  {
+    "SYNONYM": "udtf",
+    "COMPONENT_TYPE": "UDTF",
+    "WEIGHT": 1,
+    "COMMENT": "Table function"
+  },
+  {
+    "SYNONYM": "hybridtable",
+    "COMPONENT_TYPE": "Hybrid Table",
+    "WEIGHT": 1,
+    "COMMENT": "Hybrid table"
+  },
+  {
+    "SYNONYM": "medallion",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "Main medallion architecture template"
+  },
+  {
+    "SYNONYM": "bronze silver gold",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "Three-layer medallion"
+  },
+  {
+    "SYNONYM": "lakehouse",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "Lakehouse pattern"
+  },
+  {
+    "SYNONYM": "data lakehouse",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "Data lakehouse architecture"
+  },
+  {
+    "SYNONYM": "bi workload",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "BI reporting use case"
+  },
+  {
+    "SYNONYM": "bronze layer",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "Bronze layer reference"
+  },
+  {
+    "SYNONYM": "silver layer",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "Silver layer reference"
+  },
+  {
+    "SYNONYM": "gold layer",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "Gold layer reference"
+  },
+  {
+    "SYNONYM": "reporting architecture",
+    "COMPONENT_TYPE": "MEDALLION_LAKEHOUSE",
+    "WEIGHT": 1,
+    "COMMENT": "Reporting use case"
+  },
+  {
+    "SYNONYM": "measure table",
+    "COMPONENT_TYPE": "Fact Table",
+    "WEIGHT": 1,
+    "COMMENT": "Fact table synonym"
+  },
+  {
+    "SYNONYM": "raw table",
+    "COMPONENT_TYPE": "Bronze Table",
+    "WEIGHT": 1,
+    "COMMENT": "Bronze layer synonym"
+  },
+  {
+    "SYNONYM": "silver stream",
+    "COMPONENT_TYPE": "Silver Stream",
+    "WEIGHT": 1,
+    "COMMENT": "Silver CDC stream"
+  },
+  {
+    "SYNONYM": "silver zone",
+    "COMPONENT_TYPE": "Silver Database",
+    "WEIGHT": 1,
+    "COMMENT": "Silver database"
+  },
+  {
+    "SYNONYM": "business table",
+    "COMPONENT_TYPE": "Gold Table",
+    "WEIGHT": 1,
+    "COMMENT": "Gold layer synonym"
+  },
+  {
+    "SYNONYM": "gold zone",
+    "COMPONENT_TYPE": "Gold Database",
+    "WEIGHT": 1,
+    "COMMENT": "Gold database"
+  },
+  {
+    "SYNONYM": "clean zone",
+    "COMPONENT_TYPE": "Silver Database",
+    "WEIGHT": 1,
+    "COMMENT": "Silver database synonym"
+  },
+  {
+    "SYNONYM": "silver table",
+    "COMPONENT_TYPE": "Silver Table",
+    "WEIGHT": 1,
+    "COMMENT": "Silver layer cleaned table"
+  },
+  {
+    "SYNONYM": "rls view",
+    "COMPONENT_TYPE": "RLS View",
+    "WEIGHT": 1,
+    "COMMENT": "Row-level security view"
+  },
+  {
+    "SYNONYM": "analytics warehouse",
+    "COMPONENT_TYPE": "BI Warehouse",
+    "WEIGHT": 1,
+    "COMMENT": "BI warehouse synonym"
+  },
+  {
+    "SYNONYM": "aggregated table",
+    "COMPONENT_TYPE": "Gold Table",
+    "WEIGHT": 1,
+    "COMMENT": "Gold layer synonym"
+  },
+  {
+    "SYNONYM": "bi warehouse",
+    "COMPONENT_TYPE": "BI Warehouse",
+    "WEIGHT": 1,
+    "COMMENT": "BI workload warehouse"
+  },
+  {
+    "SYNONYM": "presentation zone",
+    "COMPONENT_TYPE": "Gold Database",
+    "WEIGHT": 1,
+    "COMMENT": "Gold database synonym"
+  },
+  {
+    "SYNONYM": "cleaned table",
+    "COMPONENT_TYPE": "Silver Table",
+    "WEIGHT": 1,
+    "COMMENT": "Silver layer synonym"
+  },
+  {
+    "SYNONYM": "bronze table",
+    "COMPONENT_TYPE": "Bronze Table",
+    "WEIGHT": 1,
+    "COMMENT": "Bronze layer raw table"
+  },
+  {
+    "SYNONYM": "reporting view",
+    "COMPONENT_TYPE": "Business View",
+    "WEIGHT": 1,
+    "COMMENT": "Business view synonym"
+  },
+  {
+    "SYNONYM": "landing table",
+    "COMPONENT_TYPE": "Bronze Table",
+    "WEIGHT": 1,
+    "COMMENT": "Bronze layer synonym"
+  },
+  {
+    "SYNONYM": "bronze zone",
+    "COMPONENT_TYPE": "Bronze Database",
+    "WEIGHT": 1,
+    "COMMENT": "Bronze database"
+  },
+  {
+    "SYNONYM": "curated table",
+    "COMPONENT_TYPE": "Silver Table",
+    "WEIGHT": 1,
+    "COMMENT": "Silver layer synonym"
+  },
+  {
+    "SYNONYM": "dynamic table",
+    "COMPONENT_TYPE": "Dynamic Table",
+    "WEIGHT": 1,
+    "COMMENT": "Auto-refresh materialized view"
+  },
+  {
+    "SYNONYM": "row level security",
+    "COMPONENT_TYPE": "RLS View",
+    "WEIGHT": 1,
+    "COMMENT": "RLS synonym"
+  },
+  {
+    "SYNONYM": "gold table",
+    "COMPONENT_TYPE": "Gold Table",
+    "WEIGHT": 1,
+    "COMMENT": "Gold layer business table"
+  },
+  {
+    "SYNONYM": "fact table",
+    "COMPONENT_TYPE": "Fact Table",
+    "WEIGHT": 1,
+    "COMMENT": "Star schema fact"
+  },
+  {
+    "SYNONYM": "dim table",
+    "COMPONENT_TYPE": "Dimension Table",
+    "WEIGHT": 1,
+    "COMMENT": "Dimension abbreviation"
+  },
+  {
+    "SYNONYM": "business view",
+    "COMPONENT_TYPE": "Business View",
+    "WEIGHT": 1,
+    "COMMENT": "Analytics view"
+  },
+  {
+    "SYNONYM": "bronze stream",
+    "COMPONENT_TYPE": "Bronze Stream",
+    "WEIGHT": 1,
+    "COMMENT": "Bronze CDC stream"
+  },
+  {
+    "SYNONYM": "business zone",
+    "COMPONENT_TYPE": "Gold Database",
+    "WEIGHT": 1,
+    "COMMENT": "Gold database synonym"
+  },
+  {
+    "SYNONYM": "raw zone",
+    "COMPONENT_TYPE": "Bronze Database",
+    "WEIGHT": 1,
+    "COMMENT": "Bronze database synonym"
+  },
+  {
+    "SYNONYM": "dimension table",
+    "COMPONENT_TYPE": "Dimension Table",
+    "WEIGHT": 1,
+    "COMMENT": "Star schema dimension"
+  },
+  {
+    "SYNONYM": "analytics view",
+    "COMPONENT_TYPE": "Business View",
+    "WEIGHT": 1,
+    "COMMENT": "Business view synonym"
+  },
+  {
+    "SYNONYM": "log collection",
+    "COMPONENT_TYPE": "External Stage",
+    "WEIGHT": 1,
+    "COMMENT": "Security analytics - log ingestion"
+  },
+  {
+    "SYNONYM": "log ingestion",
+    "COMPONENT_TYPE": "Snowpipe",
+    "WEIGHT": 1,
+    "COMMENT": "Security analytics - streaming logs"
+  },
+  {
+    "SYNONYM": "log storage",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": "Security analytics - log storage"
+  },
+  {
+    "SYNONYM": "anomaly detection",
+    "COMPONENT_TYPE": "ML Model",
+    "WEIGHT": 1,
+    "COMMENT": "Security analytics - ML anomaly detection"
+  },
+  {
+    "SYNONYM": "threat detection",
+    "COMPONENT_TYPE": "ML Model",
+    "WEIGHT": 1,
+    "COMMENT": "Security analytics - threat detection"
+  },
+  {
+    "SYNONYM": "search optimization",
+    "COMPONENT_TYPE": "Cortex Search",
+    "WEIGHT": 1,
+    "COMMENT": "Security analytics - search optimization"
+  },
+  {
+    "SYNONYM": "search optimization service",
+    "COMPONENT_TYPE": "Cortex Search",
+    "WEIGHT": 1,
+    "COMMENT": "Security analytics - SOS"
+  },
+  {
+    "SYNONYM": "SOS",
+    "COMPONENT_TYPE": "Cortex Search",
+    "WEIGHT": 1,
+    "COMMENT": "Search Optimization Service abbreviation"
+  },
+  {
+    "SYNONYM": "SIEM",
+    "COMPONENT_TYPE": "View",
+    "WEIGHT": 1,
+    "COMMENT": "Security Information and Event Management"
+  },
+  {
+    "SYNONYM": "security dashboard",
+    "COMPONENT_TYPE": "Streamlit",
+    "WEIGHT": 1,
+    "COMMENT": "Security analytics dashboard"
+  },
+  {
+    "SYNONYM": "alert",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": "Security alerting"
+  },
+  {
+    "SYNONYM": "alerting",
+    "COMPONENT_TYPE": "Task",
+    "WEIGHT": 1,
+    "COMMENT": "Security alerting task"
+  },
+  {
+    "SYNONYM": "application logs",
+    "COMPONENT_TYPE": "Table",
+    "WEIGHT": 1,
+    "COMMENT": "App health monitoring"
+  },
+  {
+    "SYNONYM": "health monitoring",
+    "COMPONENT_TYPE": "Dynamic Table",
+    "WEIGHT": 1,
+    "COMMENT": "App health monitoring"
+  },
+  {
+    "SYNONYM": "real-time alerts",
+    "COMPONENT_TYPE": "Stream",
+    "WEIGHT": 1,
+    "COMMENT": "Real-time alerting stream"
+  },
+  {
+    "SYNONYM": "Snowpark ML",
+    "COMPONENT_TYPE": "ML Model",
+    "WEIGHT": 1,
+    "COMMENT": "Snowpark ML model reference"
+  },
+  {
+    "SYNONYM": "raw tables",
+    "COMPONENT_TYPE": "sf_bronze_layer",
+    "WEIGHT": 100,
+    "COMMENT": "Raw tables map to Bronze Layer in medallion"
+  },
+  {
+    "SYNONYM": "materialized view",
+    "COMPONENT_TYPE": "sf_materialized_view",
+    "WEIGHT": 100,
+    "COMMENT": "Materialized view component"
+  },
+  {
+    "SYNONYM": "kafka",
+    "COMPONENT_TYPE": "ext_kafka",
+    "WEIGHT": 100,
+    "COMMENT": "Apache Kafka streaming platform"
+  },
+  {
+    "SYNONYM": "streaming",
+    "COMPONENT_TYPE": "sf_snowpipe_streaming",
+    "WEIGHT": 90,
+    "COMMENT": "Streaming ingestion"
+  },
+  {
+    "SYNONYM": "serverless tasks",
+    "COMPONENT_TYPE": "Serverless Task",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "aws kinesis",
+    "COMPONENT_TYPE": "Kinesis",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "native app",
+    "COMPONENT_TYPE": "Native App",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "dynamic tables",
+    "COMPONENT_TYPE": "Dynamic Table",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "scheduled task",
+    "COMPONENT_TYPE": "Serverless Task",
+    "WEIGHT": 8,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "kafka connector",
+    "COMPONENT_TYPE": "Kafka Connector",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "firehose",
+    "COMPONENT_TYPE": "Firehose",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "snowflake app",
+    "COMPONENT_TYPE": "Native App",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "kafka connect",
+    "COMPONENT_TYPE": "Kafka Connector",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "azure event hubs",
+    "COMPONENT_TYPE": "Event Hubs",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "pub/sub",
+    "COMPONENT_TYPE": "Pub/Sub",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "pubsub",
+    "COMPONENT_TYPE": "Pub/Sub",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "snowpark container",
+    "COMPONENT_TYPE": "Container Services",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "snowpipe streaming",
+    "COMPONENT_TYPE": "Snowpipe Streaming",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "event producer",
+    "COMPONENT_TYPE": "Producer",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "streaming ingestion",
+    "COMPONENT_TYPE": "Snowpipe Streaming",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "kinesis firehose",
+    "COMPONENT_TYPE": "Firehose",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "data producer",
+    "COMPONENT_TYPE": "Producer",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "event hubs",
+    "COMPONENT_TYPE": "Event Hubs",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "streaming tables",
+    "COMPONENT_TYPE": "Dynamic Table",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "container services",
+    "COMPONENT_TYPE": "Container Services",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "producer",
+    "COMPONENT_TYPE": "Producer",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "google pub sub",
+    "COMPONENT_TYPE": "Pub/Sub",
+    "WEIGHT": 9,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "kinesis",
+    "COMPONENT_TYPE": "Kinesis",
+    "WEIGHT": 10,
+    "COMMENT": null
+  },
+  {
+    "SYNONYM": "real-time ingestion",
+    "COMPONENT_TYPE": "Snowpipe Streaming",
+    "WEIGHT": 9,
+    "COMMENT": null
+  }
+]

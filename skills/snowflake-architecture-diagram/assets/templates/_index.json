@@ -1,0 +1,72 @@
+[
+  {
+    "template_id": "REALTIME_IOT_PIPELINE",
+    "name": "Real-Time IoT Data Pipeline",
+    "category": "realtime_analytics"
+  },
+  {
+    "template_id": "REALTIME_FINANCIAL_TRANSACTIONS",
+    "name": "Real-Time Financial Transaction Processing",
+    "category": "realtime_analytics"
+  },
+  {
+    "template_id": "BATCH_DATA_WAREHOUSE",
+    "name": "Enterprise Batch Data Warehouse",
+    "category": "batch_analytics"
+  },
+  {
+    "template_id": "MULTI_CLOUD_DATA_MESH",
+    "name": "Multi-Cloud Data Mesh with Secure Sharing",
+    "category": "data_mesh"
+  },
+  {
+    "template_id": "ML_FEATURE_ENGINEERING",
+    "name": "Machine Learning & Data Science Reference Architecture",
+    "category": "machine_learning"
+  },
+  {
+    "template_id": "DATA_GOVERNANCE_COMPLIANCE",
+    "name": "Data Governance & Compliance Framework",
+    "category": "governance"
+  },
+  {
+    "template_id": "HYBRID_CLOUD_LAKEHOUSE",
+    "name": "Hybrid Cloud Data Lakehouse with Iceberg",
+    "category": "lakehouse"
+  },
+  {
+    "template_id": "MEDALLION_LAKEHOUSE",
+    "name": "Medallion Architecture (Bronze-Silver-Gold)",
+    "category": "medallion_architecture"
+  },
+  {
+    "template_id": "MEDALLION_LAKEHOUSE_SNOWFLAKE_ONLY",
+    "name": "Medallion Architecture (Snowflake-Native)",
+    "category": "medallion_architecture"
+  },
+  {
+    "template_id": "SECURITY_ANALYTICS",
+    "name": "Application Health & Security Analytics",
+    "category": "Security & Compliance"
+  },
+  {
+    "template_id": "CUSTOMER_360",
+    "name": "Customer 360 Reference Architecture",
+    "category": "Customer Analytics"
+  },
+  {
+    "template_id": "EMBEDDED_ANALYTICS",
+    "name": "Embedded Analytics Reference Architecture",
+    "category": "Analytics"
+  },
+  {
+    "template_id": "STREAMING_DATA_STACK",
+    "name": "Streaming Data Stack Reference Architecture",
+    "category": "Real-Time Analytics"
+  },
+  {
+    "template_id": "SERVERLESS_DATA_STACK",
+    "name": "Serverless Data Stack Reference Architecture",
+    "category": "Serverless"
+  }
+]
