@@ -7,7 +7,7 @@
       "id": "s3_bucket",
       "label": "AWS S3",
       "detail": "Object store / data lake",
-      "icon": "Snowflake_ICON_3rd_Party.svg",
+      "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
       "category": "onprem"
     },
     {

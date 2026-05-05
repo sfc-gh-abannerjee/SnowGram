@@ -42,14 +42,14 @@
       "id": "dynamic_table",
       "label": "Dynamic Table",
       "detail": "Declarative refresh",
-      "icon": "Snowflake_ICON_Dynamic_Tables.svg",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
       "category": "snow"
     },
     {
       "id": "tableau",
       "label": "Tableau",
       "detail": "BI dashboards",
-      "icon": "Snowflake_ICON_Analytics.svg",
+      "icon": "Snowflake_ICON_Embedded_Analytics.svg",
       "category": "outcome"
     }
   ],
