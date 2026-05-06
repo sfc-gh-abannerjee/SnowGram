@@ -126,6 +126,7 @@ def run_one(persona: dict, *, blocks_index: dict, take_screenshot: bool) -> None
         "source": "standalone:compose",
         "nodes": flow["nodes"],
         "edges": flow["edges"],
+        "zones": flow["zones"],
         "citations": persona["citations"],
     }
     state_path = OUT_DIR / f"{name}_state.json"
@@ -133,25 +134,27 @@ def run_one(persona: dict, *, blocks_index: dict, take_screenshot: bool) -> None
     print(f"  ✓ {name}_state.json ({len(flow['nodes'])} nodes)")
 
     # 3. Self-contained HTML
-    html_path = OUT_DIR / f"{name}_v3.html"
+    html_path = OUT_DIR / f"{name}_v5.html"
     subprocess.run(
         ["python3", str(SCRIPTS / "render_static.py"),
          "--state", str(state_path), "--out", str(html_path)],
         check=True, capture_output=True,
     )
-    print(f"  ✓ {name}_v3.html ({html_path.stat().st_size // 1024} KB)")
+    print(f"  ✓ {name}_v5.html ({html_path.stat().st_size // 1024} KB)")
 
     # 4. Chrome screenshot
     if take_screenshot and Path(CHROME).exists():
-        png_path = OUT_DIR / f"{name}_v3.png"
+        png_path = OUT_DIR / f"{name}_v5.png"
         subprocess.run(
             [CHROME, "--headless=new", "--disable-gpu", "--no-sandbox",
-             "--window-size=1900,800", "--virtual-time-budget=4000",
+             "--no-first-run", "--disable-extensions",
+             "--window-size=2200,920", "--virtual-time-budget=4000",
+             "--force-color-profile=srgb",
              f"--screenshot={png_path}", f"file://{html_path}"],
-            check=False, capture_output=True,
+            check=False, capture_output=True, timeout=30,
         )
         if png_path.exists():
-            print(f"  ✓ {name}_v3.png ({png_path.stat().st_size // 1024} KB)")
+            print(f"  ✓ {name}_v5.png ({png_path.stat().st_size // 1024} KB)")
 
 
 def main(argv: list[str] | None = None) -> int:

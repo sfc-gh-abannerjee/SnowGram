@@ -8,49 +8,56 @@
       "label": "Snowpipe Streaming",
       "detail": "Sub-second row-level ingest",
       "icon": "Snowflake_ICON_RA_Pipe.svg",
-      "category": "bridge"
+      "category": "bridge",
+      "zone": "Ingestion"
     },
     {
       "id": "bronze_table",
       "label": "Bronze Table",
       "detail": "Raw, append-only",
       "icon": "Snowflake_ICON_RA_Table.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Bronze Layer"
     },
     {
       "id": "stream",
       "label": "Stream",
       "detail": "Change data capture",
       "icon": "Snowflake_ICON_RA_Stream.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Transformation"
     },
     {
       "id": "task",
       "label": "Task",
       "detail": "Scheduled transform",
       "icon": "Snowflake_ICON_RA_Task.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Transformation"
     },
     {
       "id": "silver_table",
       "label": "Silver Table",
       "detail": "Cleaned, deduped",
       "icon": "Snowflake_ICON_RA_Table.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Silver Layer"
     },
     {
       "id": "dynamic_table",
       "label": "Dynamic Table",
       "detail": "Declarative refresh",
       "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Gold Layer"
     },
     {
       "id": "tableau",
       "label": "Tableau",
       "detail": "BI dashboards",
       "icon": "Snowflake_ICON_Embedded_Analytics.svg",
-      "category": "outcome"
+      "category": "outcome",
+      "zone": "Consumption"
     }
   ],
   "edges": [
@@ -77,6 +84,51 @@
     {
       "source": "dynamic_table",
       "target": "tableau"
+    }
+  ],
+  "zones": [
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe_streaming"
+      ]
+    },
+    {
+      "name": "Bronze Layer",
+      "category": "snow",
+      "node_ids": [
+        "bronze_table"
+      ]
+    },
+    {
+      "name": "Silver Layer",
+      "category": "snow",
+      "node_ids": [
+        "silver_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "stream",
+        "task"
+      ]
+    },
+    {
+      "name": "Gold Layer",
+      "category": "outcome",
+      "node_ids": [
+        "dynamic_table"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "tableau"
+      ]
     }
   ],
   "citations": [

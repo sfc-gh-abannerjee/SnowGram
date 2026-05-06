@@ -8,42 +8,48 @@
       "label": "AWS S3",
       "detail": "Object store / data lake",
       "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
-      "category": "onprem"
+      "category": "onprem",
+      "zone": "External Sources"
     },
     {
       "id": "kafka_connector",
       "label": "Kafka",
       "detail": "Streaming topic",
       "icon": "Snowflake_ICON_Kafka_Connectors.svg",
-      "category": "onprem"
+      "category": "onprem",
+      "zone": "External Sources"
     },
     {
       "id": "snowpipe_streaming",
       "label": "Snowpipe Streaming",
       "detail": "Sub-second row-level ingest",
       "icon": "Snowflake_ICON_RA_Pipe.svg",
-      "category": "bridge"
+      "category": "bridge",
+      "zone": "Ingestion"
     },
     {
       "id": "stream",
       "label": "Stream",
       "detail": "Change data capture",
       "icon": "Snowflake_ICON_RA_Stream.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Transformation"
     },
     {
       "id": "silver_table",
       "label": "Silver Table",
       "detail": "Cleaned, deduped",
       "icon": "Snowflake_ICON_RA_Table.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Silver Layer"
     },
     {
       "id": "gold_table",
       "label": "Gold Table",
       "detail": "Business-ready output",
       "icon": "Snowflake_ICON_RA_Table.svg",
-      "category": "outcome"
+      "category": "outcome",
+      "zone": "Gold Layer"
     }
   ],
   "edges": [
@@ -66,6 +72,44 @@
     {
       "source": "silver_table",
       "target": "gold_table"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "s3_bucket",
+        "kafka_connector"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe_streaming"
+      ]
+    },
+    {
+      "name": "Silver Layer",
+      "category": "snow",
+      "node_ids": [
+        "silver_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "stream"
+      ]
+    },
+    {
+      "name": "Gold Layer",
+      "category": "outcome",
+      "node_ids": [
+        "gold_table"
+      ]
     }
   ],
   "citations": [

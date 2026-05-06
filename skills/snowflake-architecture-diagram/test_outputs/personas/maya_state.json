@@ -8,56 +8,64 @@
       "label": "Kafka",
       "detail": "Streaming topic",
       "icon": "Snowflake_ICON_Kafka_Connectors.svg",
-      "category": "onprem"
+      "category": "onprem",
+      "zone": "External Sources"
     },
     {
       "id": "snowpipe_streaming",
       "label": "Snowpipe Streaming",
       "detail": "Sub-second row-level ingest",
       "icon": "Snowflake_ICON_RA_Pipe.svg",
-      "category": "bridge"
+      "category": "bridge",
+      "zone": "Ingestion"
     },
     {
       "id": "bronze_table",
       "label": "Bronze Table",
       "detail": "Raw, append-only",
       "icon": "Snowflake_ICON_RA_Table.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Bronze Layer"
     },
     {
       "id": "external_function",
       "label": "External Function",
       "detail": "API / model service",
       "icon": "Snowflake_ICON_RA_Function_External.svg",
-      "category": "onprem"
+      "category": "onprem",
+      "zone": "Transformation"
     },
     {
       "id": "stream",
       "label": "Stream",
       "detail": "Change data capture",
       "icon": "Snowflake_ICON_RA_Stream.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Transformation"
     },
     {
       "id": "task",
       "label": "Task",
       "detail": "Scheduled transform",
       "icon": "Snowflake_ICON_RA_Task.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Transformation"
     },
     {
       "id": "secure_view",
       "label": "Secure View",
       "detail": "RLS-enforcing view",
       "icon": "Snowflake_ICON_RA_View_Secure.svg",
-      "category": "snow"
+      "category": "snow",
+      "zone": "Security & Governance"
     },
     {
       "id": "rls_view",
       "label": "RLS View",
       "detail": "Row-level secured BI view",
       "icon": "Snowflake_ICON_RA_View_Secure.svg",
-      "category": "outcome"
+      "category": "outcome",
+      "zone": "Security & Governance"
     }
   ],
   "edges": [
@@ -88,6 +96,46 @@
     {
       "source": "secure_view",
       "target": "rls_view"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "kafka_connector"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe_streaming"
+      ]
+    },
+    {
+      "name": "Bronze Layer",
+      "category": "snow",
+      "node_ids": [
+        "bronze_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "external_function",
+        "stream",
+        "task"
+      ]
+    },
+    {
+      "name": "Security & Governance",
+      "category": "snow",
+      "node_ids": [
+        "secure_view",
+        "rls_view"
+      ]
     }
   ],
   "citations": [

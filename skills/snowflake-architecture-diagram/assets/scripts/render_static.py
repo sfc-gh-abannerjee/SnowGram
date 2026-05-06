@@ -78,6 +78,8 @@ def render(state: dict) -> str:
     # tries to absorb sibling elements into this img's attribute list and
     # the entire flow-node DOM becomes malformed (label width collapses to
     # the intrinsic width of its text instead of filling the card).
+    # NOTE2: the viewer has multiple <img src="icons/..."> templates (one
+    # for zones layout, one for the legacy flat-flow fallback). Swap ALL.
     icon_src_swap = (
         '<img src="${(node.icon_data || (\'icons/\' + escapeHtml(node.icon)))}"'
         ' alt="" onerror="this.style.display=\'none\'">'
@@ -86,7 +88,6 @@ def render(state: dict) -> str:
         r'<img src="icons/\$\{escapeHtml\(node\.icon\)\}"[^>]*>',
         lambda _m: icon_src_swap,
         html,
-        count=1,
     )
 
     # Inline the two vendored libraries so the file is fully offline.

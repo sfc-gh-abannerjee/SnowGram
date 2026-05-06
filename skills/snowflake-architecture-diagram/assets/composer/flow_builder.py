@@ -138,6 +138,77 @@ GENERIC_ICON = "Snowflake_ICON_Architecture.svg"
 
 
 # --------------------------------------------------------------------------- #
+# Zone assignment — groups blocks into named architectural zones for the
+# 2D enterprise-style diagram layout (vs a single horizontal flow row).
+#
+# Zone order is significant: it determines left-to-right placement of
+# zone columns in the rendered diagram.
+# --------------------------------------------------------------------------- #
+ZONE_ORDER = [
+    "External Sources",
+    "Ingestion",
+    "Bronze Layer",
+    "Silver Layer",
+    "Transformation",
+    "Compute",
+    "Gold Layer",
+    "Security & Governance",
+    "Consumption",
+]
+
+CATEGORY_TO_ZONE = {
+    "external":       "External Sources",
+    "ingestion":      "Ingestion",
+    "bronze":         "Bronze Layer",
+    "silver":         "Silver Layer",
+    "transformation": "Transformation",
+    "compute":        "Compute",
+    "storage":        "Bronze Layer",   # generic Database/Schema/View land here unless overridden
+    "gold":           "Gold Layer",
+    "security":       "Security & Governance",
+    "bi":             "Consumption",
+}
+
+# Per-block override (some blocks fit better in a zone other than their
+# raw BLOCK_CATEGORY would suggest).
+BLOCK_TO_ZONE_OVERRIDE: dict[str, str] = {
+    # Secure View / RLS View land in Security & Governance regardless of
+    # whether they originate from "storage" or "bi" categories.
+    "SECURE_VIEW_BLOCK": "Security & Governance",
+    "RLS_VIEW_BLOCK":    "Security & Governance",
+    # External Function is used as an outbound enrichment call — keep in
+    # Transformation rather than External Sources.
+    "EXTERNAL_FUNCTION_BLOCK": "Transformation",
+    # Data shares are a consumption pattern.
+    "DATA_SHARE_BLOCK": "Consumption",
+}
+
+
+# Each zone has its own visual identity (stripe + tinting) independent of
+# the categories of the nodes that happen to live inside it. Without this,
+# a zone like "Transformation" containing an "External Function" (onprem
+# category) would inherit an orange stripe even though the zone itself is
+# Snowflake-side.
+ZONE_CATEGORY = {
+    "External Sources":       "onprem",
+    "Ingestion":              "bridge",
+    "Bronze Layer":           "snow",
+    "Silver Layer":           "snow",
+    "Transformation":         "snow",
+    "Compute":                "snow",
+    "Gold Layer":             "outcome",
+    "Security & Governance":  "snow",
+    "Consumption":            "outcome",
+}
+
+
+def _zone_for(block_id: str, category: str) -> str:
+    if block_id in BLOCK_TO_ZONE_OVERRIDE:
+        return BLOCK_TO_ZONE_OVERRIDE[block_id]
+    return CATEGORY_TO_ZONE.get((category or "").lower(), "Bronze Layer")
+
+
+# --------------------------------------------------------------------------- #
 # Public API
 # --------------------------------------------------------------------------- #
 def block_to_node(block: dict[str, Any]) -> dict[str, str]:
@@ -146,6 +217,7 @@ def block_to_node(block: dict[str, Any]) -> dict[str, str]:
     DESCRIPTION) into a flow-node spec for the rich viewer.
     """
     bid = block.get("BLOCK_ID", "")
+    raw_category = (block.get("BLOCK_CATEGORY") or "").lower()
     if bid in BLOCK_REGISTRY:
         spec = dict(BLOCK_REGISTRY[bid])
         return {
@@ -154,18 +226,19 @@ def block_to_node(block: dict[str, Any]) -> dict[str, str]:
             "detail": spec["detail"],
             "icon": spec["icon"],
             "category": spec["category"],
+            "zone": _zone_for(bid, raw_category),
         }
 
     # Fallback: derive from category + name
-    cat = (block.get("BLOCK_CATEGORY") or "").lower()
-    icon = CATEGORY_FALLBACK_ICON.get(cat, GENERIC_ICON)
-    flow_class = CATEGORY_TO_FLOW_CLASS.get(cat, "snow")
+    icon = CATEGORY_FALLBACK_ICON.get(raw_category, GENERIC_ICON)
+    flow_class = CATEGORY_TO_FLOW_CLASS.get(raw_category, "snow")
     return {
         "id": _node_id_for(bid),
         "label": block.get("BLOCK_NAME", bid).split(" – ")[0][:32],
         "detail": (block.get("DESCRIPTION") or "")[:80],
         "icon": icon,
         "category": flow_class,
+        "zone": _zone_for(bid, raw_category),
     }
 
 
@@ -179,9 +252,13 @@ def build_flow(
     blocks_by_id: dict[str, dict[str, Any]],
 ) -> dict[str, list]:
     """
-    Build {nodes, edges} for the rich viewer from an ordered BLOCK_ID list.
+    Build {nodes, edges, zones} for the rich viewer from an ordered BLOCK_ID list.
 
-    Edges follow input order (matches composer.py / SQL UDF semantics).
+    - nodes : flat list with zone field per node
+    - edges : sequential edges in input order (matches deployed UDF semantics)
+    - zones : ordered list of {name, category, node_ids} for the 2D enterprise
+              layout. Zone order follows ZONE_ORDER, restricted to zones that
+              actually have at least one node.
     """
     nodes: list[dict[str, str]] = []
     seen_ids: list[str] = []
@@ -190,7 +267,6 @@ def build_flow(
         if block is None:
             continue
         node = block_to_node(block)
-        # Avoid duplicate node ids if the same BLOCK_ID appears twice
         if node["id"] in seen_ids:
             continue
         nodes.append(node)
@@ -200,4 +276,27 @@ def build_flow(
     for i in range(1, len(nodes)):
         edges.append({"source": nodes[i - 1]["id"], "target": nodes[i]["id"]})
 
-    return {"nodes": nodes, "edges": edges}
+    # Group nodes by zone, preserve canonical zone order
+    by_zone: dict[str, list[str]] = {}
+    for n in nodes:
+        zname = n.get("zone") or "Bronze Layer"
+        by_zone.setdefault(zname, []).append(n["id"])
+
+    zones = []
+    for zname in ZONE_ORDER:
+        if zname in by_zone:
+            zones.append(
+                {
+                    "name": zname,
+                    "category": ZONE_CATEGORY.get(zname, "snow"),
+                    "node_ids": by_zone[zname],
+                }
+            )
+    # Add any zones that didn't appear in ZONE_ORDER (defensive)
+    for zname, ids in by_zone.items():
+        if zname not in ZONE_ORDER:
+            zones.append(
+                {"name": zname, "category": ZONE_CATEGORY.get(zname, "snow"), "node_ids": ids}
+            )
+
+    return {"nodes": nodes, "edges": edges, "zones": zones}

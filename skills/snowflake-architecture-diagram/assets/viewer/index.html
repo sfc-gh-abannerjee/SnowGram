@@ -113,7 +113,7 @@
     pointer-events: none;
   }
   .header-inner {
-    max-width: 1320px;
+    max-width: 1920px;
     margin: 0 auto;
     position: relative;
     z-index: 1;
@@ -177,7 +177,7 @@
 
   /* ────────────────────────── Page ────────────────────────── */
   .page {
-    max-width: 1320px;
+    max-width: 1920px;
     margin: 0 auto;
     padding: 28px 24px;
   }
@@ -216,6 +216,125 @@
     overflow-x: auto;
     transition: background-color 0.25s ease, border-color 0.25s ease;
   }
+
+  /* ────────────────────────── Zones grid (enterprise layout) ────────────────────────── */
+  .zones-grid {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    flex-wrap: nowrap;
+    min-width: max-content;
+  }
+
+  .zone {
+    flex: 0 0 auto;
+    min-width: 232px;
+    max-width: 280px;
+    background: var(--surface);
+    border: 1.5px solid var(--zone-border, var(--border-subtle));
+    border-radius: var(--radius-card);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,53,69,0.04);
+  }
+  .zone-stripe {
+    height: 4px;
+    background: var(--zone-stripe, var(--sf-blue));
+  }
+  .zone-header {
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--zone-header-bg, transparent);
+  }
+  .zone-name {
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--zone-color, var(--text-primary));
+    line-height: 1.2;
+  }
+  .zone-tag {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+  .zone-body {
+    padding: 12px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    flex: 1;
+    align-content: start;
+  }
+  .zone-body.cols-2 { grid-template-columns: repeat(2, 1fr); min-width: 280px; }
+
+  /* Compact node variant when inside a zone */
+  .zone .flow-node {
+    min-width: 0;
+    width: 100%;
+    padding: 12px 8px 10px;
+    background: var(--surface-soft);
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
+    text-align: center;
+  }
+  .zone .flow-node .icon {
+    width: 44px;
+    height: 44px;
+    padding: 8px;
+    margin-bottom: 6px;
+  }
+  .zone .flow-node .label {
+    font-size: 12.5px;
+    margin-bottom: 2px;
+  }
+  .zone .flow-node .detail {
+    font-size: 10.5px;
+    line-height: 1.4;
+  }
+
+  /* Inter-zone connector */
+  .zone-arrow {
+    flex: 0 0 auto;
+    width: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Per-category zone tinting */
+  .zone.zone-onprem  {
+    --zone-stripe: var(--sf-orange);
+    --zone-color: #B86E1E;
+    --zone-border: rgba(255,159,54,0.32);
+    --zone-header-bg: rgba(255,159,54,0.05);
+  }
+  .zone.zone-bridge  {
+    --zone-stripe: var(--sf-mid-blue);
+    --zone-color: var(--sf-mid-blue);
+    --zone-border: rgba(17,86,127,0.28);
+    --zone-header-bg: rgba(17,86,127,0.05);
+  }
+  .zone.zone-snow    {
+    --zone-stripe: var(--sf-blue);
+    --zone-color: #1A8AB6;
+    --zone-border: rgba(41,181,232,0.30);
+    --zone-header-bg: rgba(41,181,232,0.05);
+  }
+  .zone.zone-outcome {
+    --zone-stripe: var(--sf-star-blue);
+    --zone-color: #2A9CA8;
+    --zone-border: rgba(113,211,220,0.34);
+    --zone-header-bg: rgba(113,211,220,0.06);
+  }
+  [data-theme="dark"] .zone.zone-onprem  { --zone-color: #FFB36A; }
+  [data-theme="dark"] .zone.zone-bridge  { --zone-color: #6FB8E0; }
+  [data-theme="dark"] .zone.zone-snow    { --zone-color: #5AC9F0; }
+  [data-theme="dark"] .zone.zone-outcome { --zone-color: #88E0E8; }
 
   /* ────────────────────────── Flow row + nodes ────────────────────────── */
   .flow {
@@ -510,6 +629,55 @@
       return;
     }
 
+    const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
+    const zones = Array.isArray(state.zones) ? state.zones : [];
+
+    // ── Enterprise zones layout ────────────────────────────────
+    if (zones.length) {
+      flow.className = 'zones-grid';
+      flow.style.display = 'flex';
+
+      zones.forEach((z, zi) => {
+        const cat = z.category || 'snow';
+        const useTwoCols = (z.node_ids || []).length >= 4;
+
+        const zoneEl = document.createElement('div');
+        zoneEl.className = 'zone zone-' + cat;
+        zoneEl.innerHTML = `
+          <div class="zone-stripe"></div>
+          <div class="zone-header">
+            <div class="zone-name">${escapeHtml(z.name)}</div>
+            <div class="zone-tag">${(z.node_ids || []).length} component${(z.node_ids || []).length === 1 ? '' : 's'}</div>
+          </div>
+          <div class="zone-body${useTwoCols ? ' cols-2' : ''}"></div>
+        `;
+        const body = zoneEl.querySelector('.zone-body');
+        (z.node_ids || []).forEach(id => {
+          const node = nodesById[id];
+          if (!node) return;
+          const div = document.createElement('div');
+          div.className = 'flow-node node-' + (node.category || 'snow');
+          div.innerHTML = `
+            <div class="icon"><img src="icons/${escapeHtml(node.icon)}" alt="" onerror="this.style.display='none'"></div>
+            <div class="label">${escapeHtml(node.label)}</div>
+            <div class="detail">${escapeHtml(node.detail || '')}</div>
+          `;
+          body.appendChild(div);
+        });
+        flow.appendChild(zoneEl);
+
+        if (zi < zones.length - 1) {
+          const arrow = document.createElement('div');
+          arrow.className = 'zone-arrow';
+          arrow.innerHTML = arrowSvg();
+          flow.appendChild(arrow);
+        }
+      });
+      return;
+    }
+
+    // ── Fallback: flat horizontal flow (legacy) ─────────────────
+    flow.className = 'flow';
     flow.style.display = 'flex';
     nodes.forEach((node, i) => {
       const div = document.createElement('div');
