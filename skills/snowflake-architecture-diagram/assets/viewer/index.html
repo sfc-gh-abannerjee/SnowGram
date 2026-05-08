@@ -63,7 +63,7 @@
     --text-muted: #6F7E8E;
     --border-subtle: rgba(255,255,255,0.08);
     --shadow-card: 0 1px 2px rgba(0,0,0,0.40), 0 6px 22px rgba(0,0,0,0.30);
-    --connector-color: #5A6A7A;
+    --connector-color: #7BA0B0;
 
     --node-onprem-bg:     rgba(255,159,54,0.10);
     --node-onprem-border: rgba(255,159,54,0.30);
@@ -213,14 +213,38 @@
     border: 1px solid var(--border-subtle);
     padding: 32px 28px;
     margin-bottom: 20px;
+    position: relative;
     transition: background-color 0.25s ease, border-color 0.25s ease;
   }
+
+  /* ────────────────────────── SVG connector overlay ────────────────────────── */
+  .connector-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 10;
+    overflow: visible;
+  }
+  .connector-path {
+    fill: none;
+    stroke: var(--connector-color);
+    stroke-width: 2;
+    stroke-dasharray: 8 4;
+    stroke-linecap: round;
+    opacity: 0.8;
+    animation: connector-flow 1.4s linear infinite;
+  }
+  @keyframes connector-flow { to { stroke-dashoffset: -20; } }
 
   /* ────────────────────────── Zones grid (enterprise layout) ────────────────────────── */
   .zones-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
+    gap: 24px;
+    position: relative;
   }
 
   .zone {
@@ -256,22 +280,6 @@
     margin-top: 3px;
     font-weight: 700;
     letter-spacing: 0.04em;
-  }
-  .zone-order {
-    position: absolute;
-    top: 8px;
-    right: 10px;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--zone-stripe, var(--sf-blue));
-    color: #fff;
-    font-size: 10px;
-    font-weight: 900;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0.7;
   }
   .zone-body {
     padding: 12px;
@@ -534,6 +542,13 @@
   </div>
 
   <div class="diagram-card">
+    <svg id="diagram-connectors" class="connector-overlay">
+      <defs>
+        <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+          <path d="M0,0 L8,3 L0,6" fill="var(--connector-color)" />
+        </marker>
+      </defs>
+    </svg>
     <div class="flow" id="diagram-flow"></div>
     <div id="diagram-fallback" style="display:none;"></div>
   </div>
@@ -650,7 +665,6 @@
           <div class="zone-header">
             <div class="zone-name">${escapeHtml(z.name)}</div>
             <div class="zone-tag">${(z.node_ids || []).length} component${(z.node_ids || []).length === 1 ? '' : 's'}</div>
-            <div class="zone-order">${zi + 1}</div>
           </div>
           <div class="zone-body${useTwoCols ? ' cols-2' : ''}"></div>
         `;
@@ -660,6 +674,7 @@
           if (!node) return;
           const div = document.createElement('div');
           div.className = 'flow-node node-' + (node.category || 'snow');
+          div.setAttribute('data-node-id', node.id);
           div.innerHTML = `
             <div class="icon"><img src="icons/${escapeHtml(node.icon)}" alt="" onerror="this.style.display='none'"></div>
             <div class="label">${escapeHtml(node.label)}</div>
@@ -669,6 +684,9 @@
         });
         flow.appendChild(zoneEl);
       });
+
+      // Draw connectors after layout settles
+      setTimeout(function() { renderConnectors(state); }, 100);
       return;
     }
 
@@ -693,6 +711,83 @@
       }
     });
   }
+
+  // ────────────────────────────────────────────────────────
+  // SVG Connector Rendering
+  // ────────────────────────────────────────────────────────
+  function renderConnectors(state) {
+    const svg = document.getElementById('diagram-connectors');
+    const card = document.querySelector('.diagram-card');
+    if (!svg || !card) return;
+
+    // Clear previous paths (keep <defs>)
+    svg.querySelectorAll('path').forEach(function(p) { p.remove(); });
+
+    const edges = state.edges || [];
+    if (!edges.length) return;
+
+    const cardRect = card.getBoundingClientRect();
+
+    edges.forEach(function(edge) {
+      const srcEl = card.querySelector('[data-node-id="' + edge.source + '"]');
+      const tgtEl = card.querySelector('[data-node-id="' + edge.target + '"]');
+      if (!srcEl || !tgtEl) return;
+
+      const srcRect = srcEl.getBoundingClientRect();
+      const tgtRect = tgtEl.getBoundingClientRect();
+
+      // Compute centers relative to the card
+      const sx = srcRect.left + srcRect.width / 2 - cardRect.left;
+      const sy = srcRect.top + srcRect.height / 2 - cardRect.top;
+      const tx = tgtRect.left + tgtRect.width / 2 - cardRect.left;
+      const ty = tgtRect.top + tgtRect.height / 2 - cardRect.top;
+
+      // Determine connection points based on relative position
+      var x1, y1, x2, y2;
+      const dx = tx - sx;
+      const dy = ty - sy;
+
+      if (Math.abs(dx) > Math.abs(dy)) {
+        // Horizontal: connect right-edge → left-edge
+        x1 = srcRect.right - cardRect.left;
+        y1 = sy;
+        x2 = tgtRect.left - cardRect.left;
+        y2 = ty;
+      } else {
+        // Vertical: connect bottom-edge → top-edge
+        x1 = sx;
+        y1 = srcRect.bottom - cardRect.top;
+        x2 = tx;
+        y2 = tgtRect.top - cardRect.top;
+      }
+
+      // Smooth cubic Bezier
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      var d;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        d = 'M' + x1 + ',' + y1 + ' C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + x2 + ',' + y2;
+      } else {
+        d = 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + my + ' ' + x2 + ',' + my + ' ' + x2 + ',' + y2;
+      }
+
+      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathEl.setAttribute('d', d);
+      pathEl.setAttribute('class', 'connector-path');
+      pathEl.setAttribute('marker-end', 'url(#arrowhead)');
+      svg.appendChild(pathEl);
+    });
+  }
+
+  // Re-draw connectors on resize (zones may wrap)
+  (function() {
+    var ro = new ResizeObserver(function() {
+      if (currentState && currentState.zones && currentState.zones.length) {
+        renderConnectors(currentState);
+      }
+    });
+    ro.observe(document.querySelector('.diagram-card'));
+  })();
 
   function renderCitations(citations) {
     const list = document.getElementById('citations-list');
