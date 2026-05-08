@@ -237,6 +237,10 @@
     opacity: 0.8;
     animation: connector-flow 1.4s linear infinite;
   }
+  .connector-dot {
+    fill: var(--connector-color);
+    opacity: 0.9;
+  }
   @keyframes connector-flow { to { stroke-dashoffset: -20; } }
 
   /* ────────────────────────── Zones grid (enterprise layout) ────────────────────────── */
@@ -544,8 +548,8 @@
   <div class="diagram-card">
     <svg id="diagram-connectors" class="connector-overlay">
       <defs>
-        <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-          <path d="M0,0 L8,3 L0,6" fill="var(--connector-color)" />
+        <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M1,1 L9,4 L1,7" fill="none" stroke="var(--connector-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </marker>
       </defs>
     </svg>
@@ -721,7 +725,7 @@
     if (!svg || !card) return;
 
     // Clear previous paths (keep <defs>)
-    svg.querySelectorAll('path').forEach(function(p) { p.remove(); });
+    svg.querySelectorAll('.connector-path, .connector-dot').forEach(function(p) { p.remove(); });
 
     const edges = state.edges || [];
     if (!edges.length) return;
@@ -736,46 +740,77 @@
       const srcRect = srcEl.getBoundingClientRect();
       const tgtRect = tgtEl.getBoundingClientRect();
 
-      // Compute centers relative to the card
+      // Centers relative to card
       const sx = srcRect.left + srcRect.width / 2 - cardRect.left;
       const sy = srcRect.top + srcRect.height / 2 - cardRect.top;
       const tx = tgtRect.left + tgtRect.width / 2 - cardRect.left;
       const ty = tgtRect.top + tgtRect.height / 2 - cardRect.top;
 
-      // Determine connection points based on relative position
+      // Determine best exit/entry edges
       var x1, y1, x2, y2;
       const dx = tx - sx;
       const dy = ty - sy;
+      const absDx = Math.abs(dx);
+      const absDy = Math.abs(dy);
 
-      if (Math.abs(dx) > Math.abs(dy)) {
-        // Horizontal: connect right-edge → left-edge
-        x1 = srcRect.right - cardRect.left;
+      if (absDx > absDy * 0.5) {
+        // Primarily horizontal
+        if (dx > 0) {
+          x1 = srcRect.right - cardRect.left;
+          x2 = tgtRect.left - cardRect.left;
+        } else {
+          x1 = srcRect.left - cardRect.left;
+          x2 = tgtRect.right - cardRect.left;
+        }
         y1 = sy;
-        x2 = tgtRect.left - cardRect.left;
         y2 = ty;
       } else {
-        // Vertical: connect bottom-edge → top-edge
+        // Primarily vertical
+        if (dy > 0) {
+          y1 = srcRect.bottom - cardRect.top;
+          y2 = tgtRect.top - cardRect.top;
+        } else {
+          y1 = srcRect.top - cardRect.top;
+          y2 = tgtRect.bottom - cardRect.top;
+        }
         x1 = sx;
-        y1 = srcRect.bottom - cardRect.top;
         x2 = tx;
-        y2 = tgtRect.top - cardRect.top;
       }
 
-      // Smooth cubic Bezier
-      const mx = (x1 + x2) / 2;
-      const my = (y1 + y2) / 2;
-      var d;
-      if (Math.abs(dx) > Math.abs(dy)) {
-        d = 'M' + x1 + ',' + y1 + ' C' + mx + ',' + y1 + ' ' + mx + ',' + y2 + ' ' + x2 + ',' + y2;
+      // Gentle cubic Bezier — control points 40% of the way, biased toward straight line
+      var cpx1, cpy1, cpx2, cpy2;
+      if (absDx > absDy * 0.5) {
+        // Horizontal: control points push horizontally
+        var pullX = Math.min(absDx * 0.4, 60);
+        cpx1 = x1 + (dx > 0 ? pullX : -pullX);
+        cpy1 = y1;
+        cpx2 = x2 - (dx > 0 ? pullX : -pullX);
+        cpy2 = y2;
       } else {
-        d = 'M' + x1 + ',' + y1 + ' C' + x1 + ',' + my + ' ' + x2 + ',' + my + ' ' + x2 + ',' + y2;
+        // Vertical: control points push vertically
+        var pullY = Math.min(absDy * 0.4, 60);
+        cpx1 = x1;
+        cpy1 = y1 + (dy > 0 ? pullY : -pullY);
+        cpx2 = x2;
+        cpy2 = y2 - (dy > 0 ? pullY : -pullY);
       }
 
+      var d = 'M' + x1 + ',' + y1 + ' C' + cpx1 + ',' + cpy1 + ' ' + cpx2 + ',' + cpy2 + ' ' + x2 + ',' + y2;
+
+      // Draw connector path
       const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathEl.setAttribute('d', d);
       pathEl.setAttribute('class', 'connector-path');
       pathEl.setAttribute('marker-end', 'url(#arrowhead)');
       svg.appendChild(pathEl);
+
+      // Small dot at source to show origin
+      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      dot.setAttribute('cx', x1);
+      dot.setAttribute('cy', y1);
+      dot.setAttribute('r', '3');
+      dot.setAttribute('class', 'connector-dot');
+      svg.appendChild(dot);
     });
   }
 
