@@ -9,7 +9,8 @@
       "detail": "Sub-second row-level ingest",
       "icon": "Snowflake_ICON_RA_Pipe.svg",
       "category": "bridge",
-      "zone": "Ingestion"
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
     },
     {
       "id": "bronze_table",
@@ -17,7 +18,8 @@
       "detail": "Raw, append-only",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
-      "zone": "Bronze Layer"
+      "zone": "Bronze Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
     },
     {
       "id": "stream",
@@ -25,7 +27,8 @@
       "detail": "Change data capture",
       "icon": "Snowflake_ICON_RA_Stream.svg",
       "category": "snow",
-      "zone": "Transformation"
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"
     },
     {
       "id": "task",
@@ -33,7 +36,8 @@
       "detail": "Scheduled transform",
       "icon": "Snowflake_ICON_RA_Task.svg",
       "category": "snow",
-      "zone": "Transformation"
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/tasks-intro"
     },
     {
       "id": "silver_table",
@@ -41,7 +45,8 @@
       "detail": "Cleaned, deduped",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
-      "zone": "Silver Layer"
+      "zone": "Silver Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
     },
     {
       "id": "dynamic_table",
@@ -49,7 +54,8 @@
       "detail": "Declarative refresh",
       "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
       "category": "snow",
-      "zone": "Gold Layer"
+      "zone": "Gold Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
     },
     {
       "id": "tableau",
@@ -57,7 +63,8 @@
       "detail": "BI dashboards",
       "icon": "Snowflake_ICON_Embedded_Analytics.svg",
       "category": "outcome",
-      "zone": "Consumption"
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
     }
   ],
   "edges": [
@@ -134,13 +141,33 @@
   "citations": [
     {
       "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
-      "title": "Snowpipe Streaming overview",
-      "excerpt": "Sub-second row-level ingestion for high-volume streaming workloads."
+      "title": "Snowpipe Streaming",
+      "excerpt": "Sub-second row-level ingest"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Bronze Table",
+      "excerpt": "Raw, append-only"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/streams-intro",
+      "title": "Stream",
+      "excerpt": "Change data capture"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/tasks-intro",
+      "title": "Task",
+      "excerpt": "Scheduled transform"
     },
     {
       "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
-      "title": "Dynamic Tables",
-      "excerpt": "Declarative pipelines with managed refresh."
+      "title": "Dynamic Table",
+      "excerpt": "Declarative refresh"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
+      "title": "Tableau",
+      "excerpt": "BI dashboards"
     }
   ]
 }

@@ -213,23 +213,17 @@
     border: 1px solid var(--border-subtle);
     padding: 32px 28px;
     margin-bottom: 20px;
-    overflow-x: auto;
     transition: background-color 0.25s ease, border-color 0.25s ease;
   }
 
   /* ────────────────────────── Zones grid (enterprise layout) ────────────────────────── */
   .zones-grid {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-    flex-wrap: nowrap;
-    min-width: max-content;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
   }
 
   .zone {
-    flex: 0 0 auto;
-    min-width: 232px;
-    max-width: 280px;
     background: var(--surface);
     border: 1.5px solid var(--zone-border, var(--border-subtle));
     border-radius: var(--radius-card);
@@ -246,6 +240,7 @@
     padding: 12px 14px 10px;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--zone-header-bg, transparent);
+    position: relative;
   }
   .zone-name {
     font-size: 11px;
@@ -261,6 +256,22 @@
     margin-top: 3px;
     font-weight: 700;
     letter-spacing: 0.04em;
+  }
+  .zone-order {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--zone-stripe, var(--sf-blue));
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.7;
   }
   .zone-body {
     padding: 12px;
@@ -295,15 +306,6 @@
   .zone .flow-node .detail {
     font-size: 10.5px;
     line-height: 1.4;
-  }
-
-  /* Inter-zone connector */
-  .zone-arrow {
-    flex: 0 0 auto;
-    width: 56px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
   }
 
   /* Per-category zone tinting */
@@ -635,7 +637,7 @@
     // ── Enterprise zones layout ────────────────────────────────
     if (zones.length) {
       flow.className = 'zones-grid';
-      flow.style.display = 'flex';
+      flow.style.display = '';
 
       zones.forEach((z, zi) => {
         const cat = z.category || 'snow';
@@ -648,6 +650,7 @@
           <div class="zone-header">
             <div class="zone-name">${escapeHtml(z.name)}</div>
             <div class="zone-tag">${(z.node_ids || []).length} component${(z.node_ids || []).length === 1 ? '' : 's'}</div>
+            <div class="zone-order">${zi + 1}</div>
           </div>
           <div class="zone-body${useTwoCols ? ' cols-2' : ''}"></div>
         `;
@@ -665,13 +668,6 @@
           body.appendChild(div);
         });
         flow.appendChild(zoneEl);
-
-        if (zi < zones.length - 1) {
-          const arrow = document.createElement('div');
-          arrow.className = 'zone-arrow';
-          arrow.innerHTML = arrowSvg();
-          flow.appendChild(arrow);
-        }
       });
       return;
     }

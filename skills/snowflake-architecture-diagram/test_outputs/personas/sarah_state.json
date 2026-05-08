@@ -9,7 +9,8 @@
       "detail": "Object store / data lake",
       "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
       "category": "onprem",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
     },
     {
       "id": "kafka_connector",
@@ -17,7 +18,8 @@
       "detail": "Streaming topic",
       "icon": "Snowflake_ICON_Kafka_Connectors.svg",
       "category": "onprem",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/kafka-connector"
     },
     {
       "id": "snowpipe_streaming",
@@ -25,7 +27,8 @@
       "detail": "Sub-second row-level ingest",
       "icon": "Snowflake_ICON_RA_Pipe.svg",
       "category": "bridge",
-      "zone": "Ingestion"
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
     },
     {
       "id": "stream",
@@ -33,7 +36,8 @@
       "detail": "Change data capture",
       "icon": "Snowflake_ICON_RA_Stream.svg",
       "category": "snow",
-      "zone": "Transformation"
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"
     },
     {
       "id": "silver_table",
@@ -41,7 +45,8 @@
       "detail": "Cleaned, deduped",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
-      "zone": "Silver Layer"
+      "zone": "Silver Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
     },
     {
       "id": "gold_table",
@@ -49,7 +54,8 @@
       "detail": "Business-ready output",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "outcome",
-      "zone": "Gold Layer"
+      "zone": "Gold Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
     }
   ],
   "edges": [
@@ -114,14 +120,29 @@
   ],
   "citations": [
     {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-s3",
+      "title": "AWS S3",
+      "excerpt": "Object store / data lake"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/kafka-connector",
+      "title": "Kafka",
+      "excerpt": "Streaming topic"
+    },
+    {
       "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
-      "title": "Snowpipe Streaming overview",
-      "excerpt": "Sub-second row-level ingestion for high-volume streaming workloads."
+      "title": "Snowpipe Streaming",
+      "excerpt": "Sub-second row-level ingest"
     },
     {
       "url": "https://docs.snowflake.com/en/user-guide/streams-intro",
-      "title": "Streams (CDC) introduction",
-      "excerpt": "Track row-level changes for incremental processing."
+      "title": "Stream",
+      "excerpt": "Change data capture"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Silver Table",
+      "excerpt": "Cleaned, deduped"
     }
   ]
 }

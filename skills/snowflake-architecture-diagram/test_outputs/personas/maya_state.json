@@ -9,7 +9,8 @@
       "detail": "Streaming topic",
       "icon": "Snowflake_ICON_Kafka_Connectors.svg",
       "category": "onprem",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/kafka-connector"
     },
     {
       "id": "snowpipe_streaming",
@@ -17,7 +18,8 @@
       "detail": "Sub-second row-level ingest",
       "icon": "Snowflake_ICON_RA_Pipe.svg",
       "category": "bridge",
-      "zone": "Ingestion"
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
     },
     {
       "id": "bronze_table",
@@ -25,7 +27,8 @@
       "detail": "Raw, append-only",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
-      "zone": "Bronze Layer"
+      "zone": "Bronze Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
     },
     {
       "id": "external_function",
@@ -33,7 +36,8 @@
       "detail": "API / model service",
       "icon": "Snowflake_ICON_RA_Function_External.svg",
       "category": "onprem",
-      "zone": "Transformation"
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function"
     },
     {
       "id": "stream",
@@ -41,7 +45,8 @@
       "detail": "Change data capture",
       "icon": "Snowflake_ICON_RA_Stream.svg",
       "category": "snow",
-      "zone": "Transformation"
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"
     },
     {
       "id": "task",
@@ -49,7 +54,8 @@
       "detail": "Scheduled transform",
       "icon": "Snowflake_ICON_RA_Task.svg",
       "category": "snow",
-      "zone": "Transformation"
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/tasks-intro"
     },
     {
       "id": "secure_view",
@@ -57,7 +63,8 @@
       "detail": "RLS-enforcing view",
       "icon": "Snowflake_ICON_RA_View_Secure.svg",
       "category": "snow",
-      "zone": "Security & Governance"
+      "zone": "Security & Governance",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/views-secure"
     },
     {
       "id": "rls_view",
@@ -65,7 +72,8 @@
       "detail": "Row-level secured BI view",
       "icon": "Snowflake_ICON_RA_View_Secure.svg",
       "category": "outcome",
-      "zone": "Security & Governance"
+      "zone": "Security & Governance",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/security-row-intro"
     }
   ],
   "edges": [
@@ -140,14 +148,44 @@
   ],
   "citations": [
     {
+      "url": "https://docs.snowflake.com/en/user-guide/kafka-connector",
+      "title": "Kafka",
+      "excerpt": "Streaming topic"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
+      "title": "Snowpipe Streaming",
+      "excerpt": "Sub-second row-level ingest"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Bronze Table",
+      "excerpt": "Raw, append-only"
+    },
+    {
       "url": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function",
-      "title": "External Functions",
-      "excerpt": "Call external services from SQL for scoring and enrichment."
+      "title": "External Function",
+      "excerpt": "API / model service"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/streams-intro",
+      "title": "Stream",
+      "excerpt": "Change data capture"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/tasks-intro",
+      "title": "Task",
+      "excerpt": "Scheduled transform"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/views-secure",
+      "title": "Secure View",
+      "excerpt": "RLS-enforcing view"
     },
     {
       "url": "https://docs.snowflake.com/en/user-guide/security-row-intro",
-      "title": "Row Access Policies",
-      "excerpt": "Enforce per-user row-level access on PII."
+      "title": "RLS View",
+      "excerpt": "Row-level secured BI view"
     }
   ]
 }

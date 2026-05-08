@@ -36,73 +36,115 @@ BLOCK_REGISTRY: dict[str, dict[str, str]] = {
     # --- External / on-prem sources ---
     # Cloud object stores ARE the user's data lake — use Workloads_Data_Lake
     # rather than the generic 3rd_Party icon.
-    "S3_BUCKET_BLOCK":          {"label": "AWS S3",            "detail": "Object store / data lake",  "icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem"},
-    "AZURE_BLOB_BLOCK":         {"label": "Azure Blob",        "detail": "ADLS / Blob Storage",        "icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem"},
-    "GCS_BUCKET_BLOCK":         {"label": "GCS",               "detail": "Google Cloud Storage",       "icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem"},
-    "KAFKA_CONNECTOR_BLOCK":    {"label": "Kafka",             "detail": "Streaming topic",            "icon": "Snowflake_ICON_Kafka_Connectors.svg",    "category": "onprem"},
-    "EXTERNAL_FUNCTION_BLOCK":  {"label": "External Function", "detail": "API / model service",        "icon": "Snowflake_ICON_RA_Function_External.svg", "category": "onprem"},
-    "DATA_SHARE_BLOCK":         {"label": "Secure Data Share", "detail": "Cross-account share",        "icon": "Snowflake_ICON_Sharing_Collaboration.svg", "category": "onprem"},
+    "S3_BUCKET_BLOCK":          {"label": "AWS S3",            "detail": "Object store / data lake",  "icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"},
+    "AZURE_BLOB_BLOCK":         {"label": "Azure Blob",        "detail": "ADLS / Blob Storage",        "icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-azure"},
+    "GCS_BUCKET_BLOCK":         {"label": "GCS",               "detail": "Google Cloud Storage",       "icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-gcs"},
+    "KAFKA_CONNECTOR_BLOCK":    {"label": "Kafka",             "detail": "Streaming topic",            "icon": "Snowflake_ICON_Kafka_Connectors.svg",    "category": "onprem",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/kafka-connector"},
+    "EXTERNAL_FUNCTION_BLOCK":  {"label": "External Function", "detail": "API / model service",        "icon": "Snowflake_ICON_RA_Function_External.svg", "category": "onprem",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function"},
+    "DATA_SHARE_BLOCK":         {"label": "Secure Data Share", "detail": "Cross-account share",        "icon": "Snowflake_ICON_Sharing_Collaboration.svg", "category": "onprem",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/data-sharing-intro"},
 
     # --- Ingestion / bridge ---
-    "EXTERNAL_STAGE_BLOCK":     {"label": "External Stage",    "detail": "Snowflake-managed staging",  "icon": "Snowflake_ICON_RA_Stage_External.svg",   "category": "bridge"},
-    "SNOWPIPE_BLOCK":           {"label": "Snowpipe",          "detail": "Auto-ingest from object store", "icon": "Snowflake_ICON_RA_Pipe.svg",          "category": "bridge"},
-    "SNOWPIPE_STREAMING_BLOCK": {"label": "Snowpipe Streaming","detail": "Sub-second row-level ingest", "icon": "Snowflake_ICON_RA_Pipe.svg",            "category": "bridge"},
+    "EXTERNAL_STAGE_BLOCK":     {"label": "External Stage",    "detail": "Snowflake-managed staging",  "icon": "Snowflake_ICON_RA_Stage_External.svg",   "category": "bridge",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage"},
+    "SNOWPIPE_BLOCK":           {"label": "Snowpipe",          "detail": "Auto-ingest from object store", "icon": "Snowflake_ICON_RA_Pipe.svg",          "category": "bridge",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"},
+    "SNOWPIPE_STREAMING_BLOCK": {"label": "Snowpipe Streaming","detail": "Sub-second row-level ingest", "icon": "Snowflake_ICON_RA_Pipe.svg",            "category": "bridge",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"},
 
     # --- Bronze layer ---
     # Use Snowflake-specific database icon rather than generic Database.
-    "BRONZE_DB_BLOCK":          {"label": "Bronze Database",   "detail": "Raw landing zone",           "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow"},
-    "BRONZE_TABLE_BLOCK":       {"label": "Bronze Table",      "detail": "Raw, append-only",           "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow"},
-    "BRONZE_STREAM_BLOCK":      {"label": "Bronze Stream",     "detail": "CDC over raw",               "icon": "Snowflake_ICON_RA_Stream.svg",           "category": "snow"},
-    "TABLE_RAW_BLOCK":          {"label": "Raw Table",         "detail": "Landing table",              "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow"},
+    "BRONZE_DB_BLOCK":          {"label": "Bronze Database",   "detail": "Raw landing zone",           "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-database"},
+    "BRONZE_TABLE_BLOCK":       {"label": "Bronze Table",      "detail": "Raw, append-only",           "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"},
+    "BRONZE_STREAM_BLOCK":      {"label": "Bronze Stream",     "detail": "CDC over raw",               "icon": "Snowflake_ICON_RA_Stream.svg",           "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"},
+    "TABLE_RAW_BLOCK":          {"label": "Raw Table",         "detail": "Landing table",              "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"},
 
     # --- Silver layer ---
-    "SILVER_DB_BLOCK":          {"label": "Silver Database",   "detail": "Cleaned, conformed",         "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow"},
-    "SILVER_TABLE_BLOCK":       {"label": "Silver Table",      "detail": "Cleaned, deduped",           "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow"},
-    "SILVER_STREAM_BLOCK":      {"label": "Silver Stream",     "detail": "CDC over silver",            "icon": "Snowflake_ICON_RA_Stream.svg",           "category": "snow"},
-    "CLEAN_TASK_BLOCK":         {"label": "Quality Task",      "detail": "Constraints + validation",   "icon": "Snowflake_ICON_RA_Task.svg",             "category": "snow"},
-    "TABLE_TRANSFORMED_BLOCK":  {"label": "Transformed Table", "detail": "Post-transform output",      "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow"},
+    "SILVER_DB_BLOCK":          {"label": "Silver Database",   "detail": "Cleaned, conformed",         "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-database"},
+    "SILVER_TABLE_BLOCK":       {"label": "Silver Table",      "detail": "Cleaned, deduped",           "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"},
+    "SILVER_STREAM_BLOCK":      {"label": "Silver Stream",     "detail": "CDC over silver",            "icon": "Snowflake_ICON_RA_Stream.svg",           "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"},
+    "CLEAN_TASK_BLOCK":         {"label": "Quality Task",      "detail": "Constraints + validation",   "icon": "Snowflake_ICON_RA_Task.svg",             "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-task"},
+    "TABLE_TRANSFORMED_BLOCK":  {"label": "Transformed Table", "detail": "Post-transform output",      "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"},
 
     # --- Transformation / orchestration ---
-    "STREAM_BLOCK":             {"label": "Stream",            "detail": "Change data capture",        "icon": "Snowflake_ICON_RA_Stream.svg",           "category": "snow"},
-    "TASK_BLOCK":               {"label": "Task",              "detail": "Scheduled transform",        "icon": "Snowflake_ICON_RA_Task.svg",             "category": "snow"},
-    "PROCEDURE_BLOCK":          {"label": "Procedure",         "detail": "Multi-step logic",           "icon": "Snowflake_ICON_RA_Function_Stored_Procedure.svg", "category": "snow"},
-    "UDF_BLOCK":                {"label": "UDF",               "detail": "User-defined function",      "icon": "Snowflake_ICON_RA_Function_User-Defined_SQL.svg", "category": "snow"},
+    "STREAM_BLOCK":             {"label": "Stream",            "detail": "Change data capture",        "icon": "Snowflake_ICON_RA_Stream.svg",           "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"},
+    "TASK_BLOCK":               {"label": "Task",              "detail": "Scheduled transform",        "icon": "Snowflake_ICON_RA_Task.svg",             "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/tasks-intro"},
+    "PROCEDURE_BLOCK":          {"label": "Procedure",         "detail": "Multi-step logic",           "icon": "Snowflake_ICON_RA_Function_Stored_Procedure.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-procedure"},
+    "UDF_BLOCK":                {"label": "UDF",               "detail": "User-defined function",      "icon": "Snowflake_ICON_RA_Function_User-Defined_SQL.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-function"},
     # Use the dedicated dynamic-table icon, not the generic table icon.
-    "DYNAMIC_TABLE_BLOCK":      {"label": "Dynamic Table",     "detail": "Declarative refresh",        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",    "category": "snow"},
+    "DYNAMIC_TABLE_BLOCK":      {"label": "Dynamic Table",     "detail": "Declarative refresh",        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",    "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"},
 
     # --- Compute ---
-    "WAREHOUSE_XS_BLOCK":       {"label": "Warehouse (XS)",    "detail": "Light workloads",            "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg", "category": "snow"},
-    "WAREHOUSE_M_BLOCK":        {"label": "Warehouse (M)",     "detail": "Standard compute",           "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg", "category": "snow"},
-    "WAREHOUSE_L_BLOCK":        {"label": "Warehouse (L)",     "detail": "Heavy ETL",                  "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg", "category": "snow"},
+    "WAREHOUSE_XS_BLOCK":       {"label": "Warehouse (XS)",    "detail": "Light workloads",            "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-overview"},
+    "WAREHOUSE_M_BLOCK":        {"label": "Warehouse (M)",     "detail": "Standard compute",           "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-overview"},
+    "WAREHOUSE_L_BLOCK":        {"label": "Warehouse (L)",     "detail": "Heavy ETL",                  "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-overview"},
     # BI workloads benefit from auto-scaling — use the adaptive warehouse icon.
-    "BI_WAREHOUSE_BLOCK":       {"label": "BI Warehouse",      "detail": "Auto-scaled for BI",         "icon": "Snowflake_ICON_Warehouse_Adaptive.svg",  "category": "snow"},
+    "BI_WAREHOUSE_BLOCK":       {"label": "BI Warehouse",      "detail": "Auto-scaled for BI",         "icon": "Snowflake_ICON_Warehouse_Adaptive.svg",  "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-multicluster"},
 
     # --- Storage primitives ---
-    "DATABASE_BLOCK":           {"label": "Database",          "detail": "Snowflake database",         "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow"},
-    "SCHEMA_BLOCK":             {"label": "Schema",            "detail": "Logical namespace",          "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow"},
-    "VIEW_BLOCK":               {"label": "View",              "detail": "Query abstraction",          "icon": "Snowflake_ICON_RA_View.svg",             "category": "snow"},
-    "SECURE_VIEW_BLOCK":        {"label": "Secure View",       "detail": "RLS-enforcing view",         "icon": "Snowflake_ICON_RA_View_Secure.svg",      "category": "snow"},
+    "DATABASE_BLOCK":           {"label": "Database",          "detail": "Snowflake database",         "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-database"},
+    "SCHEMA_BLOCK":             {"label": "Schema",            "detail": "Logical namespace",          "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-schema"},
+    "VIEW_BLOCK":               {"label": "View",              "detail": "Query abstraction",          "icon": "Snowflake_ICON_RA_View.svg",             "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-view"},
+    "SECURE_VIEW_BLOCK":        {"label": "Secure View",       "detail": "RLS-enforcing view",         "icon": "Snowflake_ICON_RA_View_Secure.svg",      "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/views-secure"},
 
     # --- Security ---
-    "ROLE_BLOCK":               {"label": "Role",              "detail": "RBAC entity",                "icon": "Snowflake_ICON_Access.svg",              "category": "snow"},
-    "USER_BLOCK":               {"label": "User",              "detail": "Account principal",          "icon": "Snowflake_ICON_Access.svg",              "category": "snow"},
-    "GRANT_BLOCK":              {"label": "Grant",             "detail": "Privilege binding",          "icon": "Snowflake_ICON_Access.svg",              "category": "snow"},
+    "ROLE_BLOCK":               {"label": "Role",              "detail": "RBAC entity",                "icon": "Snowflake_ICON_Access.svg",              "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/security-access-control-overview"},
+    "USER_BLOCK":               {"label": "User",              "detail": "Account principal",          "icon": "Snowflake_ICON_Access.svg",              "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-user"},
+    "GRANT_BLOCK":              {"label": "Grant",             "detail": "Privilege binding",          "icon": "Snowflake_ICON_Access.svg",              "category": "snow",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/grant-privilege"},
 
     # --- Gold layer ---
     # Gold = curated, BI-ready — the data-warehouse workload icon fits better
     # than a generic database icon.
-    "GOLD_DB_BLOCK":            {"label": "Gold Database",     "detail": "Curated, business-ready",    "icon": "Snowflake_ICON_Workloads_Data_Warehouse.svg", "category": "outcome"},
-    "GOLD_TABLE_BLOCK":         {"label": "Gold Table",        "detail": "Business-ready output",      "icon": "Snowflake_ICON_RA_Table.svg",            "category": "outcome"},
-    "FACT_TABLE_BLOCK":         {"label": "Fact Table",        "detail": "Star schema fact",           "icon": "Snowflake_ICON_RA_Table.svg",            "category": "outcome"},
-    "DIM_TABLE_BLOCK":          {"label": "Dimension Table",   "detail": "Reference attributes",       "icon": "Snowflake_ICON_RA_Table_Directory.svg",  "category": "outcome"},
-    "BUSINESS_VIEW_BLOCK":      {"label": "Business View",     "detail": "KPI-ready view",             "icon": "Snowflake_ICON_RA_View.svg",             "category": "outcome"},
+    "GOLD_DB_BLOCK":            {"label": "Gold Database",     "detail": "Curated, business-ready",    "icon": "Snowflake_ICON_Workloads_Data_Warehouse.svg", "category": "outcome",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-database"},
+    "GOLD_TABLE_BLOCK":         {"label": "Gold Table",        "detail": "Business-ready output",      "icon": "Snowflake_ICON_RA_Table.svg",            "category": "outcome",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"},
+    "FACT_TABLE_BLOCK":         {"label": "Fact Table",        "detail": "Star schema fact",           "icon": "Snowflake_ICON_RA_Table.svg",            "category": "outcome",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"},
+    "DIM_TABLE_BLOCK":          {"label": "Dimension Table",   "detail": "Reference attributes",       "icon": "Snowflake_ICON_RA_Table_Directory.svg",  "category": "outcome",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"},
+    "BUSINESS_VIEW_BLOCK":      {"label": "Business View",     "detail": "KPI-ready view",             "icon": "Snowflake_ICON_RA_View.svg",             "category": "outcome",
+                                 "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-view"},
 
     # --- BI / consumption ---
     # Embedded Analytics icon reflects the BI/dashboard purpose.
-    "TABLEAU_BLOCK":            {"label": "Tableau",           "detail": "BI dashboards",              "icon": "Snowflake_ICON_Embedded_Analytics.svg",  "category": "outcome"},
-    "POWERBI_BLOCK":            {"label": "Power BI",          "detail": "BI dashboards",              "icon": "Snowflake_ICON_Embedded_Analytics.svg",  "category": "outcome"},
+    "TABLEAU_BLOCK":            {"label": "Tableau",           "detail": "BI dashboards",              "icon": "Snowflake_ICON_Embedded_Analytics.svg",  "category": "outcome",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"},
+    "POWERBI_BLOCK":            {"label": "Power BI",          "detail": "BI dashboards",              "icon": "Snowflake_ICON_Embedded_Analytics.svg",  "category": "outcome",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"},
     # Row-level secured BI views map directly to the secure-view RA icon.
-    "RLS_VIEW_BLOCK":           {"label": "RLS View",          "detail": "Row-level secured BI view",  "icon": "Snowflake_ICON_RA_View_Secure.svg",      "category": "outcome"},
+    "RLS_VIEW_BLOCK":           {"label": "RLS View",          "detail": "Row-level secured BI view",  "icon": "Snowflake_ICON_RA_View_Secure.svg",      "category": "outcome",
+                                 "doc_url": "https://docs.snowflake.com/en/user-guide/security-row-intro"},
 }
 
 # --------------------------------------------------------------------------- #
@@ -220,7 +262,7 @@ def block_to_node(block: dict[str, Any]) -> dict[str, str]:
     raw_category = (block.get("BLOCK_CATEGORY") or "").lower()
     if bid in BLOCK_REGISTRY:
         spec = dict(BLOCK_REGISTRY[bid])
-        return {
+        node: dict[str, str] = {
             "id": _node_id_for(bid),
             "label": spec["label"],
             "detail": spec["detail"],
@@ -228,6 +270,9 @@ def block_to_node(block: dict[str, Any]) -> dict[str, str]:
             "category": spec["category"],
             "zone": _zone_for(bid, raw_category),
         }
+        if spec.get("doc_url"):
+            node["doc_url"] = spec["doc_url"]
+        return node
 
     # Fallback: derive from category + name
     icon = CATEGORY_FALLBACK_ICON.get(raw_category, GENERIC_ICON)
@@ -300,3 +345,27 @@ def build_flow(
             )
 
     return {"nodes": nodes, "edges": edges, "zones": zones}
+
+
+def build_citations(nodes: list[dict[str, str]]) -> list[dict[str, str]]:
+    """
+    Auto-generate documentation citations from flow nodes.
+
+    Produces one citation per unique doc_url found across nodes, preserving
+    node order. Deduplicates by URL so that multiple nodes pointing to the
+    same docs page (e.g. Bronze Table + Silver Table → create-table) produce
+    only one citation entry.
+    """
+    seen_urls: set[str] = set()
+    citations: list[dict[str, str]] = []
+    for node in nodes:
+        url = node.get("doc_url")
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        citations.append({
+            "url": url,
+            "title": node["label"],
+            "excerpt": node.get("detail") or "",
+        })
+    return citations

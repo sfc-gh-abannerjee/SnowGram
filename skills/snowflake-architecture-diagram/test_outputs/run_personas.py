@@ -39,11 +39,11 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(COMPOSER))
 sys.path.insert(0, str(SCRIPTS))
 
-from flow_builder import build_flow  # noqa: E402
+from flow_builder import build_flow, build_citations  # noqa: E402
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
-# (name, prompt, title, subtitle, [BLOCK_IDs], [{citations}])
+# (name, prompt, title, subtitle, [BLOCK_IDs])
 PERSONAS = [
     {
         "name": "sarah",
@@ -54,14 +54,6 @@ PERSONAS = [
             "S3_BUCKET_BLOCK", "KAFKA_CONNECTOR_BLOCK",
             "SNOWPIPE_STREAMING_BLOCK", "STREAM_BLOCK",
             "SILVER_TABLE_BLOCK", "GOLD_TABLE_BLOCK",
-        ],
-        "citations": [
-            {"url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
-             "title": "Snowpipe Streaming overview",
-             "excerpt": "Sub-second row-level ingestion for high-volume streaming workloads."},
-            {"url": "https://docs.snowflake.com/en/user-guide/streams-intro",
-             "title": "Streams (CDC) introduction",
-             "excerpt": "Track row-level changes for incremental processing."},
         ],
     },
     {
@@ -74,14 +66,6 @@ PERSONAS = [
             "TASK_BLOCK", "SILVER_TABLE_BLOCK", "DYNAMIC_TABLE_BLOCK",
             "TABLEAU_BLOCK",
         ],
-        "citations": [
-            {"url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
-             "title": "Snowpipe Streaming overview",
-             "excerpt": "Sub-second row-level ingestion for high-volume streaming workloads."},
-            {"url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
-             "title": "Dynamic Tables",
-             "excerpt": "Declarative pipelines with managed refresh."},
-        ],
     },
     {
         "name": "maya",
@@ -93,14 +77,6 @@ PERSONAS = [
             "BRONZE_TABLE_BLOCK", "EXTERNAL_FUNCTION_BLOCK",
             "STREAM_BLOCK", "TASK_BLOCK", "SECURE_VIEW_BLOCK",
             "RLS_VIEW_BLOCK",
-        ],
-        "citations": [
-            {"url": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function",
-             "title": "External Functions",
-             "excerpt": "Call external services from SQL for scoring and enrichment."},
-            {"url": "https://docs.snowflake.com/en/user-guide/security-row-intro",
-             "title": "Row Access Policies",
-             "excerpt": "Enforce per-user row-level access on PII."},
         ],
     },
 ]
@@ -120,6 +96,8 @@ def run_one(persona: dict, *, blocks_index: dict, take_screenshot: bool) -> None
 
     # 2. Build flow + state
     flow = build_flow(persona["blocks"], blocks_index)
+    # Auto-generate citations from node doc_urls — every component gets a link
+    citations = build_citations(flow["nodes"])
     state = {
         "title": persona["title"],
         "subtitle": persona["subtitle"],
@@ -127,7 +105,7 @@ def run_one(persona: dict, *, blocks_index: dict, take_screenshot: bool) -> None
         "nodes": flow["nodes"],
         "edges": flow["edges"],
         "zones": flow["zones"],
-        "citations": persona["citations"],
+        "citations": citations,
     }
     state_path = OUT_DIR / f"{name}_state.json"
     state_path.write_text(json.dumps(state, indent=2))
