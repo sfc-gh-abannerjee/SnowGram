@@ -259,6 +259,7 @@
     display: flex;
     flex-direction: column;
     gap: 20px;
+    min-width: 0;
   }
   .rank-column .rank-label {
     font-size: 9px;
@@ -308,6 +309,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    min-width: 0;
     box-shadow: 0 1px 2px rgba(0,53,69,0.04);
   }
   .zone-stripe {
@@ -2782,7 +2784,7 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
 
       // Set grid columns
       var colCount = maxRank + 1;
-      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', 1fr)';
+      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', minmax(0, 1fr))';
 
       // Helper: build a zone DOM element
       function buildZoneEl(z) {
@@ -2837,9 +2839,10 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
           boundary.innerHTML = '<div class="platform-label">Snowflake Data Cloud</div>';
           var innerGrid = document.createElement('div');
           innerGrid.style.display = 'grid';
-          innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', 1fr)';
+          innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', minmax(0, 1fr))';
           innerGrid.style.gap = '20px';
           innerGrid.style.alignItems = 'start';
+          innerGrid.style.overflow = 'hidden';
 
           // Render all snow columns inside the boundary
           for (var sci = snowStart; sci <= snowEnd; sci++) {
@@ -2931,19 +2934,24 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
         const srcZoneRect = srcZone.getBoundingClientRect();
         const tgtZoneRect = tgtZone.getBoundingClientRect();
 
-        // Use zone vertical centers for exit/entry (not node centers)
-        // This prevents long vertical segments when nodes are at different
-        // heights within their zones
+        // Use zone centers for routing
         var srcZoneCy = srcZoneRect.top + srcZoneRect.height / 2 - cardRect.top;
         var tgtZoneCy = tgtZoneRect.top + tgtZoneRect.height / 2 - cardRect.top;
         var srcZoneCx = srcZoneRect.left + srcZoneRect.width / 2 - cardRect.left;
         var tgtZoneCx = tgtZoneRect.left + tgtZoneRect.width / 2 - cardRect.left;
-        var dx = tgtZoneCx - srcZoneCx;
-        var dy = tgtZoneCy - srcZoneCy;
 
-        if (Math.abs(dx) > Math.abs(dy)) {
-          // Primarily horizontal: exit right/left at zone vertical center
-          if (dx > 0) {
+        // Determine routing direction: horizontal if zones don't overlap
+        // vertically, OR if target is clearly to the left/right.
+        // Use horizontal routing whenever there's a gap between zone edges.
+        var horizontalGap = (tgtZoneRect.left > srcZoneRect.right) || (srcZoneRect.left > tgtZoneRect.right);
+        var verticalGap = (tgtZoneRect.top > srcZoneRect.bottom) || (srcZoneRect.top > tgtZoneRect.bottom);
+        // Prefer horizontal if there's a horizontal gap (zones side by side)
+        var useHorizontal = horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20);
+
+        if (useHorizontal) {
+          // Horizontal: exit right/left at zone vertical center
+          var dx = tgtZoneCx - srcZoneCx;
+          if (dx >= 0) {
             x1 = srcZoneRect.right - cardRect.left;
             x2 = tgtZoneRect.left - cardRect.left;
           } else {
@@ -2959,8 +2967,9 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
               ' L' + turnX + ',' + y2 +
               ' L' + x2 + ',' + y2;
         } else {
-          // Primarily vertical: exit bottom/top at zone horizontal center
-          if (dy > 0) {
+          // Vertical: exit bottom/top at zone horizontal center
+          var dy = tgtZoneCy - srcZoneCy;
+          if (dy >= 0) {
             y1 = srcZoneRect.bottom - cardRect.top;
             y2 = tgtZoneRect.top - cardRect.top;
           } else {
