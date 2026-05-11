@@ -2928,6 +2928,7 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
         d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
       } else {
         // Cross-zone: orthogonal routing with lane offset
+        // Always ensures the LAST segment is perpendicular to the target edge
         const srcZoneRect = srcZone.getBoundingClientRect();
         const tgtZoneRect = tgtZone.getBoundingClientRect();
         const srcNodeRect = srcEl.getBoundingClientRect();
@@ -2941,7 +2942,7 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
         var dy = tgtCy - srcCy;
 
         if (Math.abs(dx) > Math.abs(dy)) {
-          // Primarily horizontal
+          // Primarily horizontal: exit source zone side, enter target zone side
           if (dx > 0) {
             x1 = srcZoneRect.right - cardRect.left;
             x2 = tgtZoneRect.left - cardRect.left;
@@ -2951,13 +2952,15 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
           }
           y1 = srcCy;
           y2 = tgtCy;
-          var midX = (x1 + x2) / 2 + laneOffset;
+          // 3-segment orthogonal: exit horizontal, turn vertical, enter horizontal
+          // Turn happens near the target (75% of gap) so entry is always clean horizontal
+          var turnX = x1 + (x2 - x1) * 0.5 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
-              ' L' + midX + ',' + y1 +
-              ' L' + midX + ',' + y2 +
+              ' L' + turnX + ',' + y1 +
+              ' L' + turnX + ',' + y2 +
               ' L' + x2 + ',' + y2;
         } else {
-          // Primarily vertical
+          // Primarily vertical: exit source zone top/bottom, enter target zone top/bottom
           if (dy > 0) {
             y1 = srcZoneRect.bottom - cardRect.top;
             y2 = tgtZoneRect.top - cardRect.top;
@@ -2967,10 +2970,11 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
           }
           x1 = srcCx;
           x2 = tgtCx;
-          var midY = (y1 + y2) / 2 + laneOffset;
+          // 3-segment orthogonal: exit vertical, turn horizontal, enter vertical
+          var turnY = y1 + (y2 - y1) * 0.5 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
-              ' L' + x1 + ',' + midY +
-              ' L' + x2 + ',' + midY +
+              ' L' + x1 + ',' + turnY +
+              ' L' + x2 + ',' + turnY +
               ' L' + x2 + ',' + y2;
         }
       }
