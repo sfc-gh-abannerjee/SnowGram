@@ -2928,21 +2928,21 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
         d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
       } else {
         // Cross-zone: orthogonal routing with lane offset
-        // Always ensures the LAST segment is perpendicular to the target edge
         const srcZoneRect = srcZone.getBoundingClientRect();
         const tgtZoneRect = tgtZone.getBoundingClientRect();
-        const srcNodeRect = srcEl.getBoundingClientRect();
-        const tgtNodeRect = tgtEl.getBoundingClientRect();
 
-        var srcCx = srcNodeRect.left + srcNodeRect.width / 2 - cardRect.left;
-        var srcCy = srcNodeRect.top + srcNodeRect.height / 2 - cardRect.top;
-        var tgtCx = tgtNodeRect.left + tgtNodeRect.width / 2 - cardRect.left;
-        var tgtCy = tgtNodeRect.top + tgtNodeRect.height / 2 - cardRect.top;
-        var dx = tgtCx - srcCx;
-        var dy = tgtCy - srcCy;
+        // Use zone vertical centers for exit/entry (not node centers)
+        // This prevents long vertical segments when nodes are at different
+        // heights within their zones
+        var srcZoneCy = srcZoneRect.top + srcZoneRect.height / 2 - cardRect.top;
+        var tgtZoneCy = tgtZoneRect.top + tgtZoneRect.height / 2 - cardRect.top;
+        var srcZoneCx = srcZoneRect.left + srcZoneRect.width / 2 - cardRect.left;
+        var tgtZoneCx = tgtZoneRect.left + tgtZoneRect.width / 2 - cardRect.left;
+        var dx = tgtZoneCx - srcZoneCx;
+        var dy = tgtZoneCy - srcZoneCy;
 
         if (Math.abs(dx) > Math.abs(dy)) {
-          // Primarily horizontal: exit source zone side, enter target zone side
+          // Primarily horizontal: exit right/left at zone vertical center
           if (dx > 0) {
             x1 = srcZoneRect.right - cardRect.left;
             x2 = tgtZoneRect.left - cardRect.left;
@@ -2950,17 +2950,16 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
             x1 = srcZoneRect.left - cardRect.left;
             x2 = tgtZoneRect.right - cardRect.left;
           }
-          y1 = srcCy;
-          y2 = tgtCy;
-          // 3-segment orthogonal: exit horizontal, turn vertical, enter horizontal
-          // Turn happens near the target (75% of gap) so entry is always clean horizontal
+          y1 = srcZoneCy;
+          y2 = tgtZoneCy;
+          // Orthogonal: H → V → H with turn at midpoint
           var turnX = x1 + (x2 - x1) * 0.5 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
               ' L' + turnX + ',' + y1 +
               ' L' + turnX + ',' + y2 +
               ' L' + x2 + ',' + y2;
         } else {
-          // Primarily vertical: exit source zone top/bottom, enter target zone top/bottom
+          // Primarily vertical: exit bottom/top at zone horizontal center
           if (dy > 0) {
             y1 = srcZoneRect.bottom - cardRect.top;
             y2 = tgtZoneRect.top - cardRect.top;
@@ -2968,9 +2967,9 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
             y1 = srcZoneRect.top - cardRect.top;
             y2 = tgtZoneRect.bottom - cardRect.top;
           }
-          x1 = srcCx;
-          x2 = tgtCx;
-          // 3-segment orthogonal: exit vertical, turn horizontal, enter vertical
+          x1 = srcZoneCx;
+          x2 = tgtZoneCx;
+          // Orthogonal: V → H → V with turn at midpoint
           var turnY = y1 + (y2 - y1) * 0.5 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
               ' L' + x1 + ',' + turnY +
@@ -2987,14 +2986,20 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
     });
   }
 
-  // Re-draw connectors on resize (zones may wrap)
+  // Re-draw connectors on resize (debounced for smooth response)
   (function() {
-    var ro = new ResizeObserver(function() {
-      if (currentState && currentState.zones && currentState.zones.length) {
-        renderConnectors(currentState);
-      }
-    });
+    var resizeTimer = null;
+    function debouncedRedraw() {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function() {
+        if (currentState && currentState.zones && currentState.zones.length) {
+          renderConnectors(currentState);
+        }
+      }, 50);
+    }
+    var ro = new ResizeObserver(debouncedRedraw);
     ro.observe(document.querySelector('.diagram-card'));
+    window.addEventListener('resize', debouncedRedraw);
   })();
 
   function renderCitations(citations) {
