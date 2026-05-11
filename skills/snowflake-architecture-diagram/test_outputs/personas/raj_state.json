@@ -4,6 +4,15 @@
   "source": "standalone:compose",
   "nodes": [
     {
+      "id": "iot_gateway",
+      "label": "IoT Gateway",
+      "detail": "MQTT / device telemetry",
+      "icon": "Snowflake_ICON_3rd_Party.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
+    },
+    {
       "id": "snowpipe_streaming",
       "label": "Snowpipe Streaming",
       "detail": "Sub-second row-level ingest",
@@ -69,6 +78,10 @@
   ],
   "edges": [
     {
+      "source": "iot_gateway",
+      "target": "snowpipe_streaming"
+    },
+    {
       "source": "snowpipe_streaming",
       "target": "bronze_table"
     },
@@ -94,6 +107,13 @@
     }
   ],
   "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "iot_gateway"
+      ]
+    },
     {
       "name": "Ingestion",
       "category": "bridge",
@@ -141,8 +161,8 @@
   "citations": [
     {
       "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
-      "title": "Snowpipe Streaming",
-      "excerpt": "Sub-second row-level ingest"
+      "title": "IoT Gateway",
+      "excerpt": "MQTT / device telemetry"
     },
     {
       "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",

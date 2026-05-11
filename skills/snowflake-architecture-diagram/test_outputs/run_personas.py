@@ -62,7 +62,7 @@ PERSONAS = [
         "title": "MedTech — Real-Time IoT Telemetry",
         "subtitle": "Standalone mode · MQTT → Snowpipe Streaming → Tableau",
         "blocks": [
-            "SNOWPIPE_STREAMING_BLOCK", "BRONZE_TABLE_BLOCK", "STREAM_BLOCK",
+            "IOT_GATEWAY_BLOCK", "SNOWPIPE_STREAMING_BLOCK", "BRONZE_TABLE_BLOCK", "STREAM_BLOCK",
             "TASK_BLOCK", "SILVER_TABLE_BLOCK", "DYNAMIC_TABLE_BLOCK",
             "TABLEAU_BLOCK",
         ],

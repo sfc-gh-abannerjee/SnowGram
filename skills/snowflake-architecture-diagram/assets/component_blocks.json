@@ -586,5 +586,19 @@
     "REUSE_COUNT": 0,
     "CREATED_AT": "2026-01-26T13:59:09.579000-08:00",
     "UPDATED_AT": "2026-01-26T13:59:09.579000-08:00"
+  },
+  {
+    "BLOCK_ID": "IOT_GATEWAY_BLOCK",
+    "BLOCK_NAME": "IoT Gateway",
+    "BLOCK_CATEGORY": "external",
+    "MERMAID_CODE": "iot_gw[IoT Gateway]",
+    "DESCRIPTION": "IoT gateway / MQTT broker for device telemetry ingestion",
+    "INPUT_CONNECTORS": null,
+    "OUTPUT_CONNECTORS": "[\n  \"snowpipe_streaming\",\n  \"kafka_connector\"\n]",
+    "SNOWFLAKE_COMPONENTS": "External Source",
+    "COMPLEXITY": "simple",
+    "REUSE_COUNT": 0,
+    "CREATED_AT": "2025-11-07T09:44:40.706000-08:00",
+    "UPDATED_AT": "2025-11-07T09:44:40.706000-08:00"
   }
 ]
