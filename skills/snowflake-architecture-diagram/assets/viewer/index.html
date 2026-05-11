@@ -232,13 +232,17 @@
     fill: none;
     stroke: var(--connector-color);
     stroke-width: 1.5;
+    stroke-dasharray: 6 4;
     stroke-linecap: round;
-    opacity: 0.7;
+    stroke-linejoin: round;
+    opacity: 0.75;
+    animation: connector-flow 1.2s linear infinite;
   }
   .connector-dot {
     fill: var(--connector-color);
     opacity: 0.8;
   }
+  @keyframes connector-flow { to { stroke-dashoffset: -20; } }
 
   /* ────────────────────────── Two-region master layout ────────────────────────── */
   .arch-layout {
@@ -807,7 +811,7 @@
   }
 
   // ────────────────────────────────────────────────────────
-  // SVG Connector Rendering
+  // SVG Connector Rendering — orthogonal (right-angle) routing
   // ────────────────────────────────────────────────────────
   function renderConnectors(state) {
     const svg = document.getElementById('diagram-connectors');
@@ -831,24 +835,24 @@
       const tgtZone = tgtEl.closest('.zone');
       const sameZone = srcZone && tgtZone && srcZone === tgtZone;
 
-      var x1, y1, x2, y2;
+      var x1, y1, x2, y2, d;
 
       if (sameZone) {
-        // Within-zone: node bottom → node top (straight vertical)
+        // Within-zone: straight vertical from node bottom to node top
         const srcRect = srcEl.getBoundingClientRect();
         const tgtRect = tgtEl.getBoundingClientRect();
         x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
         y1 = srcRect.bottom - cardRect.top;
         x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
         y2 = tgtRect.top - cardRect.top;
+        d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
       } else {
-        // Cross-zone: zone boundary → zone boundary (through the gap)
+        // Cross-zone: orthogonal routing (exit zone → elbow → enter zone)
         const srcZoneRect = srcZone.getBoundingClientRect();
         const tgtZoneRect = tgtZone.getBoundingClientRect();
         const srcNodeRect = srcEl.getBoundingClientRect();
         const tgtNodeRect = tgtEl.getBoundingClientRect();
 
-        // Determine primary direction
         var srcCx = srcNodeRect.left + srcNodeRect.width / 2 - cardRect.left;
         var srcCy = srcNodeRect.top + srcNodeRect.height / 2 - cardRect.top;
         var tgtCx = tgtNodeRect.left + tgtNodeRect.width / 2 - cardRect.left;
@@ -857,7 +861,7 @@
         var dy = tgtCy - srcCy;
 
         if (Math.abs(dx) > Math.abs(dy)) {
-          // Horizontal: exit zone right/left edge at node's Y
+          // Primarily horizontal: exit right/left, travel horizontal, turn into target
           if (dx > 0) {
             x1 = srcZoneRect.right - cardRect.left;
             x2 = tgtZoneRect.left - cardRect.left;
@@ -867,8 +871,14 @@
           }
           y1 = srcCy;
           y2 = tgtCy;
+          // Orthogonal: horizontal → vertical → horizontal
+          var midX = (x1 + x2) / 2;
+          d = 'M' + x1 + ',' + y1 +
+              ' L' + midX + ',' + y1 +
+              ' L' + midX + ',' + y2 +
+              ' L' + x2 + ',' + y2;
         } else {
-          // Vertical: exit zone bottom/top edge at node's X
+          // Primarily vertical: exit bottom/top, travel vertical, turn into target
           if (dy > 0) {
             y1 = srcZoneRect.bottom - cardRect.top;
             y2 = tgtZoneRect.top - cardRect.top;
@@ -878,20 +888,13 @@
           }
           x1 = srcCx;
           x2 = tgtCx;
+          // Orthogonal: vertical → horizontal → vertical
+          var midY = (y1 + y2) / 2;
+          d = 'M' + x1 + ',' + y1 +
+              ' L' + x1 + ',' + midY +
+              ' L' + x2 + ',' + midY +
+              ' L' + x2 + ',' + y2;
         }
-      }
-
-      // Draw path — straight line for short, gentle curve for longer
-      var dist = Math.sqrt((x2-x1)*(x2-x1) + (y2-y1)*(y2-y1));
-      var d;
-      if (dist < 60 || sameZone) {
-        d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
-      } else {
-        // Gentle S-curve through midpoint
-        var mx = (x1 + x2) / 2;
-        var my = (y1 + y2) / 2;
-        d = 'M' + x1 + ',' + y1 + ' Q' + mx + ',' + y1 + ' ' + mx + ',' + my +
-            ' Q' + mx + ',' + y2 + ' ' + x2 + ',' + y2;
       }
 
       const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');

@@ -7,7 +7,7 @@
       "id": "iot_gateway",
       "label": "IoT Gateway",
       "detail": "MQTT / device telemetry",
-      "icon": "Snowflake_ICON_3rd_Party.svg",
+      "icon": "Snowflake_ICON_IoT.svg",
       "category": "onprem",
       "zone": "External Sources",
       "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"

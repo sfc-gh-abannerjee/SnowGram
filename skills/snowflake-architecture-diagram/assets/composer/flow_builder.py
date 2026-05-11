@@ -48,7 +48,7 @@ BLOCK_REGISTRY: dict[str, dict[str, str]] = {
                                  "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function"},
     "DATA_SHARE_BLOCK":         {"label": "Secure Data Share", "detail": "Cross-account share",        "icon": "Snowflake_ICON_Sharing_Collaboration.svg", "category": "onprem",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/data-sharing-intro"},
-    "IOT_GATEWAY_BLOCK":        {"label": "IoT Gateway",        "detail": "MQTT / device telemetry",    "icon": "Snowflake_ICON_3rd_Party.svg",           "category": "onprem",
+    "IOT_GATEWAY_BLOCK":        {"label": "IoT Gateway",        "detail": "MQTT / device telemetry",    "icon": "Snowflake_ICON_IoT.svg",                 "category": "onprem",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"},
 
     # --- Ingestion / bridge ---
