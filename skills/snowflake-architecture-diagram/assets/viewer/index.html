@@ -244,29 +244,29 @@
   }
   @keyframes connector-flow { to { stroke-dashoffset: -20; } }
 
-  /* ────────────────────────── Two-region master layout ────────────────────────── */
+  /* ────────────────────────── Topology-driven multi-column layout ────────────────────────── */
   .arch-layout {
     display: grid;
-    grid-template-columns: 260px 1fr;
-    gap: 48px;
+    gap: 36px;
     align-items: start;
+    position: relative;
   }
-  @media (max-width: 900px) {
-    .arch-layout { grid-template-columns: 1fr; gap: 32px; }
+  @media (max-width: 700px) {
+    .arch-layout { grid-template-columns: 1fr !important; }
   }
 
-  .external-region {
+  .rank-column {
     display: flex;
     flex-direction: column;
     gap: 20px;
   }
-  .external-region .region-label {
-    font-size: 10px;
+  .rank-column .rank-label {
+    font-size: 9px;
     font-weight: 900;
     letter-spacing: 0.10em;
     text-transform: uppercase;
-    color: var(--sf-orange);
-    margin-bottom: 4px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
   }
 
   .platform-boundary {
@@ -291,26 +291,6 @@
     text-transform: uppercase;
     color: var(--sf-blue);
     border-radius: 4px;
-  }
-  .platform-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
-  }
-  @media (max-width: 700px) {
-    .platform-grid { grid-template-columns: 1fr; }
-  }
-
-  /* Flow direction arrow between regions */
-  .region-arrow {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    align-self: center;
-    margin: 0 -24px;
-  }
-  @media (max-width: 900px) {
-    .region-arrow { margin: -12px 0; transform: rotate(90deg); }
   }
 
   /* ────────────────────────── Zones ────────────────────────── */
@@ -723,19 +703,60 @@
     const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
     const zones = Array.isArray(state.zones) ? state.zones : [];
 
-    // ── Enterprise zones layout (two-region: external → Snowflake) ──
+    // ── Enterprise zones layout (topology-driven columns) ──
     if (zones.length) {
       flow.className = 'arch-layout';
       flow.style.display = '';
 
-      // Partition zones into external (onprem/bridge) vs Snowflake (snow/outcome)
-      const externalZones = zones.filter(function(z) { return z.category === 'onprem' || z.category === 'bridge'; });
-      const snowflakeZones = zones.filter(function(z) { return z.category !== 'onprem' && z.category !== 'bridge'; });
+      // --- Compute zone ranks from edge topology ---
+      var nodeToZone = {};
+      zones.forEach(function(z) {
+        (z.node_ids || []).forEach(function(id) { nodeToZone[id] = z.name; });
+      });
+
+      // Build zone-level DAG
+      var zoneNames = zones.map(function(z) { return z.name; });
+      var zoneSuccessors = {};
+      zoneNames.forEach(function(n) { zoneSuccessors[n] = []; });
+      var edges = state.edges || [];
+      edges.forEach(function(e) {
+        var sz = nodeToZone[e.source], tz = nodeToZone[e.target];
+        if (sz && tz && sz !== tz && zoneSuccessors[sz].indexOf(tz) === -1) {
+          zoneSuccessors[sz].push(tz);
+        }
+      });
+
+      // Longest-path rank assignment
+      var rank = {};
+      zoneNames.forEach(function(n) { rank[n] = 0; });
+      var changed = true, safety = 0;
+      while (changed && safety < 50) {
+        changed = false; safety++;
+        zoneNames.forEach(function(src) {
+          zoneSuccessors[src].forEach(function(tgt) {
+            if (rank[tgt] < rank[src] + 1) {
+              rank[tgt] = rank[src] + 1;
+              changed = true;
+            }
+          });
+        });
+      }
+
+      // Group zones by rank
+      var maxRank = 0;
+      zoneNames.forEach(function(n) { if (rank[n] > maxRank) maxRank = rank[n]; });
+      var columns = []; // columns[i] = [zone, zone, ...]
+      for (var r = 0; r <= maxRank; r++) columns.push([]);
+      zones.forEach(function(z) { columns[rank[z.name]].push(z); });
+
+      // Set grid columns
+      var colCount = maxRank + 1;
+      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', 1fr)';
 
       // Helper: build a zone DOM element
       function buildZoneEl(z) {
-        const cat = z.category || 'snow';
-        const zoneEl = document.createElement('div');
+        var cat = z.category || 'snow';
+        var zoneEl = document.createElement('div');
         zoneEl.className = 'zone zone-' + cat;
         zoneEl.innerHTML = '<div class="zone-stripe"></div>' +
           '<div class="zone-header">' +
@@ -743,11 +764,11 @@
             '<div class="zone-tag">' + (z.node_ids || []).length + ' component' + ((z.node_ids || []).length === 1 ? '' : 's') + '</div>' +
           '</div>' +
           '<div class="zone-body"></div>';
-        const body = zoneEl.querySelector('.zone-body');
+        var body = zoneEl.querySelector('.zone-body');
         (z.node_ids || []).forEach(function(id) {
-          const node = nodesById[id];
+          var node = nodesById[id];
           if (!node) return;
-          const div = document.createElement('div');
+          var div = document.createElement('div');
           div.className = 'flow-node node-' + (node.category || 'snow');
           div.setAttribute('data-node-id', node.id);
           var iconSrc = node.icon_data || ('icons/' + escapeHtml(node.icon));
@@ -759,31 +780,56 @@
         return zoneEl;
       }
 
-      // Left column: External region
-      if (externalZones.length) {
-        const extRegion = document.createElement('div');
-        extRegion.className = 'external-region';
-        const extLabel = document.createElement('div');
-        extLabel.className = 'region-label';
-        extLabel.textContent = 'External / Ingestion';
-        extRegion.appendChild(extLabel);
-        externalZones.forEach(function(z) { extRegion.appendChild(buildZoneEl(z)); });
-        flow.appendChild(extRegion);
-      }
+      // Determine which columns are "inside Snowflake" (snow or outcome categories)
+      var snowCols = {};
+      columns.forEach(function(col, ci) {
+        col.forEach(function(z) {
+          if (z.category === 'snow' || z.category === 'outcome') snowCols[ci] = true;
+        });
+      });
+      var snowColIndices = Object.keys(snowCols).map(Number).sort(function(a,b){return a-b;});
+      var snowStart = snowColIndices.length ? snowColIndices[0] : -1;
+      var snowEnd = snowColIndices.length ? snowColIndices[snowColIndices.length - 1] : -1;
 
-      // Right column: Snowflake platform boundary
-      if (snowflakeZones.length) {
-        const boundary = document.createElement('div');
-        boundary.className = 'platform-boundary';
-        boundary.innerHTML = '<div class="platform-label">Snowflake Data Cloud</div>';
-        const grid = document.createElement('div');
-        grid.className = 'platform-grid';
-        snowflakeZones.forEach(function(z) { grid.appendChild(buildZoneEl(z)); });
-        boundary.appendChild(grid);
-        flow.appendChild(boundary);
-      }
+      // Render columns
+      columns.forEach(function(col, ci) {
+        if (!col.length) return;
 
-      // Draw within-zone connectors only
+        var colEl = document.createElement('div');
+        colEl.className = 'rank-column';
+
+        // Wrap Snowflake columns in platform boundary (on first snow col)
+        if (ci === snowStart && snowStart >= 0) {
+          var boundary = document.createElement('div');
+          boundary.className = 'platform-boundary';
+          boundary.style.gridColumn = (snowStart + 1) + ' / ' + (snowEnd + 2);
+          boundary.innerHTML = '<div class="platform-label">Snowflake Data Cloud</div>';
+          var innerGrid = document.createElement('div');
+          innerGrid.style.display = 'grid';
+          innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', 1fr)';
+          innerGrid.style.gap = '20px';
+          innerGrid.style.alignItems = 'start';
+
+          // Render all snow columns inside the boundary
+          for (var sci = snowStart; sci <= snowEnd; sci++) {
+            var innerCol = document.createElement('div');
+            innerCol.className = 'rank-column';
+            columns[sci].forEach(function(z) { innerCol.appendChild(buildZoneEl(z)); });
+            innerGrid.appendChild(innerCol);
+          }
+          boundary.appendChild(innerGrid);
+          flow.appendChild(boundary);
+          return; // Skip individual rendering for snow columns
+        }
+        // Skip columns already rendered inside boundary
+        if (ci > snowStart && ci <= snowEnd) return;
+
+        // External / non-snow columns render directly
+        col.forEach(function(z) { colEl.appendChild(buildZoneEl(z)); });
+        flow.appendChild(colEl);
+      });
+
+      // Draw connectors after layout settles
       setTimeout(function() { renderConnectors(state); }, 100);
       return;
     }
@@ -811,7 +857,7 @@
   }
 
   // ────────────────────────────────────────────────────────
-  // SVG Connector Rendering — orthogonal (right-angle) routing
+  // SVG Connector Rendering — orthogonal routing with deconfliction
   // ────────────────────────────────────────────────────────
   function renderConnectors(state) {
     const svg = document.getElementById('diagram-connectors');
@@ -826,7 +872,7 @@
 
     const cardRect = card.getBoundingClientRect();
 
-    edges.forEach(function(edge) {
+    edges.forEach(function(edge, edgeIdx) {
       const srcEl = card.querySelector('[data-node-id="' + edge.source + '"]');
       const tgtEl = card.querySelector('[data-node-id="' + edge.target + '"]');
       if (!srcEl || !tgtEl) return;
@@ -834,6 +880,9 @@
       const srcZone = srcEl.closest('.zone');
       const tgtZone = tgtEl.closest('.zone');
       const sameZone = srcZone && tgtZone && srcZone === tgtZone;
+
+      // Offset to deconflict parallel lines in the same gap
+      var laneOffset = (edgeIdx % 5 - 2) * 6; // -12, -6, 0, +6, +12
 
       var x1, y1, x2, y2, d;
 
@@ -847,7 +896,7 @@
         y2 = tgtRect.top - cardRect.top;
         d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
       } else {
-        // Cross-zone: orthogonal routing (exit zone → elbow → enter zone)
+        // Cross-zone: orthogonal routing with lane offset
         const srcZoneRect = srcZone.getBoundingClientRect();
         const tgtZoneRect = tgtZone.getBoundingClientRect();
         const srcNodeRect = srcEl.getBoundingClientRect();
@@ -861,7 +910,7 @@
         var dy = tgtCy - srcCy;
 
         if (Math.abs(dx) > Math.abs(dy)) {
-          // Primarily horizontal: exit right/left, travel horizontal, turn into target
+          // Primarily horizontal
           if (dx > 0) {
             x1 = srcZoneRect.right - cardRect.left;
             x2 = tgtZoneRect.left - cardRect.left;
@@ -871,14 +920,13 @@
           }
           y1 = srcCy;
           y2 = tgtCy;
-          // Orthogonal: horizontal → vertical → horizontal
-          var midX = (x1 + x2) / 2;
+          var midX = (x1 + x2) / 2 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
               ' L' + midX + ',' + y1 +
               ' L' + midX + ',' + y2 +
               ' L' + x2 + ',' + y2;
         } else {
-          // Primarily vertical: exit bottom/top, travel vertical, turn into target
+          // Primarily vertical
           if (dy > 0) {
             y1 = srcZoneRect.bottom - cardRect.top;
             y2 = tgtZoneRect.top - cardRect.top;
@@ -888,8 +936,7 @@
           }
           x1 = srcCx;
           x2 = tgtCx;
-          // Orthogonal: vertical → horizontal → vertical
-          var midY = (y1 + y2) / 2;
+          var midY = (y1 + y2) / 2 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
               ' L' + x1 + ',' + midY +
               ' L' + x2 + ',' + midY +
