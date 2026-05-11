@@ -231,30 +231,90 @@
   .connector-path {
     fill: none;
     stroke: var(--connector-color);
-    stroke-width: 2;
-    stroke-dasharray: 8 4;
+    stroke-width: 1.5;
     stroke-linecap: round;
-    opacity: 0.8;
-    animation: connector-flow 1.4s linear infinite;
+    opacity: 0.7;
   }
   .connector-dot {
     fill: var(--connector-color);
-    opacity: 0.9;
+    opacity: 0.8;
   }
-  @keyframes connector-flow { to { stroke-dashoffset: -20; } }
 
-  /* ────────────────────────── Zones grid (enterprise layout) ────────────────────────── */
+  /* ────────────────────────── Two-region master layout ────────────────────────── */
+  .arch-layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 48px;
+    align-items: start;
+  }
+  @media (max-width: 900px) {
+    .arch-layout { grid-template-columns: 1fr; gap: 32px; }
+  }
+
+  .external-region {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .external-region .region-label {
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--sf-orange);
+    margin-bottom: 4px;
+  }
+
+  .platform-boundary {
+    border: 2px dashed var(--sf-blue);
+    border-radius: 16px;
+    padding: 28px 24px 24px;
+    position: relative;
+    background: rgba(41,181,232,0.015);
+  }
+  [data-theme="dark"] .platform-boundary {
+    background: rgba(41,181,232,0.03);
+  }
+  .platform-label {
+    position: absolute;
+    top: -11px;
+    left: 24px;
+    background: var(--surface);
+    padding: 2px 12px;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+    color: var(--sf-blue);
+    border-radius: 4px;
+  }
+  .platform-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+  @media (max-width: 700px) {
+    .platform-grid { grid-template-columns: 1fr; }
+  }
+
+  /* Flow direction arrow between regions */
+  .region-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    margin: 0 -24px;
+  }
+  @media (max-width: 900px) {
+    .region-arrow { margin: -12px 0; transform: rotate(90deg); }
+  }
+
+  /* ────────────────────────── Zones ────────────────────────── */
   .zones-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 32px;
     position: relative;
-  }
-  @media (max-width: 900px) {
-    .zones-grid { grid-template-columns: repeat(2, 1fr); }
-  }
-  @media (max-width: 560px) {
-    .zones-grid { grid-template-columns: 1fr; }
   }
 
   .zone {
@@ -292,10 +352,10 @@
     letter-spacing: 0.04em;
   }
   .zone-body {
-    padding: 12px;
+    padding: 16px;
     display: grid;
     grid-template-columns: 1fr;
-    gap: 8px;
+    gap: 12px;
     flex: 1;
     align-content: start;
   }
@@ -305,7 +365,7 @@
   .zone .flow-node {
     min-width: 0;
     width: 100%;
-    padding: 12px 8px 10px;
+    padding: 16px 12px 14px;
     background: var(--surface-soft);
     border-radius: 8px;
     border: 1px solid var(--border-subtle);
@@ -2690,43 +2750,67 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
     const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
     const zones = Array.isArray(state.zones) ? state.zones : [];
 
-    // ── Enterprise zones layout ────────────────────────────────
+    // ── Enterprise zones layout (two-region: external → Snowflake) ──
     if (zones.length) {
-      flow.className = 'zones-grid';
+      flow.className = 'arch-layout';
       flow.style.display = '';
 
-      zones.forEach((z, zi) => {
-        const cat = z.category || 'snow';
-        const useTwoCols = (z.node_ids || []).length >= 4;
+      // Partition zones into external (onprem/bridge) vs Snowflake (snow/outcome)
+      const externalZones = zones.filter(function(z) { return z.category === 'onprem' || z.category === 'bridge'; });
+      const snowflakeZones = zones.filter(function(z) { return z.category !== 'onprem' && z.category !== 'bridge'; });
 
+      // Helper: build a zone DOM element
+      function buildZoneEl(z) {
+        const cat = z.category || 'snow';
         const zoneEl = document.createElement('div');
         zoneEl.className = 'zone zone-' + cat;
-        zoneEl.innerHTML = `
-          <div class="zone-stripe"></div>
-          <div class="zone-header">
-            <div class="zone-name">${escapeHtml(z.name)}</div>
-            <div class="zone-tag">${(z.node_ids || []).length} component${(z.node_ids || []).length === 1 ? '' : 's'}</div>
-          </div>
-          <div class="zone-body${useTwoCols ? ' cols-2' : ''}"></div>
-        `;
+        zoneEl.innerHTML = '<div class="zone-stripe"></div>' +
+          '<div class="zone-header">' +
+            '<div class="zone-name">' + escapeHtml(z.name) + '</div>' +
+            '<div class="zone-tag">' + (z.node_ids || []).length + ' component' + ((z.node_ids || []).length === 1 ? '' : 's') + '</div>' +
+          '</div>' +
+          '<div class="zone-body"></div>';
         const body = zoneEl.querySelector('.zone-body');
-        (z.node_ids || []).forEach(id => {
+        (z.node_ids || []).forEach(function(id) {
           const node = nodesById[id];
           if (!node) return;
           const div = document.createElement('div');
           div.className = 'flow-node node-' + (node.category || 'snow');
           div.setAttribute('data-node-id', node.id);
-          div.innerHTML = `
-            <div class="icon"><img src="${(node.icon_data || ('icons/' + escapeHtml(node.icon)))}" alt="" onerror="this.style.display='none'"></div>
-            <div class="label">${escapeHtml(node.label)}</div>
-            <div class="detail">${escapeHtml(node.detail || '')}</div>
-          `;
+          var iconSrc = node.icon_data || ('icons/' + escapeHtml(node.icon));
+          div.innerHTML = '<div class="icon"><img src="' + iconSrc + '" alt="" onerror="this.style.display=\'none\'"></div>' +
+            '<div class="label">' + escapeHtml(node.label) + '</div>' +
+            '<div class="detail">' + escapeHtml(node.detail || '') + '</div>';
           body.appendChild(div);
         });
-        flow.appendChild(zoneEl);
-      });
+        return zoneEl;
+      }
 
-      // Draw connectors after layout settles
+      // Left column: External region
+      if (externalZones.length) {
+        const extRegion = document.createElement('div');
+        extRegion.className = 'external-region';
+        const extLabel = document.createElement('div');
+        extLabel.className = 'region-label';
+        extLabel.textContent = 'External / Ingestion';
+        extRegion.appendChild(extLabel);
+        externalZones.forEach(function(z) { extRegion.appendChild(buildZoneEl(z)); });
+        flow.appendChild(extRegion);
+      }
+
+      // Right column: Snowflake platform boundary
+      if (snowflakeZones.length) {
+        const boundary = document.createElement('div');
+        boundary.className = 'platform-boundary';
+        boundary.innerHTML = '<div class="platform-label">Snowflake Data Cloud</div>';
+        const grid = document.createElement('div');
+        grid.className = 'platform-grid';
+        snowflakeZones.forEach(function(z) { grid.appendChild(buildZoneEl(z)); });
+        boundary.appendChild(grid);
+        flow.appendChild(boundary);
+      }
+
+      // Draw within-zone connectors only
       setTimeout(function() { renderConnectors(state); }, 100);
       return;
     }
@@ -2754,14 +2838,14 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
   }
 
   // ────────────────────────────────────────────────────────
-  // SVG Connector Rendering
+  // SVG Connector Rendering — only within-zone vertical arrows
   // ────────────────────────────────────────────────────────
   function renderConnectors(state) {
     const svg = document.getElementById('diagram-connectors');
     const card = document.querySelector('.diagram-card');
     if (!svg || !card) return;
 
-    // Clear previous paths (keep <defs>)
+    // Clear previous elements (keep <defs>)
     svg.querySelectorAll('.connector-path, .connector-dot').forEach(function(p) { p.remove(); });
 
     const edges = state.edges || [];
@@ -2769,106 +2853,33 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
 
     const cardRect = card.getBoundingClientRect();
 
-    // Build a lookup: node-id → zone element (the .zone ancestor)
-    function getZoneOf(nodeEl) {
-      return nodeEl.closest('.zone');
-    }
-
     edges.forEach(function(edge) {
       const srcEl = card.querySelector('[data-node-id="' + edge.source + '"]');
       const tgtEl = card.querySelector('[data-node-id="' + edge.target + '"]');
       if (!srcEl || !tgtEl) return;
 
-      const srcZone = getZoneOf(srcEl);
-      const tgtZone = getZoneOf(tgtEl);
-      const sameZone = srcZone && tgtZone && srcZone === tgtZone;
+      // Only draw within-zone connectors (same .zone parent)
+      const srcZone = srcEl.closest('.zone');
+      const tgtZone = tgtEl.closest('.zone');
+      if (!srcZone || !tgtZone || srcZone !== tgtZone) return;
 
-      // For cross-zone edges: attach to zone boundary (lines pass through gap)
-      // For same-zone edges: attach to node boundary (short internal arrows)
-      const srcBox = sameZone ? srcEl.getBoundingClientRect() : srcZone.getBoundingClientRect();
-      const tgtBox = sameZone ? tgtEl.getBoundingClientRect() : tgtZone.getBoundingClientRect();
+      const srcRect = srcEl.getBoundingClientRect();
+      const tgtRect = tgtEl.getBoundingClientRect();
 
-      // We still use node centers for direction calculation
-      const srcNodeRect = srcEl.getBoundingClientRect();
-      const tgtNodeRect = tgtEl.getBoundingClientRect();
-      const sx = srcNodeRect.left + srcNodeRect.width / 2 - cardRect.left;
-      const sy = srcNodeRect.top + srcNodeRect.height / 2 - cardRect.top;
-      const tx = tgtNodeRect.left + tgtNodeRect.width / 2 - cardRect.left;
-      const ty = tgtNodeRect.top + tgtNodeRect.height / 2 - cardRect.top;
+      // Simple straight vertical arrow: bottom-center of source → top-center of target
+      const x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
+      const y1 = srcRect.bottom - cardRect.top;
+      const x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
+      const y2 = tgtRect.top - cardRect.top;
 
-      const dx = tx - sx;
-      const dy = ty - sy;
-      const absDx = Math.abs(dx);
-      const absDy = Math.abs(dy);
+      // Short straight line (or very gentle curve if not aligned)
+      var d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
 
-      var x1, y1, x2, y2;
-
-      if (sameZone) {
-        // Within same zone: connect bottom of source node → top of target node
-        x1 = sx;
-        y1 = srcNodeRect.bottom - cardRect.top;
-        x2 = tx;
-        y2 = tgtNodeRect.top - cardRect.top;
-      } else if (absDx > absDy * 0.4) {
-        // Cross-zone horizontal: exit right side of source zone, enter left of target zone
-        if (dx > 0) {
-          x1 = srcBox.right - cardRect.left;
-          x2 = tgtBox.left - cardRect.left;
-        } else {
-          x1 = srcBox.left - cardRect.left;
-          x2 = tgtBox.right - cardRect.left;
-        }
-        // Vertical position: use node center Y, clamped to zone boundary
-        y1 = sy;
-        y2 = ty;
-      } else {
-        // Cross-zone vertical: exit bottom of source zone, enter top of target zone
-        if (dy > 0) {
-          y1 = srcBox.bottom - cardRect.top;
-          y2 = tgtBox.top - cardRect.top;
-        } else {
-          y1 = srcBox.top - cardRect.top;
-          y2 = tgtBox.bottom - cardRect.top;
-        }
-        x1 = sx;
-        x2 = tx;
-      }
-
-      // Build smooth cubic Bezier
-      var cpx1, cpy1, cpx2, cpy2;
-      if (sameZone) {
-        // Short vertical within zone
-        var midY = (y1 + y2) / 2;
-        cpx1 = x1; cpy1 = midY;
-        cpx2 = x2; cpy2 = midY;
-      } else if (absDx > absDy * 0.4) {
-        // Horizontal cross-zone: gentle S-curve through the gap
-        var midX = (x1 + x2) / 2;
-        cpx1 = midX; cpy1 = y1;
-        cpx2 = midX; cpy2 = y2;
-      } else {
-        // Vertical cross-zone: gentle S-curve through the gap
-        var midY2 = (y1 + y2) / 2;
-        cpx1 = x1; cpy1 = midY2;
-        cpx2 = x2; cpy2 = midY2;
-      }
-
-      var d = 'M' + x1 + ',' + y1 + ' C' + cpx1 + ',' + cpy1 + ' ' + cpx2 + ',' + cpy2 + ' ' + x2 + ',' + y2;
-
-      // Draw connector path
       const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathEl.setAttribute('d', d);
       pathEl.setAttribute('class', 'connector-path');
       pathEl.setAttribute('marker-end', 'url(#arrowhead)');
       svg.appendChild(pathEl);
-
-      // Small dot at source to show origin
-      const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      dot.setAttribute('cx', x1);
-      dot.setAttribute('cy', y1);
-      dot.setAttribute('r', '3');
-      dot.setAttribute('class', 'connector-dot');
-      svg.appendChild(dot);
     });
   }
 
