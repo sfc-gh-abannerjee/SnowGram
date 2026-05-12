@@ -819,7 +819,7 @@
           var innerGrid = document.createElement('div');
           innerGrid.style.display = 'grid';
           innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', minmax(0, 1fr))';
-          innerGrid.style.gap = '20px';
+          innerGrid.style.gap = '36px';
           innerGrid.style.alignItems = 'start';
           innerGrid.style.overflow = 'hidden';
 
@@ -915,9 +915,10 @@
         const srcRect = srcEl.getBoundingClientRect();
         const tgtRect = tgtEl.getBoundingClientRect();
 
-        // Use zone centers for routing Y, zone edges for routing X
-        var srcZoneCy = srcZoneRect.top + srcZoneRect.height / 2 - cardRect.top;
-        var tgtZoneCy = tgtZoneRect.top + tgtZoneRect.height / 2 - cardRect.top;
+        // Use NODE centers for Y (so connector starts/ends at the actual node)
+        // Use ZONE edges for X exit/entry points
+        var srcNodeCy = srcRect.top + srcRect.height / 2 - cardRect.top;
+        var tgtNodeCy = tgtRect.top + tgtRect.height / 2 - cardRect.top;
         var srcZoneCx = srcZoneRect.left + srcZoneRect.width / 2 - cardRect.left;
         var tgtZoneCx = tgtZoneRect.left + tgtZoneRect.width / 2 - cardRect.left;
 
@@ -927,7 +928,7 @@
         var useHorizontal = horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20);
 
         // Margin to prevent lines from hugging zone borders
-        var edgeMargin = 4;
+        var edgeMargin = 6;
 
         if (useHorizontal) {
           var dx = tgtZoneCx - srcZoneCx;
@@ -941,11 +942,8 @@
               x1 = srcZoneRect.left - cardRect.left - edgeMargin;
               x2 = tgtZoneRect.right - cardRect.left + edgeMargin;
             }
-            y1 = srcZoneCy;
-            y2 = tgtZoneCy;
           } else {
-            // Zones overlap horizontally — fall back to node-level routing
-            // Use node right/left edges to guarantee correct direction
+            // Zones overlap horizontally — use node edges
             if (dx >= 0) {
               x1 = srcRect.right - cardRect.left + edgeMargin;
               x2 = tgtRect.left - cardRect.left - edgeMargin;
@@ -953,24 +951,24 @@
               x1 = srcRect.left - cardRect.left - edgeMargin;
               x2 = tgtRect.right - cardRect.left + edgeMargin;
             }
-            y1 = srcRect.top + srcRect.height / 2 - cardRect.top;
-            y2 = tgtRect.top + tgtRect.height / 2 - cardRect.top;
           }
+          // Always use node Y-centers so line connects to/from the actual nodes
+          y1 = srcNodeCy;
+          y2 = tgtNodeCy;
 
           // Ensure connector always moves in the intended direction
-          // If x2 is behind x1 (overlap edge case), force minimal forward gap
-          if (dx >= 0 && x2 <= x1) x2 = x1 + 12;
-          if (dx < 0 && x2 >= x1) x2 = x1 - 12;
+          if (dx >= 0 && x2 <= x1) x2 = x1 + 16;
+          if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
-          // Orthogonal: H → V → H with turn at midpoint
+          // Orthogonal: H → V → H with turn at gap midpoint
           var turnX = x1 + (x2 - x1) * 0.5 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
               ' L' + turnX + ',' + y1 +
               ' L' + turnX + ',' + y2 +
               ' L' + x2 + ',' + y2;
         } else {
-          // Vertical: exit bottom/top at zone horizontal center
-          var dy = tgtZoneCy - srcZoneCy;
+          // Vertical: exit bottom/top using node centers for X
+          var dy = tgtNodeCy - srcNodeCy;
           if (dy >= 0) {
             y1 = srcZoneRect.bottom - cardRect.top + edgeMargin;
             y2 = tgtZoneRect.top - cardRect.top - edgeMargin;
@@ -978,12 +976,12 @@
             y1 = srcZoneRect.top - cardRect.top - edgeMargin;
             y2 = tgtZoneRect.bottom - cardRect.top + edgeMargin;
           }
-          x1 = srcZoneCx;
-          x2 = tgtZoneCx;
+          x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
+          x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
 
           // Ensure connector always moves in the intended direction
-          if (dy >= 0 && y2 <= y1) y2 = y1 + 12;
-          if (dy < 0 && y2 >= y1) y2 = y1 - 12;
+          if (dy >= 0 && y2 <= y1) y2 = y1 + 16;
+          if (dy < 0 && y2 >= y1) y2 = y1 - 16;
 
           // Orthogonal: V → H → V with turn at midpoint
           var turnY = y1 + (y2 - y1) * 0.5 + laneOffset;
