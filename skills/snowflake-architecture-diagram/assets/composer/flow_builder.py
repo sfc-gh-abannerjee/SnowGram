@@ -346,6 +346,26 @@ def build_flow(
                 {"name": zname, "category": ZONE_CATEGORY.get(zname, "snow"), "node_ids": ids}
             )
 
+    # ── Naming consistency: normalize medallion ↔ generic ──────────────────
+    # If the architecture doesn't use at least 2 of the 3 medallion layers
+    # (Bronze/Silver/Gold), rename to generic equivalents so zone labels
+    # don't imply a medallion pattern that isn't actually present.
+    medallion_zones = {"Bronze Layer", "Silver Layer", "Gold Layer"}
+    present_medallion = medallion_zones & set(z["name"] for z in zones)
+    if len(present_medallion) < 2:
+        rename_map = {
+            "Bronze Layer": "Raw Layer",
+            "Silver Layer": "Curated Layer",
+            "Gold Layer": "Serving Layer",
+        }
+        for z in zones:
+            if z["name"] in rename_map:
+                z["name"] = rename_map[z["name"]]
+        # Also update node zone references
+        for n in nodes:
+            if n.get("zone") in rename_map:
+                n["zone"] = rename_map[n["zone"]]
+
     return {"nodes": nodes, "edges": edges, "zones": zones}
 
 

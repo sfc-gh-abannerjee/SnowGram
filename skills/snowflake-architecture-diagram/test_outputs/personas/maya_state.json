@@ -27,7 +27,7 @@
       "detail": "Raw, append-only",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
-      "zone": "Bronze Layer",
+      "zone": "Raw Layer",
       "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
     },
     {
@@ -122,7 +122,7 @@
       ]
     },
     {
-      "name": "Bronze Layer",
+      "name": "Raw Layer",
       "category": "snow",
       "node_ids": [
         "bronze_table"
