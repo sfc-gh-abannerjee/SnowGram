@@ -247,7 +247,7 @@
   /* ────────────────────────── Topology-driven multi-column layout ────────────────────────── */
   .arch-layout {
     display: grid;
-    gap: 36px;
+    gap: 48px;
     align-items: start;
     position: relative;
   }
@@ -2850,7 +2850,7 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
           var innerGrid = document.createElement('div');
           innerGrid.style.display = 'grid';
           innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', minmax(0, 1fr))';
-          innerGrid.style.gap = '36px';
+          innerGrid.style.gap = '48px';
           innerGrid.style.alignItems = 'start';
           innerGrid.style.overflow = 'hidden';
 
@@ -2959,7 +2959,7 @@ Expecting `+Qe.join(", ")+", got '"+(this.terminals_[Ne]||Ne)+"'":Dt="Parse erro
         var useHorizontal = horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20);
 
         // Margin to prevent lines from hugging zone borders
-        var edgeMargin = 6;
+        var edgeMargin = 8;
 
         if (useHorizontal) {
           var dx = tgtZoneCx - srcZoneCx;
