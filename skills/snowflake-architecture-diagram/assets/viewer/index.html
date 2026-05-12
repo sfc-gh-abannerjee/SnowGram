@@ -885,6 +885,21 @@
 
     const cardRect = card.getBoundingClientRect();
 
+    // Pre-pass: count edges per zone-pair to compute lane offsets
+    var gapCounts = {};  // "srcZoneId|tgtZoneId" → count
+    var gapIndex = {};   // edgeIdx → index within its gap group
+    edges.forEach(function(edge, idx) {
+      var s = card.querySelector('[data-node-id="' + edge.source + '"]');
+      var t = card.querySelector('[data-node-id="' + edge.target + '"]');
+      if (!s || !t) return;
+      var sz = s.closest('.zone'), tz = t.closest('.zone');
+      if (!sz || !tz || sz === tz) return;
+      var key = (sz.querySelector('.zone-name') || {}).textContent + '|' + (tz.querySelector('.zone-name') || {}).textContent;
+      if (!gapCounts[key]) gapCounts[key] = 0;
+      gapIndex[idx] = gapCounts[key];
+      gapCounts[key]++;
+    });
+
     edges.forEach(function(edge, edgeIdx) {
       const srcEl = card.querySelector('[data-node-id="' + edge.source + '"]');
       const tgtEl = card.querySelector('[data-node-id="' + edge.target + '"]');
@@ -894,8 +909,16 @@
       const tgtZone = tgtEl.closest('.zone');
       const sameZone = srcZone && tgtZone && srcZone === tgtZone;
 
-      // Offset to deconflict parallel lines in the same gap
-      var laneOffset = (edgeIdx % 5 - 2) * 6; // -12, -6, 0, +6, +12
+      // Lane offset: only apply when multiple edges share the same zone pair gap
+      // For most edges (unique gap), offset is 0 — connector stays centered
+      var laneOffset = 0;
+      if (gapIndex[edgeIdx] !== undefined) {
+        var key = ((srcZone.querySelector('.zone-name') || {}).textContent || '') + '|' + ((tgtZone.querySelector('.zone-name') || {}).textContent || '');
+        var total = gapCounts[key] || 1;
+        if (total > 1) {
+          laneOffset = (gapIndex[edgeIdx] - (total - 1) / 2) * 6;
+        }
+      }
 
       var x1, y1, x2, y2, d;
 
