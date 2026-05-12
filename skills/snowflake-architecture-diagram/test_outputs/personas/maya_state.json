@@ -23,7 +23,7 @@
     },
     {
       "id": "bronze_table",
-      "label": "Bronze Table",
+      "label": "Raw Table",
       "detail": "Raw, append-only",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
@@ -159,7 +159,7 @@
     },
     {
       "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
-      "title": "Bronze Table",
+      "title": "Raw Table",
       "excerpt": "Raw, append-only"
     },
     {

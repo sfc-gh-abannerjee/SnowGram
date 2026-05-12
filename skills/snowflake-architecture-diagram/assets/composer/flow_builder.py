@@ -19,6 +19,7 @@ node-onprem / node-bridge / node-snow / node-outcome classes:
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 # --------------------------------------------------------------------------- #
@@ -349,22 +350,52 @@ def build_flow(
     # ── Naming consistency: normalize medallion ↔ generic ──────────────────
     # If the architecture doesn't use at least 2 of the 3 medallion layers
     # (Bronze/Silver/Gold), rename to generic equivalents so zone labels
-    # don't imply a medallion pattern that isn't actually present.
+    # and node labels don't imply a medallion pattern that isn't present.
+    #
+    # This handles:
+    #   - Zone names:  "Bronze Layer" → "Raw Layer"
+    #   - Node labels: "Bronze Table" → "Raw Table", "Silver Stream" → "Curated Stream"
+    #   - Node details containing medallion terms
+    #
+    # Threshold: require 2+ medallion zones to keep medallion terminology.
+    # Rationale: a single "Bronze" without Silver/Gold is just a raw landing
+    # zone — calling it "Bronze" implies an incomplete design.
     medallion_zones = {"Bronze Layer", "Silver Layer", "Gold Layer"}
     present_medallion = medallion_zones & set(z["name"] for z in zones)
     if len(present_medallion) < 2:
-        rename_map = {
+        # Zone-level renames
+        zone_rename = {
             "Bronze Layer": "Raw Layer",
             "Silver Layer": "Curated Layer",
             "Gold Layer": "Serving Layer",
         }
+        # Node-level label/detail prefix replacements
+        label_rename = {
+            "Bronze": "Raw",
+            "Silver": "Curated",
+            "Gold": "Serving",
+        }
         for z in zones:
-            if z["name"] in rename_map:
-                z["name"] = rename_map[z["name"]]
-        # Also update node zone references
+            if z["name"] in zone_rename:
+                z["name"] = zone_rename[z["name"]]
         for n in nodes:
-            if n.get("zone") in rename_map:
-                n["zone"] = rename_map[n["zone"]]
+            # Update zone references on nodes
+            if n.get("zone") in zone_rename:
+                n["zone"] = zone_rename[n["zone"]]
+            # Update node labels: "Bronze Table" → "Raw Table"
+            for medallion_term, generic_term in label_rename.items():
+                if n["label"].startswith(medallion_term):
+                    n["label"] = generic_term + n["label"][len(medallion_term):]
+                    break
+            # Update details: "CDC over raw" stays, "CDC over silver" → "CDC over curated"
+            detail = n.get("detail", "")
+            for medallion_term, generic_term in label_rename.items():
+                lc = medallion_term.lower()
+                if lc in detail.lower():
+                    n["detail"] = re.sub(
+                        re.escape(lc), generic_term.lower(), detail, flags=re.IGNORECASE
+                    )
+                    break
 
     return {"nodes": nodes, "edges": edges, "zones": zones}
 
