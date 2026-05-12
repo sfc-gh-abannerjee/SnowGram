@@ -251,7 +251,10 @@
     align-items: start;
     position: relative;
   }
-  @media (max-width: 700px) {
+  @media (max-width: 900px) {
+    .arch-layout { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)) !important; }
+  }
+  @media (max-width: 600px) {
     .arch-layout { grid-template-columns: 1fr !important; }
   }
 
@@ -356,20 +359,27 @@
     border-radius: 8px;
     border: 1px solid var(--border-subtle);
     text-align: center;
+    overflow: hidden;
   }
   .zone .flow-node .icon {
-    width: 44px;
-    height: 44px;
-    padding: 8px;
-    margin-bottom: 6px;
+    width: clamp(28px, 60%, 44px);
+    height: clamp(28px, 60%, 44px);
+    padding: 6px;
+    margin: 0 auto 6px;
   }
   .zone .flow-node .label {
-    font-size: 12.5px;
+    font-size: clamp(9px, 1.2vw, 12.5px);
     margin-bottom: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .zone .flow-node .detail {
-    font-size: 10.5px;
+    font-size: clamp(8px, 1vw, 10.5px);
     line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Per-category zone tinting */
@@ -902,33 +912,56 @@
         // Cross-zone: orthogonal routing with lane offset
         const srcZoneRect = srcZone.getBoundingClientRect();
         const tgtZoneRect = tgtZone.getBoundingClientRect();
+        const srcRect = srcEl.getBoundingClientRect();
+        const tgtRect = tgtEl.getBoundingClientRect();
 
-        // Use zone centers for routing
+        // Use zone centers for routing Y, zone edges for routing X
         var srcZoneCy = srcZoneRect.top + srcZoneRect.height / 2 - cardRect.top;
         var tgtZoneCy = tgtZoneRect.top + tgtZoneRect.height / 2 - cardRect.top;
         var srcZoneCx = srcZoneRect.left + srcZoneRect.width / 2 - cardRect.left;
         var tgtZoneCx = tgtZoneRect.left + tgtZoneRect.width / 2 - cardRect.left;
 
-        // Determine routing direction: horizontal if zones don't overlap
-        // vertically, OR if target is clearly to the left/right.
-        // Use horizontal routing whenever there's a gap between zone edges.
+        // Determine routing direction based on zone gap detection
         var horizontalGap = (tgtZoneRect.left > srcZoneRect.right) || (srcZoneRect.left > tgtZoneRect.right);
         var verticalGap = (tgtZoneRect.top > srcZoneRect.bottom) || (srcZoneRect.top > tgtZoneRect.bottom);
-        // Prefer horizontal if there's a horizontal gap (zones side by side)
         var useHorizontal = horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20);
 
+        // Margin to prevent lines from hugging zone borders
+        var edgeMargin = 4;
+
         if (useHorizontal) {
-          // Horizontal: exit right/left at zone vertical center
           var dx = tgtZoneCx - srcZoneCx;
-          if (dx >= 0) {
-            x1 = srcZoneRect.right - cardRect.left;
-            x2 = tgtZoneRect.left - cardRect.left;
+
+          if (horizontalGap) {
+            // True gap between zones — route through the gap
+            if (dx >= 0) {
+              x1 = srcZoneRect.right - cardRect.left + edgeMargin;
+              x2 = tgtZoneRect.left - cardRect.left - edgeMargin;
+            } else {
+              x1 = srcZoneRect.left - cardRect.left - edgeMargin;
+              x2 = tgtZoneRect.right - cardRect.left + edgeMargin;
+            }
+            y1 = srcZoneCy;
+            y2 = tgtZoneCy;
           } else {
-            x1 = srcZoneRect.left - cardRect.left;
-            x2 = tgtZoneRect.right - cardRect.left;
+            // Zones overlap horizontally — fall back to node-level routing
+            // Use node right/left edges to guarantee correct direction
+            if (dx >= 0) {
+              x1 = srcRect.right - cardRect.left + edgeMargin;
+              x2 = tgtRect.left - cardRect.left - edgeMargin;
+            } else {
+              x1 = srcRect.left - cardRect.left - edgeMargin;
+              x2 = tgtRect.right - cardRect.left + edgeMargin;
+            }
+            y1 = srcRect.top + srcRect.height / 2 - cardRect.top;
+            y2 = tgtRect.top + tgtRect.height / 2 - cardRect.top;
           }
-          y1 = srcZoneCy;
-          y2 = tgtZoneCy;
+
+          // Ensure connector always moves in the intended direction
+          // If x2 is behind x1 (overlap edge case), force minimal forward gap
+          if (dx >= 0 && x2 <= x1) x2 = x1 + 12;
+          if (dx < 0 && x2 >= x1) x2 = x1 - 12;
+
           // Orthogonal: H → V → H with turn at midpoint
           var turnX = x1 + (x2 - x1) * 0.5 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
@@ -939,14 +972,19 @@
           // Vertical: exit bottom/top at zone horizontal center
           var dy = tgtZoneCy - srcZoneCy;
           if (dy >= 0) {
-            y1 = srcZoneRect.bottom - cardRect.top;
-            y2 = tgtZoneRect.top - cardRect.top;
+            y1 = srcZoneRect.bottom - cardRect.top + edgeMargin;
+            y2 = tgtZoneRect.top - cardRect.top - edgeMargin;
           } else {
-            y1 = srcZoneRect.top - cardRect.top;
-            y2 = tgtZoneRect.bottom - cardRect.top;
+            y1 = srcZoneRect.top - cardRect.top - edgeMargin;
+            y2 = tgtZoneRect.bottom - cardRect.top + edgeMargin;
           }
           x1 = srcZoneCx;
           x2 = tgtZoneCx;
+
+          // Ensure connector always moves in the intended direction
+          if (dy >= 0 && y2 <= y1) y2 = y1 + 12;
+          if (dy < 0 && y2 >= y1) y2 = y1 - 12;
+
           // Orthogonal: V → H → V with turn at midpoint
           var turnY = y1 + (y2 - y1) * 0.5 + laneOffset;
           d = 'M' + x1 + ',' + y1 +
