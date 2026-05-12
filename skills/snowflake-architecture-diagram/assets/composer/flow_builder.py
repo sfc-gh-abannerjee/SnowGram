@@ -347,49 +347,91 @@ def build_flow(
                 {"name": zname, "category": ZONE_CATEGORY.get(zname, "snow"), "node_ids": ids}
             )
 
-    # ── Naming consistency: normalize medallion ↔ generic ──────────────────
-    # If the architecture doesn't use at least 2 of the 3 medallion layers
-    # (Bronze/Silver/Gold), rename to generic equivalents so zone labels
-    # and node labels don't imply a medallion pattern that isn't present.
+    # ── Smart naming: detect paradigm and normalize labels ──────────────────
+    # The flow_builder is the primary intelligence layer for the skill path.
+    # It must produce coherent, self-explanatory zone/node names without any
+    # upstream LLM making holistic naming choices.
     #
-    # This handles:
-    #   - Zone names:  "Bronze Layer" → "Raw Layer"
-    #   - Node labels: "Bronze Table" → "Raw Table", "Silver Stream" → "Curated Stream"
-    #   - Node details containing medallion terms
-    #
-    # Threshold: require 2+ medallion zones to keep medallion terminology.
-    # Rationale: a single "Bronze" without Silver/Gold is just a raw landing
-    # zone — calling it "Bronze" implies an incomplete design.
-    medallion_zones = {"Bronze Layer", "Silver Layer", "Gold Layer"}
-    present_medallion = medallion_zones & set(z["name"] for z in zones)
-    if len(present_medallion) < 2:
-        # Zone-level renames
-        zone_rename = {
-            "Bronze Layer": "Raw Layer",
-            "Silver Layer": "Curated Layer",
-            "Gold Layer": "Serving Layer",
-        }
-        # Node-level label/detail prefix replacements
-        label_rename = {
-            "Bronze": "Raw",
-            "Silver": "Curated",
-            "Gold": "Serving",
-        }
+    # Strategy:
+    #   1. Detect architectural paradigm (medallion, streaming, generic)
+    #   2. Normalize zone names to match detected paradigm
+    #   3. Normalize node labels to align with their zone context
+    #   4. Merge single-node zones that are semantically redundant
+    _normalize_naming(nodes, zones)
+
+    return {"nodes": nodes, "edges": edges, "zones": zones}
+
+
+# --------------------------------------------------------------------------- #
+# Naming intelligence — paradigm detection + normalization
+# --------------------------------------------------------------------------- #
+
+# Paradigm detection signals
+_MEDALLION_ZONES = {"Bronze Layer", "Silver Layer", "Gold Layer"}
+_STREAMING_SIGNALS = {"Snowpipe Streaming", "Kafka", "IoT Gateway", "Snowpipe"}
+_SECURITY_SIGNALS = {"Secure View", "RLS View", "Masking Policy", "Row Access Policy"}
+
+# Generic equivalents for medallion terms
+_MEDALLION_TO_GENERIC = {
+    "Bronze Layer": "Raw Layer",
+    "Silver Layer": "Curated Layer",
+    "Gold Layer": "Serving Layer",
+}
+_MEDALLION_LABEL_MAP = {
+    "Bronze": "Raw",
+    "Silver": "Curated",
+    "Gold": "Serving",
+}
+
+# Zone merge candidates: if both exist and one has ≤1 node, merge into the other
+_MERGE_CANDIDATES = [
+    # (smaller zone, absorb into, condition: smaller has ≤ N nodes)
+    ("Compute", "Transformation", 1),
+    ("Security & Governance", "Consumption", 0),  # only merge if Security is empty
+]
+
+
+def _detect_paradigm(zones: list[dict]) -> str:
+    """
+    Detect the architectural naming paradigm from the zone set.
+
+    Returns one of:
+      - "medallion"  : 2+ of Bronze/Silver/Gold present → keep medallion names
+      - "streaming"  : pipeline has streaming ingestion but no medallion layers
+      - "generic"    : default — use descriptive generic names
+    """
+    zone_names = {z["name"] for z in zones}
+    present_medallion = _MEDALLION_ZONES & zone_names
+    if len(present_medallion) >= 2:
+        return "medallion"
+    return "generic"
+
+
+def _normalize_naming(nodes: list[dict], zones: list[dict]) -> None:
+    """
+    In-place normalization of zone names, node labels, and node details
+    based on the detected architectural paradigm.
+    """
+    paradigm = _detect_paradigm(zones)
+
+    if paradigm != "medallion":
+        # --- Normalize medallion terminology to generic ---
+        # Zone names
         for z in zones:
-            if z["name"] in zone_rename:
-                z["name"] = zone_rename[z["name"]]
+            if z["name"] in _MEDALLION_TO_GENERIC:
+                z["name"] = _MEDALLION_TO_GENERIC[z["name"]]
+        # Node zone references + labels + details
         for n in nodes:
-            # Update zone references on nodes
-            if n.get("zone") in zone_rename:
-                n["zone"] = zone_rename[n["zone"]]
-            # Update node labels: "Bronze Table" → "Raw Table"
-            for medallion_term, generic_term in label_rename.items():
+            if n.get("zone") in _MEDALLION_TO_GENERIC:
+                n["zone"] = _MEDALLION_TO_GENERIC[n["zone"]]
+            # Labels: "Bronze Table" → "Raw Table"
+            for medallion_term, generic_term in _MEDALLION_LABEL_MAP.items():
                 if n["label"].startswith(medallion_term):
                     n["label"] = generic_term + n["label"][len(medallion_term):]
                     break
-            # Update details: "CDC over raw" stays, "CDC over silver" → "CDC over curated"
+            # Details: "CDC over silver" → "CDC over curated"
             detail = n.get("detail", "")
-            for medallion_term, generic_term in label_rename.items():
+            for medallion_term, generic_term in _MEDALLION_LABEL_MAP.items():
                 lc = medallion_term.lower()
                 if lc in detail.lower():
                     n["detail"] = re.sub(
@@ -397,7 +439,44 @@ def build_flow(
                     )
                     break
 
-    return {"nodes": nodes, "edges": edges, "zones": zones}
+    # --- Merge semantically redundant zones ---
+    # If "Compute" exists with ≤1 node and "Transformation" also exists,
+    # absorb Compute nodes into Transformation (they're the same pipeline stage)
+    zone_by_name = {z["name"]: z for z in zones}
+    for smaller, target, max_nodes in _MERGE_CANDIDATES:
+        if smaller in zone_by_name and target in zone_by_name:
+            sz = zone_by_name[smaller]
+            tz = zone_by_name[target]
+            if len(sz["node_ids"]) <= max_nodes:
+                tz["node_ids"].extend(sz["node_ids"])
+                zones.remove(sz)
+                # Update node zone references
+                for n in nodes:
+                    if n.get("zone") == smaller:
+                        n["zone"] = target
+
+    # --- Contextual zone relabeling ---
+    # If "Security & Governance" contains ONLY consumer-facing views (outcome
+    # category nodes), relabel to "Access Layer" since the primary function is
+    # data access control, not governance policy management.
+    zone_by_name = {z["name"]: z for z in zones}
+    if "Security & Governance" in zone_by_name:
+        sec_zone = zone_by_name["Security & Governance"]
+        sec_nodes = [n for n in nodes if n.get("zone") == "Security & Governance"]
+        if sec_nodes and all(n.get("category") == "outcome" for n in sec_nodes):
+            sec_zone["name"] = "Access Layer"
+            for n in sec_nodes:
+                n["zone"] = "Access Layer"
+
+    # --- Update ZONE_CATEGORY for any renamed zones ---
+    # Ensure renamed zones still have correct visual categories
+    for z in zones:
+        if z["name"] not in ZONE_CATEGORY:
+            # Inherit from original name or default to snow
+            if z["name"] in ("Raw Layer", "Curated Layer"):
+                z["category"] = "snow"
+            elif z["name"] in ("Serving Layer", "Access Layer"):
+                z["category"] = "outcome"
 
 
 def build_citations(nodes: list[dict[str, str]]) -> list[dict[str, str]]:
