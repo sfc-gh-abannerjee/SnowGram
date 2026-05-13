@@ -238,35 +238,112 @@ def _enrich_from_docs(
 ) -> list[dict[str, Any]]:
     """
     Query SnowflakeProductDocs to validate/enrich the pipeline spec.
-    Attaches doc_urls and potentially updates details based on docs content.
+    Attaches doc_urls to each spec entry based on its object type.
     """
     queries = _DOCS_QUERIES.get(pipeline_type, _DOCS_QUERIES["generic"])
-    doc_urls: list[str] = []
+    all_docs: list[dict[str, str]] = []  # [{url, title, content}, ...]
 
     for query in queries[:3]:  # Limit to 3 queries for latency
         raw = _run_cortex_search_docs(query)
         if raw:
             entries = _parse_docs_response(raw)
-            for entry in entries:
-                if entry.get("url"):
-                    doc_urls.append(entry["url"])
+            all_docs.extend(entries)
 
-    # Attach doc_urls to relevant spec entries
-    # Map docs to stages by keyword matching
+    # Deduplicate by URL
+    seen_urls: set[str] = set()
+    unique_docs: list[dict[str, str]] = []
+    for doc in all_docs:
+        url = doc.get("url", "")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_docs.append(doc)
+
+    # Match docs to spec entries using keyword relevance
     for spec_entry in base_spec:
-        obj_type = spec_entry.get("object_type", "").lower()
-        for url in doc_urls:
-            url_lower = url.lower()
-            if obj_type.replace("_", "-") in url_lower or obj_type.replace("_", " ") in url_lower:
-                spec_entry["doc_url"] = url
-                break
-        # Fallback: construct a docs URL from object type
-        if "doc_url" not in spec_entry:
-            obj_slug = obj_type.lower().replace("_", "-")
-            if obj_type in ("TABLE", "DYNAMIC_TABLE", "STREAM", "TASK", "PIPE"):
-                spec_entry["doc_url"] = f"https://docs.snowflake.com/en/user-guide/{obj_slug}s-about"
+        if spec_entry.get("doc_url"):
+            continue  # Already has one
+
+        obj_type = spec_entry.get("object_type", "")
+        label = spec_entry.get("label", "")
+
+        # Build search terms for this entry
+        search_terms = _doc_search_terms(obj_type, label)
+
+        # Score each doc by how many terms match its URL or title
+        best_url = None
+        best_score = 0
+        for doc in unique_docs:
+            url = doc.get("url", "").lower()
+            title = doc.get("title", "").lower()
+            score = sum(1 for term in search_terms if term in url or term in title)
+            if score > best_score:
+                best_score = score
+                best_url = doc["url"]
+
+        if best_url:
+            spec_entry["doc_url"] = best_url
+        else:
+            # Fallback: use known canonical doc URLs per object type
+            fallback = _CANONICAL_DOC_URLS.get(obj_type)
+            if fallback:
+                spec_entry["doc_url"] = fallback
 
     return base_spec
+
+
+# Canonical documentation URLs for common Snowflake object types
+_CANONICAL_DOC_URLS: dict[str, str] = {
+    "TABLE": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+    "DYNAMIC_TABLE": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+    "STREAM": "https://docs.snowflake.com/en/user-guide/streams-intro",
+    "TASK": "https://docs.snowflake.com/en/user-guide/tasks-intro",
+    "PIPE": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro",
+    "STAGE": "https://docs.snowflake.com/en/sql-reference/sql/create-stage",
+    "VIEW": "https://docs.snowflake.com/en/sql-reference/sql/create-view",
+    "SECURE_VIEW": "https://docs.snowflake.com/en/user-guide/views-secure",
+    "MATERIALIZED_VIEW": "https://docs.snowflake.com/en/user-guide/views-materialized",
+    "WAREHOUSE": "https://docs.snowflake.com/en/user-guide/warehouses-overview",
+    "FUNCTION": "https://docs.snowflake.com/en/sql-reference/sql/create-function",
+    "STORED_PROCEDURE": "https://docs.snowflake.com/en/sql-reference/sql/create-procedure",
+    "UDF": "https://docs.snowflake.com/en/sql-reference/sql/create-function",
+    "EXTERNAL_FUNCTION": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function",
+    "MASKING_POLICY": "https://docs.snowflake.com/en/user-guide/security-column-ddm-intro",
+    "ROW_ACCESS_POLICY": "https://docs.snowflake.com/en/user-guide/security-row-intro",
+    "ROLE": "https://docs.snowflake.com/en/user-guide/security-access-control-overview",
+    "DATABASE": "https://docs.snowflake.com/en/sql-reference/sql/create-database",
+    "ICEBERG_TABLE": "https://docs.snowflake.com/en/user-guide/tables-iceberg",
+    "HYBRID_TABLE": "https://docs.snowflake.com/en/user-guide/tables-hybrid",
+    # External systems
+    "S3": "https://docs.snowflake.com/en/user-guide/data-load-s3",
+    "AZURE_BLOB": "https://docs.snowflake.com/en/user-guide/data-load-azure",
+    "GCS": "https://docs.snowflake.com/en/user-guide/data-load-gcs",
+    "KAFKA": "https://docs.snowflake.com/en/user-guide/kafka-connector",
+    "IOT": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
+    # Consumption
+    "BI_TOOL": "https://docs.snowflake.com/en/user-guide/odbc-download",
+    "STREAMLIT": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit",
+    "SNOWPARK": "https://docs.snowflake.com/en/developer-guide/snowpark/index",
+    "CORTEX": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview",
+    "SPCS": "https://docs.snowflake.com/en/developer-guide/snowpark-container-services/overview",
+    "WEB_APP": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit",
+    "NATIVE_APP": "https://docs.snowflake.com/en/developer-guide/native-apps/native-apps-about",
+    "DATA_SHARE": "https://docs.snowflake.com/en/user-guide/data-sharing-intro",
+    "MARKETPLACE": "https://docs.snowflake.com/en/user-guide/data-marketplace",
+}
+
+
+def _doc_search_terms(object_type: str, label: str) -> list[str]:
+    """Generate search terms for matching docs to a spec entry."""
+    terms: list[str] = []
+    # From object type: "DYNAMIC_TABLE" -> ["dynamic", "table", "dynamic-table"]
+    parts = object_type.lower().split("_")
+    terms.extend(parts)
+    if len(parts) > 1:
+        terms.append("-".join(parts))
+    # From label: "Snowpipe Streaming" -> ["snowpipe", "streaming"]
+    label_parts = label.lower().split()
+    terms.extend(label_parts)
+    return [t for t in terms if len(t) > 2]  # Filter out tiny words
 
 
 # --------------------------------------------------------------------------- #

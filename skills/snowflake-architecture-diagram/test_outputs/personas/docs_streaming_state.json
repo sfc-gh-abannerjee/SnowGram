@@ -9,7 +9,8 @@
       "detail": "Streaming topic",
       "icon": "Snowflake_ICON_Kafka_Connectors.svg",
       "category": "onprem",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/kafka-connector"
     },
     {
       "id": "snowpipe_streaming",
@@ -27,7 +28,7 @@
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
       "zone": "Raw Layer",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-high-performance-iceberg"
     },
     {
       "id": "dynamic_table",
@@ -53,7 +54,8 @@
       "detail": "Real-time dashboard",
       "icon": "Snowflake_ICON_Streamlit_in_Snowflake.svg",
       "category": "outcome",
-      "zone": "Consumption"
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
     }
   ],
   "edges": [
@@ -124,14 +126,29 @@
   ],
   "citations": [
     {
+      "url": "https://docs.snowflake.com/en/user-guide/kafka-connector",
+      "title": "Kafka",
+      "excerpt": "Streaming topic"
+    },
+    {
       "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview",
       "title": "Snowpipe Streaming",
       "excerpt": "Sub-second row-level ingest"
     },
     {
-      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-high-performance-iceberg",
       "title": "Staging Table",
       "excerpt": "Landing zone for streaming data"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "title": "Dynamic Table",
+      "excerpt": "Incremental aggregation"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit",
+      "title": "Streamlit App",
+      "excerpt": "Real-time dashboard"
     }
   ]
 }

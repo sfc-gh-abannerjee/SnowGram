@@ -1,57 +1,57 @@
 {
-  "title": "Docs-Driven \u2014 Modern Medallion",
-  "subtitle": "Dynamic Tables for curated & serving layers",
+  "title": "Docs-Driven \u2014 Vague Prompt (Generic)",
+  "subtitle": "Tests fallback to generic pipeline pattern",
   "source": "standalone:docs_driven",
   "nodes": [
     {
-      "id": "cloud_storage",
-      "label": "Cloud Storage",
-      "detail": "Object store / data lake",
+      "id": "data_source",
+      "label": "Data Source",
+      "detail": "External system",
       "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
       "category": "onprem",
       "zone": "External Sources",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/multi-location-resilience-data-pipelines"
     },
     {
       "id": "snowpipe",
       "label": "Snowpipe",
-      "detail": "Event-driven auto-ingest",
+      "detail": "Automated ingestion",
       "icon": "Snowflake_ICON_RA_Pipe.svg",
       "category": "bridge",
       "zone": "Ingestion",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-classic-overview"
     },
     {
       "id": "landing_table",
       "label": "Landing Table",
-      "detail": "Append-only raw data",
+      "detail": "Raw, unprocessed data",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
       "zone": "Raw Layer",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
     },
     {
       "id": "dynamic_table",
       "label": "Dynamic Table",
-      "detail": "Declarative cleansing & dedup",
+      "detail": "Declarative transformation",
       "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
       "category": "snow",
-      "zone": "Curated Layer",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
     },
     {
       "id": "dynamic_table_4",
       "label": "Dynamic Table",
-      "detail": "Business-ready aggregations",
+      "detail": "Consumption-ready output",
       "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
       "category": "snow",
       "zone": "Serving Layer",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
     },
     {
       "id": "analytics",
       "label": "Analytics",
-      "detail": "BI dashboards & reports",
+      "detail": "Dashboards & reports",
       "icon": "Snowflake_ICON_Embedded_Analytics.svg",
       "category": "outcome",
       "zone": "Consumption",
@@ -60,7 +60,7 @@
   ],
   "edges": [
     {
-      "source": "cloud_storage",
+      "source": "data_source",
       "target": "snowpipe"
     },
     {
@@ -85,7 +85,7 @@
       "name": "External Sources",
       "category": "onprem",
       "node_ids": [
-        "cloud_storage"
+        "data_source"
       ]
     },
     {
@@ -103,7 +103,7 @@
       ]
     },
     {
-      "name": "Curated Layer",
+      "name": "Transformation",
       "category": "snow",
       "node_ids": [
         "dynamic_table"
@@ -126,24 +126,24 @@
   ],
   "citations": [
     {
-      "url": "https://docs.snowflake.com/en/user-guide/data-load-s3",
-      "title": "Cloud Storage",
-      "excerpt": "Object store / data lake"
+      "url": "https://docs.snowflake.com/en/user-guide/multi-location-resilience-data-pipelines",
+      "title": "Data Source",
+      "excerpt": "External system"
     },
     {
-      "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview",
+      "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-classic-overview",
       "title": "Snowpipe",
-      "excerpt": "Event-driven auto-ingest"
+      "excerpt": "Automated ingestion"
     },
     {
-      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison",
       "title": "Landing Table",
-      "excerpt": "Append-only raw data"
+      "excerpt": "Raw, unprocessed data"
     },
     {
       "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
       "title": "Analytics",
-      "excerpt": "BI dashboards & reports"
+      "excerpt": "Dashboards & reports"
     }
   ]
 }

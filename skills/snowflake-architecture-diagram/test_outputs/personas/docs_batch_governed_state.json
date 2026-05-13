@@ -1,57 +1,66 @@
 {
-  "title": "Docs-Driven \u2014 Modern Medallion",
-  "subtitle": "Dynamic Tables for curated & serving layers",
+  "title": "Docs-Driven \u2014 Governed Batch ETL",
+  "subtitle": "Batch ingest + Dynamic Tables + RLS/masking",
   "source": "standalone:docs_driven",
   "nodes": [
     {
       "id": "cloud_storage",
       "label": "Cloud Storage",
-      "detail": "Object store / data lake",
+      "detail": "Batch file drops",
       "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
       "category": "onprem",
       "zone": "External Sources",
       "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
     },
     {
+      "id": "external_stage",
+      "label": "External Stage",
+      "detail": "Snowflake-managed staging",
+      "icon": "Snowflake_ICON_RA_Stage_External.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage"
+    },
+    {
       "id": "snowpipe",
       "label": "Snowpipe",
-      "detail": "Event-driven auto-ingest",
+      "detail": "Auto-ingest on file arrival",
       "icon": "Snowflake_ICON_RA_Pipe.svg",
       "category": "bridge",
       "zone": "Ingestion",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
     },
     {
-      "id": "landing_table",
-      "label": "Landing Table",
-      "detail": "Append-only raw data",
+      "id": "raw_table",
+      "label": "Raw Table",
+      "detail": "Append-only landing",
       "icon": "Snowflake_ICON_RA_Table.svg",
       "category": "snow",
       "zone": "Raw Layer",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-target-lag"
     },
     {
       "id": "dynamic_table",
       "label": "Dynamic Table",
-      "detail": "Declarative cleansing & dedup",
+      "detail": "Declarative transform & SCD",
       "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
       "category": "snow",
-      "zone": "Curated Layer",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-target-lag"
     },
     {
-      "id": "dynamic_table_4",
+      "id": "dynamic_table_5",
       "label": "Dynamic Table",
-      "detail": "Business-ready aggregations",
+      "detail": "Star schema facts & dims",
       "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
       "category": "snow",
       "zone": "Serving Layer",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-target-lag"
     },
     {
-      "id": "analytics",
-      "label": "Analytics",
-      "detail": "BI dashboards & reports",
+      "id": "bi_platform",
+      "label": "BI Platform",
+      "detail": "Scheduled reports",
       "icon": "Snowflake_ICON_Embedded_Analytics.svg",
       "category": "outcome",
       "zone": "Consumption",
@@ -61,23 +70,27 @@
   "edges": [
     {
       "source": "cloud_storage",
+      "target": "external_stage"
+    },
+    {
+      "source": "external_stage",
       "target": "snowpipe"
     },
     {
       "source": "snowpipe",
-      "target": "landing_table"
+      "target": "raw_table"
     },
     {
-      "source": "landing_table",
+      "source": "raw_table",
       "target": "dynamic_table"
     },
     {
       "source": "dynamic_table",
-      "target": "dynamic_table_4"
+      "target": "dynamic_table_5"
     },
     {
-      "source": "dynamic_table_4",
-      "target": "analytics"
+      "source": "dynamic_table_5",
+      "target": "bi_platform"
     }
   ],
   "zones": [
@@ -92,6 +105,7 @@
       "name": "Ingestion",
       "category": "bridge",
       "node_ids": [
+        "external_stage",
         "snowpipe"
       ]
     },
@@ -99,11 +113,11 @@
       "name": "Raw Layer",
       "category": "snow",
       "node_ids": [
-        "landing_table"
+        "raw_table"
       ]
     },
     {
-      "name": "Curated Layer",
+      "name": "Transformation",
       "category": "snow",
       "node_ids": [
         "dynamic_table"
@@ -113,14 +127,14 @@
       "name": "Serving Layer",
       "category": "snow",
       "node_ids": [
-        "dynamic_table_4"
+        "dynamic_table_5"
       ]
     },
     {
       "name": "Consumption",
       "category": "outcome",
       "node_ids": [
-        "analytics"
+        "bi_platform"
       ]
     }
   ],
@@ -128,22 +142,27 @@
     {
       "url": "https://docs.snowflake.com/en/user-guide/data-load-s3",
       "title": "Cloud Storage",
-      "excerpt": "Object store / data lake"
+      "excerpt": "Batch file drops"
     },
     {
-      "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview",
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage",
+      "title": "External Stage",
+      "excerpt": "Snowflake-managed staging"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro",
       "title": "Snowpipe",
-      "excerpt": "Event-driven auto-ingest"
+      "excerpt": "Auto-ingest on file arrival"
     },
     {
-      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
-      "title": "Landing Table",
-      "excerpt": "Append-only raw data"
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-target-lag",
+      "title": "Raw Table",
+      "excerpt": "Append-only landing"
     },
     {
       "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
-      "title": "Analytics",
-      "excerpt": "BI dashboards & reports"
+      "title": "BI Platform",
+      "excerpt": "Scheduled reports"
     }
   ]
 }
