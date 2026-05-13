@@ -79,6 +79,102 @@ PERSONAS = [
             "RLS_VIEW_BLOCK",
         ],
     },
+    # ── EDGE CASE: Minimal pipeline (2 nodes, 1 edge) ──────────────────────
+    # Tests: Does the layout degrade gracefully with very few components?
+    # Does the platform boundary render sensibly with a single snow zone?
+    {
+        "name": "edge_minimal",
+        "prompt": "simple S3 to Snowpipe ingest, nothing else",
+        "title": "Edge Case — Minimal 2-Node Pipeline",
+        "subtitle": "Stress test · S3 → Snowpipe only",
+        "blocks": [
+            "S3_BUCKET_BLOCK", "SNOWPIPE_BLOCK",
+        ],
+    },
+    # ── EDGE CASE: Single zone (all nodes in one zone) ──────────────────────
+    # Tests: What happens when ALL nodes land in the same zone?
+    # Connector routing must use intra-zone vertical paths exclusively.
+    # No cross-zone connectors at all — does SVG render empty gracefully?
+    {
+        "name": "edge_single_zone",
+        "prompt": "stream to task to dynamic table, all transformation",
+        "title": "Edge Case — Single Zone (Transformation Only)",
+        "subtitle": "Stress test · All nodes in one zone",
+        "blocks": [
+            "STREAM_BLOCK", "TASK_BLOCK", "DYNAMIC_TABLE_BLOCK",
+        ],
+    },
+    # ── EDGE CASE: Wide pipeline (8+ columns) ───────────────────────────────
+    # Tests: Layout at maximum column count. Does the grid overflow?
+    # Do connectors still route correctly across 7+ gaps?
+    # Does the platform boundary span correctly?
+    {
+        "name": "edge_wide",
+        "prompt": "full medallion with compute warehouse, security, and BI consumption",
+        "title": "Edge Case — Maximum Width (8 Columns)",
+        "subtitle": "Stress test · Every zone type present",
+        "blocks": [
+            "S3_BUCKET_BLOCK", "EXTERNAL_STAGE_BLOCK", "BRONZE_TABLE_BLOCK",
+            "STREAM_BLOCK", "SILVER_TABLE_BLOCK", "WAREHOUSE_L_BLOCK",
+            "GOLD_TABLE_BLOCK", "SECURE_VIEW_BLOCK", "TABLEAU_BLOCK",
+        ],
+    },
+    # ── EDGE CASE: Only Gold (single medallion zone, tests naming) ──────────
+    # Tests: "Gold Layer" alone should become "Serving Layer" (no 2+ medallion)
+    # Also tests single-node snow zone + single-node outcome zone layout.
+    {
+        "name": "edge_gold_only",
+        "prompt": "batch ETL from Azure into a gold analytics table for Power BI",
+        "title": "Edge Case — Gold Only (No Bronze/Silver)",
+        "subtitle": "Stress test · Should rename to Serving Layer",
+        "blocks": [
+            "AZURE_BLOB_BLOCK", "EXTERNAL_STAGE_BLOCK", "GOLD_TABLE_BLOCK",
+            "POWERBI_BLOCK",
+        ],
+    },
+    # ── EDGE CASE: Tall zone (5 nodes in one zone) ──────────────────────────
+    # Tests: Very tall single zone with many nodes. Do intra-zone connectors
+    # stay vertical and readable? Does the zone height not compress icons?
+    {
+        "name": "edge_tall_zone",
+        "prompt": "multi-step transformation: stream, task, procedure, UDF, dynamic table",
+        "title": "Edge Case — Tall Zone (5 Nodes in Transformation)",
+        "subtitle": "Stress test · Vertical connector chain",
+        "blocks": [
+            "KAFKA_CONNECTOR_BLOCK", "SNOWPIPE_STREAMING_BLOCK",
+            "BRONZE_TABLE_BLOCK",
+            "STREAM_BLOCK", "TASK_BLOCK", "PROCEDURE_BLOCK", "UDF_BLOCK",
+            "DYNAMIC_TABLE_BLOCK", "TABLEAU_BLOCK",
+        ],
+    },
+    # ── EDGE CASE: Compute zone merge ───────────────────────────────────────
+    # Tests: Single-node Compute zone should merge into Transformation.
+    # Verifies the _MERGE_CANDIDATES logic actually fires.
+    {
+        "name": "edge_compute_merge",
+        "prompt": "IoT ingest with dedicated warehouse then stream processing",
+        "title": "Edge Case — Compute Merge into Transformation",
+        "subtitle": "Stress test · Warehouse + Stream/Task should merge zones",
+        "blocks": [
+            "IOT_GATEWAY_BLOCK", "SNOWPIPE_STREAMING_BLOCK",
+            "BRONZE_TABLE_BLOCK", "WAREHOUSE_L_BLOCK",
+            "STREAM_BLOCK", "TASK_BLOCK", "SILVER_TABLE_BLOCK",
+        ],
+    },
+    # ── EDGE CASE: No external sources (Snowflake-only) ─────────────────────
+    # Tests: No onprem/bridge zones. Platform boundary should still render.
+    # All nodes are category "snow" or "outcome".
+    {
+        "name": "edge_snow_only",
+        "prompt": "internal Snowflake transformation pipeline, no external sources",
+        "title": "Edge Case — Snowflake-Only (No External Sources)",
+        "subtitle": "Stress test · No onprem/bridge zones",
+        "blocks": [
+            "BRONZE_TABLE_BLOCK", "BRONZE_STREAM_BLOCK",
+            "TASK_BLOCK", "SILVER_TABLE_BLOCK",
+            "GOLD_TABLE_BLOCK", "BUSINESS_VIEW_BLOCK",
+        ],
+    },
 ]
 
 

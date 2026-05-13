@@ -1,0 +1,13 @@
+{
+  "type": "compose",
+  "block_ids": [
+    "S3_BUCKET_BLOCK",
+    "SNOWPIPE_BLOCK"
+  ],
+  "confidence": 0.6666666666666666,
+  "rationale": "Prompt mentions 2 distinct source classes (s3, snowpipe); a single canned template would not cover all of them. Composing from blocks.",
+  "covered_terms": [
+    "s3",
+    "snowpipe"
+  ]
+}

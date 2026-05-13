@@ -1,0 +1,216 @@
+{
+  "title": "Edge Case \u2014 Tall Zone (5 Nodes in Transformation)",
+  "subtitle": "Stress test \u00b7 Vertical connector chain",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "kafka_connector",
+      "label": "Kafka",
+      "detail": "Streaming topic",
+      "icon": "Snowflake_ICON_Kafka_Connectors.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/kafka-connector"
+    },
+    {
+      "id": "snowpipe_streaming",
+      "label": "Snowpipe Streaming",
+      "detail": "Sub-second row-level ingest",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
+    },
+    {
+      "id": "bronze_table",
+      "label": "Bronze Table",
+      "detail": "Raw, append-only",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Bronze Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "stream",
+      "label": "Stream",
+      "detail": "Change data capture",
+      "icon": "Snowflake_ICON_RA_Stream.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"
+    },
+    {
+      "id": "task",
+      "label": "Task",
+      "detail": "Scheduled transform",
+      "icon": "Snowflake_ICON_RA_Task.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/tasks-intro"
+    },
+    {
+      "id": "procedure",
+      "label": "Procedure",
+      "detail": "Multi-step logic",
+      "icon": "Snowflake_ICON_RA_Function_Stored_Procedure.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-procedure"
+    },
+    {
+      "id": "udf",
+      "label": "UDF",
+      "detail": "User-defined function",
+      "icon": "Snowflake_ICON_RA_Function_User-Defined_SQL.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-function"
+    },
+    {
+      "id": "dynamic_table",
+      "label": "Dynamic Table",
+      "detail": "Declarative refresh",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Gold Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "tableau",
+      "label": "Tableau",
+      "detail": "BI dashboards",
+      "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+      "category": "outcome",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+    }
+  ],
+  "edges": [
+    {
+      "source": "kafka_connector",
+      "target": "snowpipe_streaming"
+    },
+    {
+      "source": "snowpipe_streaming",
+      "target": "bronze_table"
+    },
+    {
+      "source": "bronze_table",
+      "target": "stream"
+    },
+    {
+      "source": "stream",
+      "target": "task"
+    },
+    {
+      "source": "task",
+      "target": "procedure"
+    },
+    {
+      "source": "procedure",
+      "target": "udf"
+    },
+    {
+      "source": "udf",
+      "target": "dynamic_table"
+    },
+    {
+      "source": "dynamic_table",
+      "target": "tableau"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "kafka_connector"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe_streaming"
+      ]
+    },
+    {
+      "name": "Bronze Layer",
+      "category": "snow",
+      "node_ids": [
+        "bronze_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "stream",
+        "task",
+        "procedure",
+        "udf"
+      ]
+    },
+    {
+      "name": "Gold Layer",
+      "category": "outcome",
+      "node_ids": [
+        "dynamic_table"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "tableau"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/kafka-connector",
+      "title": "Kafka",
+      "excerpt": "Streaming topic"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
+      "title": "Snowpipe Streaming",
+      "excerpt": "Sub-second row-level ingest"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Bronze Table",
+      "excerpt": "Raw, append-only"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/streams-intro",
+      "title": "Stream",
+      "excerpt": "Change data capture"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/tasks-intro",
+      "title": "Task",
+      "excerpt": "Scheduled transform"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-procedure",
+      "title": "Procedure",
+      "excerpt": "Multi-step logic"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-function",
+      "title": "UDF",
+      "excerpt": "User-defined function"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "title": "Dynamic Table",
+      "excerpt": "Declarative refresh"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
+      "title": "Tableau",
+      "excerpt": "BI dashboards"
+    }
+  ]
+}

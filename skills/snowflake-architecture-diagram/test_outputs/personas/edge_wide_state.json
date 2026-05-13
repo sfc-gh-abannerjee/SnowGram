@@ -1,0 +1,218 @@
+{
+  "title": "Edge Case \u2014 Maximum Width (8 Columns)",
+  "subtitle": "Stress test \u00b7 Every zone type present",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "s3_bucket",
+      "label": "AWS S3",
+      "detail": "Object store / data lake",
+      "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
+    },
+    {
+      "id": "external_stage",
+      "label": "External Stage",
+      "detail": "Snowflake-managed staging",
+      "icon": "Snowflake_ICON_RA_Stage_External.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage"
+    },
+    {
+      "id": "bronze_table",
+      "label": "Bronze Table",
+      "detail": "Raw, append-only",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Bronze Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "stream",
+      "label": "Stream",
+      "detail": "Change data capture",
+      "icon": "Snowflake_ICON_RA_Stream.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"
+    },
+    {
+      "id": "silver_table",
+      "label": "Silver Table",
+      "detail": "Cleaned, deduped",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Silver Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "warehouse_l",
+      "label": "Warehouse (L)",
+      "detail": "Heavy ETL",
+      "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-overview"
+    },
+    {
+      "id": "gold_table",
+      "label": "Gold Table",
+      "detail": "Business-ready output",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "outcome",
+      "zone": "Gold Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "secure_view",
+      "label": "Secure View",
+      "detail": "RLS-enforcing view",
+      "icon": "Snowflake_ICON_RA_View_Secure.svg",
+      "category": "snow",
+      "zone": "Security & Governance",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/views-secure"
+    },
+    {
+      "id": "tableau",
+      "label": "Tableau",
+      "detail": "BI dashboards",
+      "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+      "category": "outcome",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+    }
+  ],
+  "edges": [
+    {
+      "source": "s3_bucket",
+      "target": "external_stage"
+    },
+    {
+      "source": "external_stage",
+      "target": "bronze_table"
+    },
+    {
+      "source": "bronze_table",
+      "target": "stream"
+    },
+    {
+      "source": "stream",
+      "target": "silver_table"
+    },
+    {
+      "source": "silver_table",
+      "target": "warehouse_l"
+    },
+    {
+      "source": "warehouse_l",
+      "target": "gold_table"
+    },
+    {
+      "source": "gold_table",
+      "target": "secure_view"
+    },
+    {
+      "source": "secure_view",
+      "target": "tableau"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "s3_bucket"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "external_stage"
+      ]
+    },
+    {
+      "name": "Bronze Layer",
+      "category": "snow",
+      "node_ids": [
+        "bronze_table"
+      ]
+    },
+    {
+      "name": "Silver Layer",
+      "category": "snow",
+      "node_ids": [
+        "silver_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "stream",
+        "warehouse_l"
+      ]
+    },
+    {
+      "name": "Gold Layer",
+      "category": "outcome",
+      "node_ids": [
+        "gold_table"
+      ]
+    },
+    {
+      "name": "Security & Governance",
+      "category": "snow",
+      "node_ids": [
+        "secure_view"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "tableau"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-s3",
+      "title": "AWS S3",
+      "excerpt": "Object store / data lake"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage",
+      "title": "External Stage",
+      "excerpt": "Snowflake-managed staging"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Bronze Table",
+      "excerpt": "Raw, append-only"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/streams-intro",
+      "title": "Stream",
+      "excerpt": "Change data capture"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/warehouses-overview",
+      "title": "Warehouse (L)",
+      "excerpt": "Heavy ETL"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/views-secure",
+      "title": "Secure View",
+      "excerpt": "RLS-enforcing view"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
+      "title": "Tableau",
+      "excerpt": "BI dashboards"
+    }
+  ]
+}

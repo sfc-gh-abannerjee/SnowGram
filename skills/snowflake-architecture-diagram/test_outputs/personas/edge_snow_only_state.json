@@ -1,0 +1,137 @@
+{
+  "title": "Edge Case \u2014 Snowflake-Only (No External Sources)",
+  "subtitle": "Stress test \u00b7 No onprem/bridge zones",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "bronze_table",
+      "label": "Bronze Table",
+      "detail": "Raw, append-only",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Bronze Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "bronze_stream",
+      "label": "Bronze Stream",
+      "detail": "CDC over raw",
+      "icon": "Snowflake_ICON_RA_Stream.svg",
+      "category": "snow",
+      "zone": "Bronze Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"
+    },
+    {
+      "id": "task",
+      "label": "Task",
+      "detail": "Scheduled transform",
+      "icon": "Snowflake_ICON_RA_Task.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/tasks-intro"
+    },
+    {
+      "id": "silver_table",
+      "label": "Silver Table",
+      "detail": "Cleaned, deduped",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Silver Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "gold_table",
+      "label": "Gold Table",
+      "detail": "Business-ready output",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "outcome",
+      "zone": "Gold Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "business_view",
+      "label": "Business View",
+      "detail": "KPI-ready view",
+      "icon": "Snowflake_ICON_RA_View.svg",
+      "category": "outcome",
+      "zone": "Gold Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-view"
+    }
+  ],
+  "edges": [
+    {
+      "source": "bronze_table",
+      "target": "bronze_stream"
+    },
+    {
+      "source": "bronze_stream",
+      "target": "task"
+    },
+    {
+      "source": "task",
+      "target": "silver_table"
+    },
+    {
+      "source": "silver_table",
+      "target": "gold_table"
+    },
+    {
+      "source": "gold_table",
+      "target": "business_view"
+    }
+  ],
+  "zones": [
+    {
+      "name": "Bronze Layer",
+      "category": "snow",
+      "node_ids": [
+        "bronze_table",
+        "bronze_stream"
+      ]
+    },
+    {
+      "name": "Silver Layer",
+      "category": "snow",
+      "node_ids": [
+        "silver_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "task"
+      ]
+    },
+    {
+      "name": "Gold Layer",
+      "category": "outcome",
+      "node_ids": [
+        "gold_table",
+        "business_view"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Bronze Table",
+      "excerpt": "Raw, append-only"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/streams-intro",
+      "title": "Bronze Stream",
+      "excerpt": "CDC over raw"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/tasks-intro",
+      "title": "Task",
+      "excerpt": "Scheduled transform"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-view",
+      "title": "Business View",
+      "excerpt": "KPI-ready view"
+    }
+  ]
+}

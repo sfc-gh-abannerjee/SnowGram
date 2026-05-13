@@ -1,0 +1,78 @@
+{
+  "title": "Edge Case \u2014 Single Zone (Transformation Only)",
+  "subtitle": "Stress test \u00b7 All nodes in one zone",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "stream",
+      "label": "Stream",
+      "detail": "Change data capture",
+      "icon": "Snowflake_ICON_RA_Stream.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"
+    },
+    {
+      "id": "task",
+      "label": "Task",
+      "detail": "Scheduled transform",
+      "icon": "Snowflake_ICON_RA_Task.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/tasks-intro"
+    },
+    {
+      "id": "dynamic_table",
+      "label": "Dynamic Table",
+      "detail": "Declarative refresh",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    }
+  ],
+  "edges": [
+    {
+      "source": "stream",
+      "target": "task"
+    },
+    {
+      "source": "task",
+      "target": "dynamic_table"
+    }
+  ],
+  "zones": [
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "stream",
+        "task"
+      ]
+    },
+    {
+      "name": "Serving Layer",
+      "category": "outcome",
+      "node_ids": [
+        "dynamic_table"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/streams-intro",
+      "title": "Stream",
+      "excerpt": "Change data capture"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/tasks-intro",
+      "title": "Task",
+      "excerpt": "Scheduled transform"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "title": "Dynamic Table",
+      "excerpt": "Declarative refresh"
+    }
+  ]
+}

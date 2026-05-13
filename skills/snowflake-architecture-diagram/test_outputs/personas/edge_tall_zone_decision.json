@@ -1,0 +1,6 @@
+{
+  "type": "template",
+  "template_id": "MEDALLION_LAKEHOUSE_SNOWFLAKE_ONLY",
+  "confidence": 0.1,
+  "rationale": "No template keywords matched; defaulting to Snowflake-only medallion."
+}

@@ -1,0 +1,59 @@
+{
+  "title": "Edge Case \u2014 Minimal 2-Node Pipeline",
+  "subtitle": "Stress test \u00b7 S3 \u2192 Snowpipe only",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "s3_bucket",
+      "label": "AWS S3",
+      "detail": "Object store / data lake",
+      "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
+    },
+    {
+      "id": "snowpipe",
+      "label": "Snowpipe",
+      "detail": "Auto-ingest from object store",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
+    }
+  ],
+  "edges": [
+    {
+      "source": "s3_bucket",
+      "target": "snowpipe"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "s3_bucket"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-s3",
+      "title": "AWS S3",
+      "excerpt": "Object store / data lake"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro",
+      "title": "Snowpipe",
+      "excerpt": "Auto-ingest from object store"
+    }
+  ]
+}

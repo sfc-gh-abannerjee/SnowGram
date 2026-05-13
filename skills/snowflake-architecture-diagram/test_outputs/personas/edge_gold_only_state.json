@@ -1,0 +1,109 @@
+{
+  "title": "Edge Case \u2014 Gold Only (No Bronze/Silver)",
+  "subtitle": "Stress test \u00b7 Should rename to Serving Layer",
+  "source": "standalone:compose",
+  "nodes": [
+    {
+      "id": "azure_blob",
+      "label": "Azure Blob",
+      "detail": "ADLS / Blob Storage",
+      "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-azure"
+    },
+    {
+      "id": "external_stage",
+      "label": "External Stage",
+      "detail": "Snowflake-managed staging",
+      "icon": "Snowflake_ICON_RA_Stage_External.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage"
+    },
+    {
+      "id": "gold_table",
+      "label": "Serving Table",
+      "detail": "Business-ready output",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "outcome",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "powerbi",
+      "label": "Power BI",
+      "detail": "BI dashboards",
+      "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+      "category": "outcome",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+    }
+  ],
+  "edges": [
+    {
+      "source": "azure_blob",
+      "target": "external_stage"
+    },
+    {
+      "source": "external_stage",
+      "target": "gold_table"
+    },
+    {
+      "source": "gold_table",
+      "target": "powerbi"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "azure_blob"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "external_stage"
+      ]
+    },
+    {
+      "name": "Serving Layer",
+      "category": "outcome",
+      "node_ids": [
+        "gold_table"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "powerbi"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-azure",
+      "title": "Azure Blob",
+      "excerpt": "ADLS / Blob Storage"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage",
+      "title": "External Stage",
+      "excerpt": "Snowflake-managed staging"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Serving Table",
+      "excerpt": "Business-ready output"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
+      "title": "Power BI",
+      "excerpt": "BI dashboards"
+    }
+  ]
+}
