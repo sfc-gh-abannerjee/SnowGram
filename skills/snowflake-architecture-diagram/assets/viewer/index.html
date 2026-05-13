@@ -998,16 +998,25 @@
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
           var vDist = Math.abs(y2 - y1);
-          // If source and target are nearly aligned vertically, draw a direct line
-          // (no orthogonal detour needed)
+          // Route based on vertical distance between source and target:
+          // - Small vDist (<12px): direct line (nodes are aligned)
+          // - Large vDist (>80px): smooth bezier curve (avoids long vertical
+          //   segments in the gap that look like false connections)
+          // - Medium vDist: orthogonal H→V→H with rounded corners
           if (vDist < 12) {
-            // Nearly straight — slight curve to indicate directionality
-            var midX = (x1 + x2) / 2;
+            // Nearly aligned — direct line
+            d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+          } else if (vDist > 80) {
+            // Large vertical span — use cubic bezier curve.
+            // The curve arcs smoothly from source to target, making it
+            // visually clear the line is "passing through" not connecting
+            // to intermediate nodes.
+            var cp1x = x1 + (x2 - x1) * 0.4 + laneOffset;
+            var cp2x = x1 + (x2 - x1) * 0.6 + laneOffset;
             d = 'M' + x1 + ',' + y1 +
-                ' C' + midX + ',' + y1 + ' ' + midX + ',' + y2 + ' ' + x2 + ',' + y2;
+                ' C' + cp1x + ',' + y1 + ' ' + cp2x + ',' + y2 + ' ' + x2 + ',' + y2;
           } else {
-            // Orthogonal: H → V → H with rounded corners at turns
-            // Bias turnX closer to exit when gap is short (avoids long horizontal travel)
+            // Medium vertical span — orthogonal H→V→H with rounded corners
             var hDist = Math.abs(x2 - x1);
             var turnRatio = hDist > 120 ? 0.5 : 0.3;
             var turnX = x1 + (x2 - x1) * turnRatio + laneOffset;
