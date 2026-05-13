@@ -21,11 +21,43 @@ function getContext(): CanvasRenderingContext2D {
 }
 
 /**
- * Layout constraints for node sizing
+ * Canonical node dimension constants.
+ *
+ * Every file that needs a node width or height MUST import from here.
+ * This eliminates the 4-file divergence (elkLayout, layoutUtils, CSS, textMeasure)
+ * that caused label overflow and handle misalignment.
+ */
+export const NODE_DIMENSIONS = {
+  /** Minimum node width (short labels) */
+  WIDTH_MIN: 150,
+  /** Default width used when no dynamic measurement is available */
+  WIDTH_DEFAULT: 200,
+  /** Maximum node width (long labels like "Snowflake Connector for Kafka") */
+  WIDTH_MAX: 280,
+  /** Default node height */
+  HEIGHT_DEFAULT: 130,
+  /** Horizontal padding inside node for label text */
+  LABEL_PAD_X: 12,
+  /** Vertical padding inside node for label text */
+  LABEL_PAD_Y: 8,
+  /** Column width for lane-based layouts (node width + inter-node gap) */
+  LANE_COLUMN_WIDTH: 250,
+  /** Column width for section-based layouts */
+  SECTION_COLUMN_WIDTH: 230,
+  /** Spacing between grid columns */
+  COL_SPACING: 150,
+} as const;
+
+/**
+ * Layout constraints for text measurement (used by measureNodeWidth / calculateNodeDimensions).
+ *
+ * @deprecated Prefer importing from {@link NODE_DIMENSIONS} for width/height constants.
+ *   This object is retained for backwards-compat with callers that reference
+ *   MIN_WIDTH / MAX_WIDTH — those now delegate to NODE_DIMENSIONS.
  */
 export const NODE_SIZE_CONSTRAINTS = {
-  MIN_WIDTH: 120,
-  MAX_WIDTH: 280,
+  MIN_WIDTH: NODE_DIMENSIONS.WIDTH_MIN,
+  MAX_WIDTH: NODE_DIMENSIONS.WIDTH_MAX,
   ICON_WIDTH: 40,
   HORIZONTAL_PADDING: 32,
   DEFAULT_FONT_SIZE: 13,

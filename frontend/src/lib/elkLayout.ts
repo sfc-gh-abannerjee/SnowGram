@@ -15,6 +15,7 @@
 
 import { Node, Edge } from 'reactflow';
 import { getFlowStageOrder } from './elkLayoutUtils';
+import { NODE_DIMENSIONS } from './textMeasure';
 
 // Interface for node data used in flow layout
 interface FlowNodeData {
@@ -50,10 +51,10 @@ function isExternalNode(node: Node): boolean {
   return EXTERNAL_KEYWORDS.some(kw => text.includes(kw));
 }
 
-// Layout constants
-const NODE_WIDTH = 150;
-const NODE_HEIGHT = 130;
-const COL_SPACING = 150;     // horizontal space between stage columns (reduced from 200 for more compact layout)
+// Layout constants — derived from canonical NODE_DIMENSIONS
+const NODE_WIDTH = NODE_DIMENSIONS.WIDTH_MIN;
+const NODE_HEIGHT = NODE_DIMENSIONS.HEIGHT_DEFAULT;
+const COL_SPACING = NODE_DIMENSIONS.COL_SPACING;
 const ROW_SPACING = 60;      // vertical space between parallel nodes in same stage
 
 /**
@@ -465,16 +466,16 @@ export function layoutWithLanes(
     return { nodes, edges };
   }
   
-  // Layout constants - configurable for different diagram types
-  const NODE_WIDTH = 180;
+  // Layout constants - derived from canonical NODE_DIMENSIONS
+  const NODE_WIDTH = NODE_DIMENSIONS.WIDTH_DEFAULT;
   const NODE_HEIGHT = 100;
   const LANE_HEIGHT = 140;
   const LANE_PADDING = 20;
-  const COLUMN_WIDTH = 220;
+  const COLUMN_WIDTH = NODE_DIMENSIONS.LANE_COLUMN_WIDTH;
   const LEFT_MARGIN = 80;
   const TOP_MARGIN = 60;
   const LANE_LABEL_WIDTH = 40;
-  const SECTION_COLUMN_WIDTH = 200;
+  const SECTION_COLUMN_WIDTH = NODE_DIMENSIONS.SECTION_COLUMN_WIDTH;
   const BOUNDARY_MARGIN_LEFT = 80;  // Extra margin for source boundaries (Producer App)
   
   // Analyze the subgraph structure to determine layout regions
@@ -555,7 +556,7 @@ export function layoutWithLanes(
   // Nodes within each lane are stacked vertically within their column.
   // =============================================================================
   
-  const LANE_COLUMN_WIDTH = 220;  // Width of each lane column
+  const LANE_COLUMN_WIDTH = NODE_DIMENSIONS.LANE_COLUMN_WIDTH;  // Width of each lane column
   const LANE_START_X = LEFT_MARGIN;
   const BADGE_Y = TOP_MARGIN - 50;  // Badges at TOP, above content
   
