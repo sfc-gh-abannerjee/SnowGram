@@ -998,13 +998,19 @@
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
           var vDist = Math.abs(y2 - y1);
-          // Simple direct routing: straight line from source node edge to
-          // target node edge. For architecture diagrams with clear L→R flow,
-          // direct lines are cleaner than orthogonal routing because:
-          // 1. Each line has a unique start/end point (no bundling)
-          // 2. No vertical segments in gaps that create false associations
-          // 3. Direction of flow is immediately clear from the line angle
-          d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+          // Orthogonal H→V→H routing with 90-degree turns only.
+          // Turn placed at midpoint of the horizontal gap + lane offset
+          // to separate multiple edges sharing the same zone pair.
+          if (vDist < 4) {
+            // Effectively aligned — straight horizontal
+            d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+          } else {
+            var turnX = x1 + (x2 - x1) * 0.5 + laneOffset;
+            d = 'M' + x1 + ',' + y1 +
+                ' L' + turnX + ',' + y1 +
+                ' L' + turnX + ',' + y2 +
+                ' L' + x2 + ',' + y2;
+          }
         } else {
           // Vertical: exit bottom/top using node centers for X
           var dy = tgtNodeCy - srcNodeCy;
