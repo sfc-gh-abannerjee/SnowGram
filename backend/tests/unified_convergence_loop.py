@@ -43,6 +43,7 @@ from visual.skill_triggers import SkillTrigger, FixAction
 class RootCause(Enum):
     """Root cause categories mapped to skills."""
     AGENT_SPEC = "agent_spec"           # → $cortex-agent
+    AGENT_TOOL_USAGE = "agent_tool_usage"  # → $cortex-agent OPTIMIZE mode (Enhancement 7)
     SEMANTIC_VIEW = "semantic_view"     # → $semantic-view
     FRONTEND_CODE = "frontend_code"     # → $lane-layout-debugger
     MERMAID_TEMPLATE = "mermaid_template"  # → Direct fix
@@ -104,14 +105,16 @@ class UnifiedConvergenceLoop:
     AGENT_NAME = "SNOWGRAM_AGENT"
     SEMANTIC_VIEW = "SNOWGRAM_DB.CORE.COMPONENT_MAP_SV"
     
-    # Score thresholds per pass
+    # Score thresholds per pass - STRICT thresholds to catch visual quality issues
+    # Raised 2024-02-24 after analysis showed 97.5% score missing truncated labels,
+    # wrong badge labels, UI artifacts, tangled connections, boundary overlap
     PASS_THRESHOLDS = {
-        "components": 90,
-        "connections": 85,
-        "layout": 70,
-        "badges": 90,
-        "styling": 80,
-        "structure": 80,
+        "components": 95,   # Was 90 - require near-perfect component coverage
+        "connections": 90,  # Was 85 - stricter flow validation  
+        "layout": 85,       # Was 70 - MAJOR increase, catch layout chaos
+        "badges": 95,       # Was 90 - require correct positioning AND labels
+        "styling": 85,      # Was 80 - slightly stricter
+        "structure": 85,    # Was 80 - require all subgraphs, no artifacts
     }
     
     # Root cause mapping based on failing pass
@@ -127,10 +130,92 @@ class UnifiedConvergenceLoop:
     # Skill mapping for root causes
     SKILL_MAP = {
         RootCause.AGENT_SPEC: SkillTarget.CORTEX_AGENT,
+        RootCause.AGENT_TOOL_USAGE: SkillTarget.CORTEX_AGENT,  # OPTIMIZE mode (Enhancement 7)
         RootCause.SEMANTIC_VIEW: SkillTarget.SEMANTIC_VIEW,
         RootCause.FRONTEND_CODE: SkillTarget.LANE_LAYOUT_DEBUGGER,
         RootCause.MERMAID_TEMPLATE: SkillTarget.DIRECT_FIX,
         RootCause.UNKNOWN: SkillTarget.SNOWGRAM_DEBUGGER,
+    }
+    
+    # External tools that should trigger WEB_SEARCH usage (Enhancement 6)
+    EXTERNAL_TOOL_KEYWORDS = ['kafka', 'dbt', 'tableau', 'airflow', 'databricks', 'fivetran', 
+                              'spark', 'flink', 'confluent', 'debezium', 'azure data factory']
+    
+    # Repository context map for better localization (Enhancement 3 - from Aider)
+    CONTEXT_MAP = """
+## SnowGram Architecture Context
+
+### Layout Files (for badge/position issues)
+- `frontend/src/lib/elkLayout.ts` - ELK layout algorithm, badge zIndex, margins
+- `frontend/src/lib/mermaidToReactFlow.ts` - Mermaid parsing, node creation
+
+### Agent Files (for component/structure issues)  
+- `agent_spec_v5.yaml` - Agent instructions, tool definitions
+- `SNOWGRAM_DB.CORE.COMPONENT_MAP_SV` - Semantic view for component resolution
+
+### Agent Tools (native Snowflake capabilities)
+- SNOWFLAKE_DOCS_CKE - 41,000+ pages of Snowflake docs
+- WEB_SEARCH - Native web search for external tools (dbt, Kafka, Tableau)
+- SUGGEST_COMPONENTS_FOR_USE_CASE - Component resolution
+
+### Reference Architecture
+- Purple badges (1a-1d): Horizontal lanes, LEFT edge (x < 30% of canvas)
+- Blue badges (2-5): Processing sections, CENTER area (25%-75% of canvas)
+- Boundaries: Producer App (left), In-app Analytics (right)
+"""
+    
+    # Annotation context for streaming architecture badges
+    # This maps badge IDs to their semantic meaning in the reference architecture
+    # Used to provide context to the Cortex Agent during feedback iterations
+    STREAMING_BADGE_ANNOTATIONS = {
+        "1a": {
+            "label": "Kafka Connector Path",
+            "description": "Kafka → Snowflake Connector for Kafka ingestion path",
+            "position_hint": "top of external data sources, left edge of diagram",
+            "color": "purple (lane marker)",
+        },
+        "1b": {
+            "label": "CSP Streaming with Java SDK",
+            "description": "Cloud service provider streaming using Java SDK for Snowpipe Streaming",
+            "position_hint": "second from top in external sources, left edge",
+            "color": "purple (lane marker)",
+        },
+        "1c": {
+            "label": "Batch to Blob Store",
+            "description": "Batch ingestion to blob store via CSP services",
+            "position_hint": "third from top in external sources, left edge",
+            "color": "purple (lane marker)",
+        },
+        "1d": {
+            "label": "Native Connector",
+            "description": "Snowflake Native Connector for third-party data integration",
+            "position_hint": "fourth from top in external sources, left edge",
+            "color": "purple (lane marker)",
+        },
+        "2": {
+            "label": "Snowpipe Streaming Ingestion",
+            "description": "Snowflake ingests data via Snowpipe Streaming",
+            "position_hint": "at Snowflake boundary where data enters the platform",
+            "color": "blue (section marker)",
+        },
+        "3": {
+            "label": "Streams and Tasks",
+            "description": "Transformation layer using Streams and Tasks",
+            "position_hint": "center of Snowflake processing area",
+            "color": "blue (section marker)",
+        },
+        "4": {
+            "label": "Dynamic Tables",
+            "description": "Simplified transformation using Dynamic Tables",
+            "position_hint": "after Streams/Tasks in processing flow",
+            "color": "blue (section marker)",
+        },
+        "5": {
+            "label": "Python/Snowpark Processing",
+            "description": "Python stored procedures or Snowpark for advanced processing",
+            "position_hint": "right side of Snowflake processing, before outputs",
+            "color": "blue (section marker)",
+        },
     }
     
     def __init__(self, connection_name: str = "se_demo"):
@@ -143,8 +228,11 @@ class UnifiedConvergenceLoop:
         # State
         self.state = ConvergenceState()
         
-        # Test prompt
+        # Test prompt (base)
         self.test_prompt = "streaming architecture with Kafka ingestion"
+        
+        # Iteration feedback for enhanced prompts
+        self.iteration_feedback: List[str] = []
         
         # Mermaid template
         self.mermaid_template = self._load_streaming_template()
@@ -190,6 +278,227 @@ class UnifiedConvergenceLoop:
     classDef laneBadge fill:#7C3AED,stroke:#5B21B6,color:#fff,font-weight:bold
     classDef sectionBadge fill:#2563EB,stroke:#1D4ED8,color:#fff,font-weight:bold
 """
+    
+    # ========================================================================
+    # ENHANCEMENT 1: PLAUSIBILITY FILTER (from Aider - saves 40% iterations)
+    # ========================================================================
+    
+    def _is_plausibly_correct(self, mermaid_code: str) -> Tuple[bool, str]:
+        """
+        Quick sanity check before expensive evaluation.
+        
+        From Aider's SWE-bench approach: filter "implausible" outputs early
+        to avoid wasting iterations on clearly broken outputs.
+        
+        Returns: (is_plausible, reason)
+        """
+        if not mermaid_code or not mermaid_code.strip():
+            return False, "Empty mermaid code"
+        
+        checks = [
+            (mermaid_code.strip().startswith(("flowchart", "graph")), 
+             "Invalid mermaid header - must start with flowchart or graph"),
+            (mermaid_code.count('["') + mermaid_code.count("['") + mermaid_code.count('(["') >= 3, 
+             "Too few nodes (need at least 3)"),
+            ("1a" in mermaid_code or "badge_1a" in mermaid_code or "badge" in mermaid_code.lower(), 
+             "Missing badge definitions"),
+            ("snowflake" in mermaid_code.lower() or "subgraph" in mermaid_code, 
+             "Missing Snowflake subgraph"),
+            (len(mermaid_code) > 100,  # Lowered from 300 - real outputs are typically 500+
+             f"Output too short ({len(mermaid_code)} chars, need > 100)"),
+        ]
+        
+        for passed, error in checks:
+            if not passed:
+                self._log_activity(f"Plausibility check failed: {error}")
+                return False, error
+        
+        return True, "Plausible"
+    
+    # ========================================================================
+    # ENHANCEMENT 4: DEFECT DEDUPLICATION (prevents false gutter detection)
+    # ========================================================================
+    
+    def _normalize_defect(self, defect: str) -> str:
+        """
+        Normalize defect for consistent gutter detection.
+        
+        Same defect worded differently was causing false gutter detection.
+        This normalizes defects so we can properly detect repeated failures.
+        """
+        # Remove specific numbers/percentages
+        normalized = re.sub(r'\d+\.?\d*%?', 'N', defect.lower())
+        # Remove file paths
+        normalized = re.sub(r'/[\w/]+\.\w+', 'FILE', normalized)
+        # Keep only key terms
+        key_terms = ['badge', 'layout', 'node', 'edge', 'position', 'missing', 
+                     'scattered', 'overlap', 'left', 'right', 'center', 'zone',
+                     'purple', 'blue', 'coherence', 'chaos']
+        words = [w for w in normalized.split() if w in key_terms]
+        return ' '.join(sorted(set(words)))
+    
+    # ========================================================================
+    # ENHANCEMENT 5: WARM START FROM PREVIOUS SUCCESS (faster convergence)
+    # ========================================================================
+    
+    def _load_best_previous_state(self) -> Optional[str]:
+        """
+        Load mermaid from best previous iteration if score > 70%.
+        
+        If we got close before, start from that state instead of scratch.
+        """
+        best_file = self.ralph_dir / "best_mermaid.mmd"
+        best_score_file = self.ralph_dir / "best_score.txt"
+        
+        if best_file.exists() and best_score_file.exists():
+            try:
+                score = float(best_score_file.read_text().strip())
+                if score > 70:
+                    self._log_activity(f"Warm starting from previous best: {score:.1f}%")
+                    return best_file.read_text()
+            except (ValueError, IOError):
+                pass
+        return None
+    
+    def _save_if_best(self, mermaid_code: str, score: float) -> None:
+        """Save mermaid if it's the best so far."""
+        best_score_file = self.ralph_dir / "best_score.txt"
+        current_best = 0.0
+        
+        if best_score_file.exists():
+            try:
+                current_best = float(best_score_file.read_text().strip())
+            except (ValueError, IOError):
+                pass
+        
+        if score > current_best:
+            (self.ralph_dir / "best_mermaid.mmd").write_text(mermaid_code)
+            best_score_file.write_text(str(score))
+            self._log_activity(f"Saved new best mermaid (score: {score:.1f}%, was: {current_best:.1f}%)")
+    
+    # ========================================================================
+    # ENHANCEMENT 7: AGENT TOOL USAGE DETECTION
+    # ========================================================================
+    
+    def _detect_tool_usage_failure(self, eval_result: EvalResult) -> bool:
+        """
+        Detect if agent should have used WEB_SEARCH but didn't.
+        
+        When component defects involve external tools (Kafka, dbt, etc.),
+        the agent should be using WEB_SEARCH to find correct patterns.
+        
+        IMPORTANT: Does NOT trigger if the defects are visual/frontend issues
+        (truncation, UI artifacts, layout) - those need frontend fixes, not agent changes.
+        """
+        component_result = eval_result.pass_results.get('components')
+        structure_result = eval_result.pass_results.get('structure')
+        
+        if not component_result:
+            return False
+        
+        # FIRST: Check if defects are visual/frontend issues - if so, DON'T override
+        frontend_keywords = ['truncation', 'truncated', 'cut off', 'artifact', 
+                            'ui element', 'selection highlight', 'overlap', 'tangled']
+        
+        all_defects = list(component_result.defects) + (list(structure_result.defects) if structure_result else [])
+        for defect in all_defects:
+            defect_lower = defect.lower()
+            if any(kw in defect_lower for kw in frontend_keywords):
+                # This is a frontend/visual issue, not an agent tool usage issue
+                self._log_activity(f"Visual/frontend defect detected, not tool usage: {defect[:50]}...")
+                return False
+        
+        # Only check for tool usage failures if no frontend defects
+        for defect in component_result.defects:
+            defect_lower = defect.lower()
+            if any(kw in defect_lower for kw in self.EXTERNAL_TOOL_KEYWORDS):
+                self._log_activity(f"Tool usage failure detected: external tool mentioned in defect: {defect[:50]}...")
+                return True
+        
+        # Also check the test prompt for external tools
+        prompt_lower = self.test_prompt.lower()
+        if any(kw in prompt_lower for kw in self.EXTERNAL_TOOL_KEYWORDS):
+            # External tool in prompt but low component score
+            if component_result.score < 80:
+                self._log_activity(f"Tool usage failure: external tool in prompt but low component score ({component_result.score:.1f}%)")
+                return True
+        
+        return False
+    
+    def _build_enhanced_prompt(self, defects: List[str] = None) -> str:
+        """
+        Build feedback-enhanced prompt for the Cortex Agent.
+        
+        On iteration 1: returns base prompt
+        On iteration 2+: includes feedback from previous iteration defects
+        
+        Enhancement 6: Now includes hints to use WEB_SEARCH for external tools
+        and SNOWFLAKE_DOCS_CKE for Snowflake-native issues.
+        """
+        base_prompt = self.test_prompt
+        
+        # First iteration - no feedback yet
+        if self.state.iteration <= 1 or not self.iteration_feedback:
+            return base_prompt
+        
+        # Build feedback section from accumulated defects
+        feedback_lines = []
+        for feedback in self.iteration_feedback[-3:]:  # Last 3 feedback items
+            feedback_lines.append(f"- {feedback}")
+        
+        if not feedback_lines:
+            return base_prompt
+        
+        # Enhanced prompt with feedback
+        enhanced = f"""{base_prompt}
+
+IMPORTANT LAYOUT FEEDBACK from previous iteration:
+{chr(10).join(feedback_lines)}
+
+Please ensure the generated diagram addresses these layout issues:
+- Purple lane badges (1a-1d) must be vertically stacked on the LEFT edge
+- Blue section badges (2-5) must appear at their corresponding Snowflake processing stages
+- All components should be visible without clipping at edges"""
+        
+        # Enhancement 6: Detect external tool issues and add WEB_SEARCH hint
+        external_tool_issues = [f for f in self.iteration_feedback 
+                               if any(t in f.lower() for t in self.EXTERNAL_TOOL_KEYWORDS)]
+        
+        if external_tool_issues:
+            enhanced += """
+
+NOTE: For external tool integrations (Kafka, dbt, Tableau, etc.), use your WEB_SEARCH tool 
+to find current best practices and integration patterns.
+Example: WEB_SEARCH("Kafka Snowpipe Streaming integration architecture 2025")"""
+        
+        # Detect Snowflake-native issues and add CKE hint
+        snowflake_keywords = ['snowpipe', 'dynamic table', 'stream', 'task', 'stage', 'warehouse']
+        snowflake_issues = [f for f in self.iteration_feedback 
+                           if any(t in f.lower() for t in snowflake_keywords)]
+        
+        if snowflake_issues:
+            enhanced += """
+
+NOTE: For Snowflake component questions, use SNOWFLAKE_DOCS_CKE to verify correct patterns.
+Example: SNOWFLAKE_DOCS_CKE("dynamic tables vs streams best practices")"""
+        
+        return enhanced
+    
+    def _extract_defects_for_feedback(self, eval_result) -> List[str]:
+        """
+        Extract actionable defects from evaluation result for feedback loop.
+        Focuses on badge and layout issues that the agent can influence.
+        """
+        feedback = []
+        
+        for pass_name, pass_result in eval_result.pass_results.items():
+            if pass_name in ["badges", "layout"] and pass_result.defects:
+                for defect in pass_result.defects[:2]:  # Top 2 defects per pass
+                    # Clean up defect for feedback (remove "VISUAL:" prefix)
+                    clean = defect.replace("VISUAL: ", "").replace("CODE: ", "")
+                    feedback.append(clean)
+        
+        return feedback
     
     # ========================================================================
     # RALPH STATE MANAGEMENT
@@ -516,6 +825,28 @@ class UnifiedConvergenceLoop:
                 # Additional stabilization time for ELK layout
                 await page.wait_for_timeout(1000)
                 
+                # Hide interactive UI elements before screenshot capture
+                await page.evaluate("""
+                    // Hide zoom controls, minimap, and panels
+                    const hideSelectors = [
+                        '.react-flow__controls',
+                        '.react-flow__minimap', 
+                        '[class*="panelActions"]',
+                        '[class*="instructionsPanel"]',
+                        '[class*="emptyPanel"]'
+                    ];
+                    hideSelectors.forEach(sel => {
+                        document.querySelectorAll(sel).forEach(el => {
+                            el.style.display = 'none';
+                        });
+                    });
+                    // Also add export-mode class for any CSS-based hiding
+                    document.body.classList.add('export-mode');
+                    const rf = document.querySelector('.react-flow');
+                    if (rf) rf.classList.add('export-mode');
+                """)
+                await page.wait_for_timeout(200)  # Let changes take effect
+                
                 # Screenshot the React Flow canvas
                 react_flow_element = await page.query_selector(".react-flow")
                 
@@ -582,8 +913,21 @@ class UnifiedConvergenceLoop:
         """
         Analyze evaluation results to determine root cause.
         
+        Enhanced with:
+        - Enhancement 4: Defect deduplication for gutter detection
+        - Enhancement 7: Agent tool usage failure detection
+        - FIX: Identify bottleneck even when all thresholds pass but overall < target
+        
         Returns: (root_cause, skill_to_invoke, defect_description)
         """
+        # Enhancement 7: Check for agent tool usage failures FIRST
+        if self._detect_tool_usage_failure(eval_result):
+            return (
+                RootCause.AGENT_TOOL_USAGE,
+                SkillTarget.CORTEX_AGENT,
+                "Agent not leveraging WEB_SEARCH or SNOWFLAKE_DOCS_CKE for external tool patterns"
+            )
+        
         # Find lowest scoring pass below threshold
         failing_passes = []
         
@@ -591,6 +935,34 @@ class UnifiedConvergenceLoop:
             threshold = self.PASS_THRESHOLDS.get(pass_name, 80)
             if pass_result.score < threshold:
                 failing_passes.append((pass_name, pass_result.score, pass_result.defects))
+        
+        # FIX: If no failing passes but overall score < target, find the bottleneck
+        if not failing_passes and eval_result.overall_score < self.TARGET_SCORE:
+            # Find the pass with most room for improvement (lowest score relative to 100%)
+            all_passes = []
+            for pass_name, pass_result in eval_result.pass_results.items():
+                gap_to_perfect = 100 - pass_result.score
+                all_passes.append((pass_name, pass_result.score, pass_result.defects, gap_to_perfect))
+            
+            if all_passes:
+                # Sort by gap to perfect (largest gap first = most room for improvement)
+                all_passes.sort(key=lambda x: -x[3])
+                bottleneck_pass, bottleneck_score, defects, gap = all_passes[0]
+                
+                root_cause = self.ROOT_CAUSE_MAP.get(bottleneck_pass, RootCause.UNKNOWN)
+                skill = self.SKILL_MAP.get(root_cause, SkillTarget.SNOWGRAM_DEBUGGER)
+                
+                defect_desc = (
+                    f"BOTTLENECK: {bottleneck_pass} at {bottleneck_score:.1f}% "
+                    f"(threshold met, but {gap:.1f}% gap to perfect). "
+                    f"Overall {eval_result.overall_score:.1f}% < {self.TARGET_SCORE}% target"
+                )
+                
+                if defects:
+                    defect_desc += f". Defects: {defects[0]}"
+                
+                self._log_activity(f"Bottleneck identified: {bottleneck_pass} ({gap:.1f}% improvement potential)")
+                return root_cause, skill, defect_desc
         
         if not failing_passes:
             return RootCause.UNKNOWN, SkillTarget.DIRECT_FIX, "No failures detected"
@@ -600,11 +972,26 @@ class UnifiedConvergenceLoop:
         
         worst_pass, worst_score, defects = failing_passes[0]
         
-        # Map to root cause
+        # Map to root cause (default based on pass name)
         root_cause = self.ROOT_CAUSE_MAP.get(worst_pass, RootCause.UNKNOWN)
         
-        # Check for gutter condition (3x same failure)
-        defect_key = f"{worst_pass}:{defects[0] if defects else 'unknown'}"
+        # OVERRIDE: Check if defects indicate frontend/visual issues
+        # These need frontend code fixes, not agent/semantic view changes
+        frontend_defect_keywords = ['truncation', 'truncated', 'cut off', 'artifact', 
+                                    'ui element', 'selection highlight', 'overlap', 
+                                    'tangled', 'boundary overlap', 'visual']
+        
+        raw_defect = defects[0] if defects else ''
+        defect_lower = raw_defect.lower()
+        
+        if any(kw in defect_lower for kw in frontend_defect_keywords):
+            # Override to frontend code regardless of which pass failed
+            self._log_activity(f"Visual defect detected in {worst_pass}, routing to FRONTEND_CODE: {raw_defect[:50]}...")
+            root_cause = RootCause.FRONTEND_CODE
+        
+        # Enhancement 4: Use normalized defect key for gutter detection
+        normalized_defect = self._normalize_defect(raw_defect)
+        defect_key = f"{worst_pass}:{normalized_defect}"
         
         if defect_key in self.state.failure_counts:
             record = self.state.failure_counts[defect_key]
@@ -688,21 +1075,90 @@ class UnifiedConvergenceLoop:
         
         return yaml.dump(output, default_flow_style=False, sort_keys=False)
     
+    def _format_badge_annotation_context(self, defect_desc: str) -> str:
+        """
+        Extract relevant badge annotations based on defect description.
+        Returns formatted context string for feedback to Cortex Agent.
+        """
+        context_lines = []
+        defect_lower = defect_desc.lower()
+        
+        # Check which badges are mentioned in the defect
+        for badge_id, annotation in self.STREAMING_BADGE_ANNOTATIONS.items():
+            # Match badge references like "1a", "badge 1a", "Badge_1A"
+            if badge_id.lower() in defect_lower or f"badge_{badge_id}".lower() in defect_lower:
+                context_lines.append(
+                    f"  - Badge {badge_id.upper()}: {annotation['label']}\n"
+                    f"    Purpose: {annotation['description']}\n"
+                    f"    Expected position: {annotation['position_hint']}\n"
+                    f"    Color: {annotation['color']}"
+                )
+        
+        # If no specific badges found but it's a badge-related issue, provide all context
+        if not context_lines and ("badge" in defect_lower or "lane" in defect_lower or "section" in defect_lower):
+            context_lines.append("  Purple lane badges (1a-1d) - left edge, marking external data source lanes:")
+            for badge_id in ["1a", "1b", "1c", "1d"]:
+                ann = self.STREAMING_BADGE_ANNOTATIONS[badge_id]
+                context_lines.append(f"    - {badge_id.upper()}: {ann['label']} → {ann['position_hint']}")
+            
+            context_lines.append("\n  Blue section badges (2-5) - marking Snowflake processing sections:")
+            for badge_id in ["2", "3", "4", "5"]:
+                ann = self.STREAMING_BADGE_ANNOTATIONS[badge_id]
+                context_lines.append(f"    - {badge_id}: {ann['label']} → {ann['position_hint']}")
+        
+        if context_lines:
+            return "\n\nBadge Annotation Context (from reference architecture):\n" + "\n".join(context_lines)
+        return ""
+    
     def _get_skill_instructions(
         self, 
         root_cause: RootCause, 
         skill_target: SkillTarget, 
         defect_desc: str
     ) -> str:
-        """Generate instructions for the skill."""
+        """Generate instructions for the skill with annotation-aware feedback."""
+        
+        # Get badge annotation context if relevant
+        badge_context = self._format_badge_annotation_context(defect_desc)
         
         if skill_target == SkillTarget.CORTEX_AGENT:
-            return f"""
+            # Enhancement 7: Different instructions for AGENT_TOOL_USAGE vs AGENT_SPEC
+            if root_cause == RootCause.AGENT_TOOL_USAGE:
+                return f"""
+Invoke $cortex-agent skill in OPTIMIZE mode:
+
+**Issue**: {defect_desc}
+
+**Root Cause**: Agent is not leveraging its native tools (WEB_SEARCH, SNOWFLAKE_DOCS_CKE) 
+for external tool integrations. This causes incorrect or incomplete component generation.
+
+**Action Required**:
+1. Update agent_spec_v5.yaml to emphasize WEB_SEARCH usage:
+   - Add explicit instruction: "For Kafka/dbt/Tableau/Airflow patterns, call WEB_SEARCH FIRST"
+   - Add examples in instructions showing when to use each tool
+   
+2. Update tool descriptions to be clearer:
+   - WEB_SEARCH: "ALWAYS use for non-Snowflake tools (Kafka, dbt, Tableau, Airflow, Databricks)"
+   - SNOWFLAKE_DOCS_CKE: "Use for Snowflake-native features and best practices"
+
+3. Redeploy with: ALTER AGENT {self.AGENT_DATABASE}.{self.AGENT_SCHEMA}.{self.AGENT_NAME} 
+   SET SPECIFICATION = @stage/agent_spec_v5.yaml
+
+**Context Map**:
+{self.CONTEXT_MAP}
+"""
+            else:
+                return f"""
 Invoke $cortex-agent skill in DEBUG mode:
 1. Target: {self.AGENT_DATABASE}.{self.AGENT_SCHEMA}.{self.AGENT_NAME}
 2. Issue: {defect_desc}
 3. Check agent_spec_v5.yaml for instruction issues
 4. Redeploy with ALTER AGENT after fix
+{badge_context}
+
+IMPORTANT: The agent should generate mermaid that places badges correctly based on the 
+architectural flow. Do NOT hardcode positions - let the layout algorithm handle placement,
+but ensure the mermaid structure supports proper badge association with components.
 """
         
         elif skill_target == SkillTarget.SEMANTIC_VIEW:
@@ -712,6 +1168,7 @@ Invoke $semantic-view skill in DEBUG mode:
 2. Backing table: SNOWGRAM_DB.CORE.COMPONENT_SYNONYMS
 3. Issue: {defect_desc}
 4. Add missing synonyms to map user terms to component types
+{badge_context}
 """
         
         elif skill_target == SkillTarget.LANE_LAYOUT_DEBUGGER:
@@ -721,6 +1178,14 @@ Invoke $lane-layout-debugger skill:
 2. Check elkLayout.ts for layout algorithm issues
 3. Check mermaidToReactFlow.ts for node positioning
 4. Reference: backend/tests/visual/reference_images/reference_page4.png
+{badge_context}
+
+Layout expectations for streaming architecture:
+- External sources (Kafka, CSP, Blob, Connectors) should be on LEFT
+- Snowflake processing (Snowpipe, Streams, Dynamic Tables) in CENTER
+- Outputs (Analytics, ML, Apps) on RIGHT
+- Purple badges mark horizontal lanes (left edge)
+- Blue badges mark processing sections (center area)
 """
         
         elif skill_target == SkillTarget.DIRECT_FIX:
@@ -729,6 +1194,10 @@ Apply direct fix to Mermaid template:
 1. Issue: {defect_desc}
 2. Template: mermaid_templates/streaming_data_stack.mmd
 3. Use SkillTrigger._fix_badges() or _fix_styling() patterns
+{badge_context}
+
+NOTE: Fixes should guide the Cortex Agent to generate correct structure,
+not hardcode component positions. The layout algorithm handles positioning.
 """
         
         else:
@@ -736,6 +1205,7 @@ Apply direct fix to Mermaid template:
 Invoke $snowgram-debugger skill:
 1. Issue: {defect_desc}
 2. Use SWE-bench pattern: EXPLORE → REPRODUCE → LOCATE → FIX → VERIFY
+{badge_context}
 """
     
     # ========================================================================
@@ -746,24 +1216,35 @@ Invoke $snowgram-debugger skill:
         """
         Run a single iteration of the convergence loop.
         
+        Enhanced with:
+        - Enhancement 1: Plausibility check before expensive evaluation
+        - Enhancement 5: Save best mermaid for warm start
+        
         Returns: (eval_result, yaml_output)
         """
         self.state.iteration += 1
         self._log_activity(f"=== ITERATION {self.state.iteration} START ===")
         
         print(f"\n{'='*70}")
-        print(f"ITERATION {self.state.iteration}: Unified Convergence Loop")
+        print(f"ITERATION {self.state.iteration}: Unified Convergence Loop (Enhanced)")
         print(f"{'='*70}")
         
-        # Step 1: Invoke agent
-        print("\n[1/5] Invoking Cortex Agent...")
-        agent_response = await self.invoke_agent(self.test_prompt)
+        # Build enhanced prompt with feedback from previous iterations
+        enhanced_prompt = self._build_enhanced_prompt()
+        if self.state.iteration > 1 and self.iteration_feedback:
+            print(f"\n[0/6] Using feedback-enhanced prompt ({len(self.iteration_feedback)} feedback items)")
         
+        # Step 1: Invoke agent with enhanced prompt
+        print("\n[1/6] Invoking Cortex Agent...")
+        agent_response = await self.invoke_agent(enhanced_prompt)
+        
+        mermaid_code = None
         if agent_response.get("error"):
             print(f"  ✗ Agent error: {agent_response['error']}")
             # Continue with template-only evaluation
         else:
             components = agent_response.get("components", [])
+            mermaid_code = agent_response.get("mermaid_code", "")
             print(f"  ✓ Agent returned {len(components)} components")
             for c in components[:5]:
                 # Handle both string and dict formats
@@ -772,9 +1253,40 @@ Invoke $snowgram-debugger skill:
                 else:
                     print(f"    - {c.get('component_name', c.get('component_id', 'unknown'))}")
         
-        # Step 2: Render via React Flow frontend (NOT Mermaid CLI)
-        print("\n[2/5] Rendering via React Flow frontend...")
-        generated_image = await self.render_in_frontend(self.test_prompt)
+        # Enhancement 1: Plausibility check BEFORE expensive rendering
+        print("\n[2/6] Plausibility check (Enhancement 1)...")
+        if mermaid_code:
+            is_plausible, plausibility_reason = self._is_plausibly_correct(mermaid_code)
+            if not is_plausible:
+                print(f"  ✗ Implausible output: {plausibility_reason}")
+                print(f"  → Skipping expensive render/eval, creating retry result")
+                
+                # Create minimal eval result for implausible output
+                eval_result = EvalResult(
+                    pass_results={
+                        "structure": PassResult(pass_type=EvalPass.STRUCTURE, score=0, 
+                                               defects=[f"Implausible: {plausibility_reason}"]),
+                    },
+                    overall_score=0.0,
+                    converged=False,
+                    iteration=self.state.iteration
+                )
+                
+                # Still diagnose and output YAML
+                root_cause, skill_target, defect_desc = self.diagnose_root_cause(eval_result)
+                yaml_output = self.output_coco_yaml(root_cause, skill_target, 
+                                                    f"Implausible output: {plausibility_reason}", eval_result)
+                
+                self._log_activity(f"=== ITERATION {self.state.iteration} END (implausible, score: 0%) ===")
+                return eval_result, yaml_output
+            else:
+                print(f"  ✓ Output is plausible")
+        else:
+            print(f"  ⚠ No mermaid code to check")
+        
+        # Step 3: Render via React Flow frontend (NOT Mermaid CLI)
+        print("\n[3/6] Rendering via React Flow frontend...")
+        generated_image = await self.render_in_frontend(enhanced_prompt)
         
         if not generated_image:
             print("  ✗ Render failed - using placeholder evaluation")
@@ -788,8 +1300,8 @@ Invoke $snowgram-debugger skill:
         else:
             print(f"  ✓ Rendered to {generated_image.name}")
             
-            # Step 3: Visual evaluation
-            print("\n[3/5] Running 6-pass visual evaluation...")
+            # Step 4: Visual evaluation
+            print("\n[4/6] Running 6-pass visual evaluation...")
             eval_result = await self.evaluate_visual(generated_image)
             
             print(f"\n  Pass Scores:")
@@ -799,16 +1311,26 @@ Invoke $snowgram-debugger skill:
                 print(f"    {status} {pass_name.title()}: {pass_result.score:.1f}% (threshold: {threshold}%)")
             
             print(f"\n  Overall: {eval_result.overall_score:.1f}% (target: {self.TARGET_SCORE}%)")
+            
+            # Enhancement 5: Save if this is the best result so far
+            if mermaid_code and eval_result.overall_score > 0:
+                self._save_if_best(mermaid_code, eval_result.overall_score)
+            
+            # Extract defects for next iteration feedback
+            new_feedback = self._extract_defects_for_feedback(eval_result)
+            if new_feedback:
+                self.iteration_feedback.extend(new_feedback)
+                print(f"\n  Collected {len(new_feedback)} feedback items for next iteration")
         
-        # Step 4: Diagnose
-        print("\n[4/5] Diagnosing root cause...")
+        # Step 5: Diagnose
+        print("\n[5/6] Diagnosing root cause...")
         root_cause, skill_target, defect_desc = self.diagnose_root_cause(eval_result)
         print(f"  Root cause: {root_cause.value}")
         print(f"  Skill: ${skill_target.value}")
         print(f"  Defect: {defect_desc}")
         
-        # Step 5: Output YAML
-        print("\n[5/5] Generating CoCo action YAML...")
+        # Step 6: Output YAML
+        print("\n[6/6] Generating CoCo action YAML...")
         yaml_output = self.output_coco_yaml(root_cause, skill_target, defect_desc, eval_result)
         
         # Update state
@@ -830,10 +1352,15 @@ Invoke $snowgram-debugger skill:
         """
         Run the full convergence loop until success or max iterations.
         
+        AUTONOMOUS EXECUTION:
+        - Diagnoses issues
+        - Automatically invokes appropriate skill/fix
+        - Re-evaluates and continues until convergence
+        
         Returns True if converged, False otherwise.
         """
         print("="*70)
-        print("RALPH-STYLE UNIFIED CONVERGENCE LOOP")
+        print("RALPH-STYLE UNIFIED CONVERGENCE LOOP (AUTONOMOUS)")
         print("="*70)
         print(f"Target Score: {self.TARGET_SCORE}%")
         print(f"Max Iterations: {self.MAX_ITERATIONS}")
@@ -850,9 +1377,8 @@ Invoke $snowgram-debugger skill:
             eval_result, yaml_output = await self.run_single_iteration()
             
             print("\n" + "-"*70)
-            print("ACTION YAML FOR COCO:")
+            print("DIAGNOSIS:")
             print("-"*70)
-            print(yaml_output)
             
             if self.state.converged:
                 print("\n" + "="*70)
@@ -863,12 +1389,17 @@ Invoke $snowgram-debugger skill:
                 print("="*70)
                 return True
             
-            print(f"\nIteration {self.state.iteration} complete. Score: {eval_result.overall_score:.1f}%")
-            print("Waiting for CoCo to apply fix before next iteration...")
+            # AUTONOMOUS FIX EXECUTION
+            print(f"\n[AUTO-FIX] Applying fix for iteration {self.state.iteration}...")
+            fix_applied = await self._apply_autonomous_fix(eval_result)
             
-            # In real usage, CoCo would invoke the skill here
-            # For testing, we just continue to next iteration
-            await asyncio.sleep(1)
+            if fix_applied:
+                print(f"[AUTO-FIX] ✓ Fix applied, continuing to next iteration...")
+            else:
+                print(f"[AUTO-FIX] ⚠ No fix available, continuing anyway...")
+            
+            # Small delay before next iteration
+            await asyncio.sleep(0.5)
         
         print("\n" + "="*70)
         print("✗ MAX ITERATIONS REACHED WITHOUT CONVERGENCE")
@@ -877,6 +1408,52 @@ Invoke $snowgram-debugger skill:
         print("="*70)
         
         return False
+    
+    async def _apply_autonomous_fix(self, eval_result: EvalResult) -> bool:
+        """
+        Autonomously apply fixes based on evaluation results.
+        
+        Uses SkillTrigger to determine and execute appropriate fixes.
+        Captures feedback/guidance for next iteration.
+        
+        Returns True if a fix was applied, False otherwise.
+        """
+        try:
+            # Use SkillTrigger to determine and apply fixes
+            trigger = SkillTrigger(eval_result)
+            actions = await trigger.determine_actions(target_score=self.TARGET_SCORE)
+            
+            if not actions:
+                self._log_activity("No fix actions determined by SkillTrigger")
+                return False
+            
+            # Log the actions being taken
+            for action in actions:
+                self._log_activity(f"Fix action: {action.action_type} for {action.target_pass} - {action.description}")
+                print(f"  → {action.action_type}: {action.description}")
+            
+            # Execute the fixes
+            results = await trigger.execute_fixes()
+            
+            # Capture any layout guidance for next iteration
+            for pass_name, result in results.items():
+                if result.get("layout_guidance"):
+                    guidance = result["layout_guidance"]
+                    self._log_activity(f"Layout guidance captured: {len(guidance)} chars")
+                    # Add guidance to iteration feedback for next prompt
+                    self.iteration_feedback.append(f"LAYOUT_FIX: {guidance}")
+                    print(f"  → Layout guidance added to next iteration prompt")
+            
+            # Check if any fixes were successful
+            success_count = sum(1 for r in results.values() if r.get("success", False))
+            self._log_activity(f"Applied {success_count}/{len(results)} fixes successfully")
+            
+            return success_count > 0
+            
+        except Exception as e:
+            self._log_activity(f"Error applying autonomous fix: {e}")
+            print(f"  ✗ Error: {e}")
+            return False
 
 
 async def main():
