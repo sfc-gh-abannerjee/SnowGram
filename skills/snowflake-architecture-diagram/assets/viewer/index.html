@@ -998,28 +998,17 @@
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
           var vDist = Math.abs(y2 - y1);
-          // Route based on vertical distance between source and target:
-          // - Small vDist (<12px): direct line (nodes are aligned)
-          // - Large vDist (>80px): smooth bezier curve (avoids long vertical
-          //   segments in the gap that look like false connections)
-          // - Medium vDist: orthogonal H→V→H with rounded corners
+          // Routing strategy:
+          // - Small vDist (<12px): direct straight line (aligned nodes)
+          // - Otherwise: orthogonal H→V→H with the vertical turn placed
+          //   close to the TARGET (80% of the way across the gap).
+          //   This keeps vertical segments near the destination zone edge,
+          //   preventing them from passing through unrelated nodes mid-gap.
           if (vDist < 12) {
-            // Nearly aligned — direct line
             d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
-          } else if (vDist > 80) {
-            // Large vertical span — use cubic bezier curve.
-            // The curve arcs smoothly from source to target, making it
-            // visually clear the line is "passing through" not connecting
-            // to intermediate nodes.
-            var cp1x = x1 + (x2 - x1) * 0.4 + laneOffset;
-            var cp2x = x1 + (x2 - x1) * 0.6 + laneOffset;
-            d = 'M' + x1 + ',' + y1 +
-                ' C' + cp1x + ',' + y1 + ' ' + cp2x + ',' + y2 + ' ' + x2 + ',' + y2;
           } else {
-            // Medium vertical span — orthogonal H→V→H with rounded corners
-            var hDist = Math.abs(x2 - x1);
-            var turnRatio = hDist > 120 ? 0.5 : 0.3;
-            var turnX = x1 + (x2 - x1) * turnRatio + laneOffset;
+            // Place turn at 80% toward target + lane offset for separation
+            var turnX = x1 + (x2 - x1) * 0.8 + laneOffset;
             var r = 6; // corner radius
             var vDir = y2 > y1 ? 1 : -1;
             var hDir = turnX > x1 ? 1 : -1;
