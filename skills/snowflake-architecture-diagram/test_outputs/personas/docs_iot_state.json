@@ -1,0 +1,137 @@
+{
+  "title": "Docs-Driven \u2014 IoT Pipeline",
+  "subtitle": "Device telemetry \u2192 Dynamic Tables \u2192 monitoring",
+  "source": "standalone:docs_driven",
+  "nodes": [
+    {
+      "id": "iot_gateway",
+      "label": "IoT Gateway",
+      "detail": "MQTT / device telemetry",
+      "icon": "Snowflake_ICON_IoT.svg",
+      "category": "onprem",
+      "zone": "External Sources"
+    },
+    {
+      "id": "snowpipe_streaming",
+      "label": "Snowpipe Streaming",
+      "detail": "Sub-second sensor ingest",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+    },
+    {
+      "id": "time_series_table",
+      "label": "Time-Series Table",
+      "detail": "Raw sensor readings",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "dynamic_table",
+      "label": "Dynamic Table",
+      "detail": "Windowed aggregation",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "dynamic_table_4",
+      "label": "Dynamic Table",
+      "detail": "Anomaly detection output",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "monitoring_app",
+      "label": "Monitoring App",
+      "detail": "Operations dashboard",
+      "icon": "Snowflake_ICON_Web_App.svg",
+      "category": "outcome",
+      "zone": "Consumption"
+    }
+  ],
+  "edges": [
+    {
+      "source": "iot_gateway",
+      "target": "snowpipe_streaming"
+    },
+    {
+      "source": "snowpipe_streaming",
+      "target": "time_series_table"
+    },
+    {
+      "source": "time_series_table",
+      "target": "dynamic_table"
+    },
+    {
+      "source": "dynamic_table",
+      "target": "dynamic_table_4"
+    },
+    {
+      "source": "dynamic_table_4",
+      "target": "monitoring_app"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "iot_gateway"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe_streaming"
+      ]
+    },
+    {
+      "name": "Raw Layer",
+      "category": "snow",
+      "node_ids": [
+        "time_series_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "dynamic_table"
+      ]
+    },
+    {
+      "name": "Serving Layer",
+      "category": "snow",
+      "node_ids": [
+        "dynamic_table_4"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "monitoring_app"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview",
+      "title": "Snowpipe Streaming",
+      "excerpt": "Sub-second sensor ingest"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "title": "Time-Series Table",
+      "excerpt": "Raw sensor readings"
+    }
+  ]
+}

@@ -1,0 +1,137 @@
+{
+  "title": "Docs-Driven \u2014 Streaming Pipeline",
+  "subtitle": "Snowpipe Streaming + Dynamic Tables",
+  "source": "standalone:docs_driven",
+  "nodes": [
+    {
+      "id": "kafka",
+      "label": "Kafka",
+      "detail": "Streaming topic",
+      "icon": "Snowflake_ICON_Kafka_Connectors.svg",
+      "category": "onprem",
+      "zone": "External Sources"
+    },
+    {
+      "id": "snowpipe_streaming",
+      "label": "Snowpipe Streaming",
+      "detail": "Sub-second row-level ingest",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+    },
+    {
+      "id": "staging_table",
+      "label": "Staging Table",
+      "detail": "Landing zone for streaming data",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "dynamic_table",
+      "label": "Dynamic Table",
+      "detail": "Incremental aggregation",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "dynamic_table_4",
+      "label": "Dynamic Table",
+      "detail": "Real-time serving layer",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "streamlit_app",
+      "label": "Streamlit App",
+      "detail": "Real-time dashboard",
+      "icon": "Snowflake_ICON_Streamlit_in_Snowflake.svg",
+      "category": "outcome",
+      "zone": "Consumption"
+    }
+  ],
+  "edges": [
+    {
+      "source": "kafka",
+      "target": "snowpipe_streaming"
+    },
+    {
+      "source": "snowpipe_streaming",
+      "target": "staging_table"
+    },
+    {
+      "source": "staging_table",
+      "target": "dynamic_table"
+    },
+    {
+      "source": "dynamic_table",
+      "target": "dynamic_table_4"
+    },
+    {
+      "source": "dynamic_table_4",
+      "target": "streamlit_app"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "kafka"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe_streaming"
+      ]
+    },
+    {
+      "name": "Raw Layer",
+      "category": "snow",
+      "node_ids": [
+        "staging_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "dynamic_table"
+      ]
+    },
+    {
+      "name": "Serving Layer",
+      "category": "snow",
+      "node_ids": [
+        "dynamic_table_4"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "streamlit_app"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview",
+      "title": "Snowpipe Streaming",
+      "excerpt": "Sub-second row-level ingest"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "title": "Staging Table",
+      "excerpt": "Landing zone for streaming data"
+    }
+  ]
+}

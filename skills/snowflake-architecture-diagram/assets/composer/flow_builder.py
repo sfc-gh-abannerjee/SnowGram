@@ -1,42 +1,217 @@
 """
-Block-to-flow-node mapper.
+Block-to-flow-node mapper (hybrid: docs-driven + legacy fallback).
 
-Translates a sequence of BLOCK_IDs (from the snapshot) into structured flow
-nodes that the rich viewer renders. Each node carries:
+This module provides TWO paths for generating flow nodes:
+
+1. DOCS-DRIVEN (preferred): Uses docs_resolver.py to query SnowflakeProductDocs
+   for current best-practice pipeline components. No hardcoded knowledge of which
+   Snowflake objects to recommend for each pipeline stage.
+
+2. LEGACY (fallback): Uses the static BLOCK_REGISTRY for backward compatibility
+   with existing test personas and the freeform composer. This path is preserved
+   so that `run_personas.py` continues to work unchanged during the transition.
+
+The docs-driven path is activated via `build_flow_from_docs()`.
+The legacy path remains at `build_flow()` (unchanged API).
+
+Each node carries:
   - id, label, detail   (display text)
   - icon                (filename under assets/viewer/icons/)
-  - category            (one of: onprem, bridge, snow, outcome — used for
-                         color/style classes that match the petrohunt
-                         design language)
-
-The category mapping is intentional and matches the reference HTML's
-node-onprem / node-bridge / node-snow / node-outcome classes:
-  - onprem  : external sources, on-prem / 3rd-party systems (orange)
-  - bridge  : ingestion + integration (Snowpipe, Stages, External Functions)
-  - snow    : in-Snowflake compute / storage / transformation
-  - outcome : end-user-facing surfaces (BI, dashboards, search, AI)
+  - category            (one of: onprem, bridge, snow, outcome)
+  - zone                (architectural zone for 2D layout)
+  - doc_url             (link to Snowflake documentation)
 """
 
 from __future__ import annotations
 
+import json
 import re
-from typing import Any
+from pathlib import Path
+from typing import Any, Optional
 
 # --------------------------------------------------------------------------- #
-# Icon mapping — verified against the bundled icon set under viewer/icons/
+# Icon manifest — the ONLY static component knowledge for the docs-driven path
 # --------------------------------------------------------------------------- #
-#
-# Each entry maps a BLOCK_ID to:
-#   {label, detail, icon, category}
-#
-# Labels are human-readable (override BLOCK_NAME for brevity).
-# Detail is a one-line caption shown beneath the label.
-# Icons MUST exist in viewer/icons/ — falls back to a generic icon if missing.
+_HERE = Path(__file__).resolve().parent
+_ASSETS = _HERE.parent
+_ICON_MANIFEST_PATH = _ASSETS / "icon_manifest.json"
+
+_icon_manifest_cache: Optional[dict[str, Any]] = None
+
+
+def _load_icon_manifest() -> dict[str, Any]:
+    global _icon_manifest_cache
+    if _icon_manifest_cache is None:
+        if _ICON_MANIFEST_PATH.exists():
+            _icon_manifest_cache = json.loads(
+                _ICON_MANIFEST_PATH.read_text(encoding="utf-8")
+            )
+        else:
+            _icon_manifest_cache = {}
+    return _icon_manifest_cache
+
+
+def _icon_for(object_type: str) -> tuple[str, str]:
+    """
+    Look up icon and category for a Snowflake object type from the manifest.
+    Returns (icon_filename, category).
+    """
+    manifest = _load_icon_manifest()
+    # Direct lookup
+    entry = manifest.get(object_type)
+    if entry and isinstance(entry, dict) and "icon" in entry:
+        return entry["icon"], entry["category"]
+    # External systems
+    ext = manifest.get("_external_systems", {}).get(object_type)
+    if ext:
+        return ext["icon"], ext["category"]
+    # Consumption
+    cons = manifest.get("_consumption", {}).get(object_type)
+    if cons:
+        return cons["icon"], cons["category"]
+    # Fallback
+    fb = manifest.get("_fallback", {"icon": "Snowflake_ICON_Architecture.svg", "category": "snow"})
+    return fb["icon"], fb["category"]
+
+
+# =========================================================================== #
+# DOCS-DRIVEN PATH — new, preferred
+# =========================================================================== #
+
+def build_flow_from_docs(
+    prompt: str,
+    *,
+    pipeline_type: Optional[str] = None,
+    use_docs: bool = True,
+) -> dict[str, list]:
+    """
+    Build {nodes, edges, zones} using docs-driven pipeline resolution.
+
+    This is the modern path that queries SnowflakeProductDocs for current
+    best practices instead of relying on a hardcoded block registry.
+
+    Args:
+        prompt: User's natural language request
+        pipeline_type: Override pipeline type detection (medallion, streaming, etc.)
+        use_docs: Whether to query live docs (False = use cached/default specs only)
+
+    Returns:
+        {"nodes": [...], "edges": [...], "zones": [...]}
+    """
+    from . import docs_resolver
+
+    spec = docs_resolver.resolve_pipeline(
+        prompt, pipeline_type=pipeline_type, use_docs=use_docs
+    )
+    return _spec_to_flow(spec)
+
+
+def build_flow_from_components(
+    components: list[str],
+    *,
+    use_docs: bool = True,
+) -> dict[str, list]:
+    """
+    Build flow from explicit component names using docs-driven resolution.
+
+    Args:
+        components: List like ["S3", "PIPE", "DYNAMIC_TABLE", "DYNAMIC_TABLE", "BI_TOOL"]
+        use_docs: Whether to enrich from live docs
+
+    Returns:
+        {"nodes": [...], "edges": [...], "zones": [...]}
+    """
+    from . import docs_resolver
+
+    spec = docs_resolver.resolve_custom_pipeline(components, use_docs=use_docs)
+    return _spec_to_flow(spec)
+
+
+def _spec_to_flow(spec: list[dict[str, Any]]) -> dict[str, list]:
+    """
+    Convert a pipeline spec (from docs_resolver) into the viewer's
+    {nodes, edges, zones} format.
+    """
+    nodes: list[dict[str, str]] = []
+    seen_ids: set[str] = set()
+
+    for i, entry in enumerate(spec):
+        object_type = entry.get("object_type", "TABLE")
+        icon, category = _icon_for(object_type)
+
+        # Generate stable node ID
+        node_id = _node_id_from_spec(entry, i)
+        if node_id in seen_ids:
+            node_id = f"{node_id}_{i}"
+        seen_ids.add(node_id)
+
+        node: dict[str, str] = {
+            "id": node_id,
+            "label": entry.get("label", object_type.replace("_", " ").title()),
+            "detail": entry.get("detail", ""),
+            "icon": icon,
+            "category": category,
+            "zone": entry.get("zone", "Transformation"),
+        }
+        if entry.get("doc_url"):
+            node["doc_url"] = entry["doc_url"]
+        nodes.append(node)
+
+    # Sequential edges
+    edges: list[dict[str, str]] = []
+    for i in range(1, len(nodes)):
+        edges.append({"source": nodes[i - 1]["id"], "target": nodes[i]["id"]})
+
+    # Group nodes by zone
+    by_zone: dict[str, list[str]] = {}
+    for n in nodes:
+        zname = n.get("zone", "Transformation")
+        by_zone.setdefault(zname, []).append(n["id"])
+
+    # Zone ordering: follow the pipeline stage order from the spec
+    zone_order_seen: list[str] = []
+    for entry in spec:
+        zname = entry.get("zone", "Transformation")
+        if zname not in zone_order_seen:
+            zone_order_seen.append(zname)
+
+    zones: list[dict[str, Any]] = []
+    for zname in zone_order_seen:
+        if zname in by_zone:
+            # Determine zone category from its nodes
+            zone_nodes = [n for n in nodes if n.get("zone") == zname]
+            # Use the most common category among zone nodes
+            cats = [n["category"] for n in zone_nodes]
+            zone_cat = max(set(cats), key=cats.count) if cats else "snow"
+            zones.append({
+                "name": zname,
+                "category": zone_cat,
+                "node_ids": by_zone[zname],
+            })
+
+    return {"nodes": nodes, "edges": edges, "zones": zones}
+
+
+def _node_id_from_spec(entry: dict[str, Any], index: int) -> str:
+    """Generate a DOM-safe node ID from a pipeline spec entry."""
+    label = entry.get("label", "")
+    if label:
+        # Convert "Dynamic Table" -> "dynamic_table"
+        return re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+    return f"node_{index}"
+
+
+# =========================================================================== #
+# LEGACY PATH — backward compatible (unchanged from previous implementation)
+# =========================================================================== #
+
+# --------------------------------------------------------------------------- #
+# Legacy block registry — preserved for backward compatibility with existing
+# test personas and the freeform Mermaid composer. New code should use the
+# docs-driven path above.
 # --------------------------------------------------------------------------- #
 BLOCK_REGISTRY: dict[str, dict[str, str]] = {
     # --- External / on-prem sources ---
-    # Cloud object stores ARE the user's data lake — use Workloads_Data_Lake
-    # rather than the generic 3rd_Party icon.
     "S3_BUCKET_BLOCK":          {"label": "AWS S3",            "detail": "Object store / data lake",  "icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"},
     "AZURE_BLOB_BLOCK":         {"label": "Azure Blob",        "detail": "ADLS / Blob Storage",        "icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem",
@@ -61,7 +236,6 @@ BLOCK_REGISTRY: dict[str, dict[str, str]] = {
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"},
 
     # --- Bronze layer ---
-    # Use Snowflake-specific database icon rather than generic Database.
     "BRONZE_DB_BLOCK":          {"label": "Bronze Database",   "detail": "Raw landing zone",           "icon": "Snowflake_ICON_RA_Snowflake_Database.svg", "category": "snow",
                                  "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-database"},
     "BRONZE_TABLE_BLOCK":       {"label": "Bronze Table",      "detail": "Raw, append-only",           "icon": "Snowflake_ICON_RA_Table.svg",            "category": "snow",
@@ -92,7 +266,6 @@ BLOCK_REGISTRY: dict[str, dict[str, str]] = {
                                  "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-procedure"},
     "UDF_BLOCK":                {"label": "UDF",               "detail": "User-defined function",      "icon": "Snowflake_ICON_RA_Function_User-Defined_SQL.svg", "category": "snow",
                                  "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-function"},
-    # Use the dedicated dynamic-table icon, not the generic table icon.
     "DYNAMIC_TABLE_BLOCK":      {"label": "Dynamic Table",     "detail": "Declarative refresh",        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",    "category": "snow",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"},
 
@@ -103,7 +276,6 @@ BLOCK_REGISTRY: dict[str, dict[str, str]] = {
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-overview"},
     "WAREHOUSE_L_BLOCK":        {"label": "Warehouse (L)",     "detail": "Heavy ETL",                  "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg", "category": "snow",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-overview"},
-    # BI workloads benefit from auto-scaling — use the adaptive warehouse icon.
     "BI_WAREHOUSE_BLOCK":       {"label": "BI Warehouse",      "detail": "Auto-scaled for BI",         "icon": "Snowflake_ICON_Warehouse_Adaptive.svg",  "category": "snow",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-multicluster"},
 
@@ -126,8 +298,6 @@ BLOCK_REGISTRY: dict[str, dict[str, str]] = {
                                  "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/grant-privilege"},
 
     # --- Gold layer ---
-    # Gold = curated, BI-ready — the data-warehouse workload icon fits better
-    # than a generic database icon.
     "GOLD_DB_BLOCK":            {"label": "Gold Database",     "detail": "Curated, business-ready",    "icon": "Snowflake_ICON_Workloads_Data_Warehouse.svg", "category": "outcome",
                                  "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-database"},
     "GOLD_TABLE_BLOCK":         {"label": "Gold Table",        "detail": "Business-ready output",      "icon": "Snowflake_ICON_RA_Table.svg",            "category": "outcome",
@@ -140,19 +310,61 @@ BLOCK_REGISTRY: dict[str, dict[str, str]] = {
                                  "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-view"},
 
     # --- BI / consumption ---
-    # Embedded Analytics icon reflects the BI/dashboard purpose.
     "TABLEAU_BLOCK":            {"label": "Tableau",           "detail": "BI dashboards",              "icon": "Snowflake_ICON_Embedded_Analytics.svg",  "category": "outcome",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"},
     "POWERBI_BLOCK":            {"label": "Power BI",          "detail": "BI dashboards",              "icon": "Snowflake_ICON_Embedded_Analytics.svg",  "category": "outcome",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"},
-    # Row-level secured BI views map directly to the secure-view RA icon.
     "RLS_VIEW_BLOCK":           {"label": "RLS View",          "detail": "Row-level secured BI view",  "icon": "Snowflake_ICON_RA_View_Secure.svg",      "category": "outcome",
                                  "doc_url": "https://docs.snowflake.com/en/user-guide/security-row-intro"},
 }
 
 # --------------------------------------------------------------------------- #
-# Fallback by category (when BLOCK_ID is not in the registry above)
+# Legacy zone assignment
 # --------------------------------------------------------------------------- #
+ZONE_ORDER = [
+    "External Sources",
+    "Ingestion",
+    "Bronze Layer",
+    "Silver Layer",
+    "Transformation",
+    "Compute",
+    "Gold Layer",
+    "Security & Governance",
+    "Consumption",
+]
+
+CATEGORY_TO_ZONE = {
+    "external":       "External Sources",
+    "ingestion":      "Ingestion",
+    "bronze":         "Bronze Layer",
+    "silver":         "Silver Layer",
+    "transformation": "Transformation",
+    "compute":        "Compute",
+    "storage":        "Bronze Layer",
+    "gold":           "Gold Layer",
+    "security":       "Security & Governance",
+    "bi":             "Consumption",
+}
+
+BLOCK_TO_ZONE_OVERRIDE: dict[str, str] = {
+    "SECURE_VIEW_BLOCK": "Security & Governance",
+    "RLS_VIEW_BLOCK":    "Security & Governance",
+    "EXTERNAL_FUNCTION_BLOCK": "Transformation",
+    "DATA_SHARE_BLOCK": "Consumption",
+}
+
+ZONE_CATEGORY = {
+    "External Sources":       "onprem",
+    "Ingestion":              "bridge",
+    "Bronze Layer":           "snow",
+    "Silver Layer":           "snow",
+    "Transformation":         "snow",
+    "Compute":                "snow",
+    "Gold Layer":             "outcome",
+    "Security & Governance":  "snow",
+    "Consumption":            "outcome",
+}
+
 CATEGORY_FALLBACK_ICON = {
     "external":       "Snowflake_ICON_Workloads_Data_Lake.svg",
     "ingestion":      "Snowflake_ICON_RA_Pipe.svg",
@@ -182,71 +394,6 @@ CATEGORY_TO_FLOW_CLASS = {
 GENERIC_ICON = "Snowflake_ICON_Architecture.svg"
 
 
-# --------------------------------------------------------------------------- #
-# Zone assignment — groups blocks into named architectural zones for the
-# 2D enterprise-style diagram layout (vs a single horizontal flow row).
-#
-# Zone order is significant: it determines left-to-right placement of
-# zone columns in the rendered diagram.
-# --------------------------------------------------------------------------- #
-ZONE_ORDER = [
-    "External Sources",
-    "Ingestion",
-    "Bronze Layer",
-    "Silver Layer",
-    "Transformation",
-    "Compute",
-    "Gold Layer",
-    "Security & Governance",
-    "Consumption",
-]
-
-CATEGORY_TO_ZONE = {
-    "external":       "External Sources",
-    "ingestion":      "Ingestion",
-    "bronze":         "Bronze Layer",
-    "silver":         "Silver Layer",
-    "transformation": "Transformation",
-    "compute":        "Compute",
-    "storage":        "Bronze Layer",   # generic Database/Schema/View land here unless overridden
-    "gold":           "Gold Layer",
-    "security":       "Security & Governance",
-    "bi":             "Consumption",
-}
-
-# Per-block override (some blocks fit better in a zone other than their
-# raw BLOCK_CATEGORY would suggest).
-BLOCK_TO_ZONE_OVERRIDE: dict[str, str] = {
-    # Secure View / RLS View land in Security & Governance regardless of
-    # whether they originate from "storage" or "bi" categories.
-    "SECURE_VIEW_BLOCK": "Security & Governance",
-    "RLS_VIEW_BLOCK":    "Security & Governance",
-    # External Function is used as an outbound enrichment call — keep in
-    # Transformation rather than External Sources.
-    "EXTERNAL_FUNCTION_BLOCK": "Transformation",
-    # Data shares are a consumption pattern.
-    "DATA_SHARE_BLOCK": "Consumption",
-}
-
-
-# Each zone has its own visual identity (stripe + tinting) independent of
-# the categories of the nodes that happen to live inside it. Without this,
-# a zone like "Transformation" containing an "External Function" (onprem
-# category) would inherit an orange stripe even though the zone itself is
-# Snowflake-side.
-ZONE_CATEGORY = {
-    "External Sources":       "onprem",
-    "Ingestion":              "bridge",
-    "Bronze Layer":           "snow",
-    "Silver Layer":           "snow",
-    "Transformation":         "snow",
-    "Compute":                "snow",
-    "Gold Layer":             "outcome",
-    "Security & Governance":  "snow",
-    "Consumption":            "outcome",
-}
-
-
 def _zone_for(block_id: str, category: str) -> str:
     if block_id in BLOCK_TO_ZONE_OVERRIDE:
         return BLOCK_TO_ZONE_OVERRIDE[block_id]
@@ -254,7 +401,7 @@ def _zone_for(block_id: str, category: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Public API
+# Legacy public API (unchanged)
 # --------------------------------------------------------------------------- #
 def block_to_node(block: dict[str, Any]) -> dict[str, str]:
     """
@@ -301,12 +448,11 @@ def build_flow(
 ) -> dict[str, list]:
     """
     Build {nodes, edges, zones} for the rich viewer from an ordered BLOCK_ID list.
+    (LEGACY PATH — preserved for backward compatibility.)
 
     - nodes : flat list with zone field per node
-    - edges : sequential edges in input order (matches deployed UDF semantics)
-    - zones : ordered list of {name, category, node_ids} for the 2D enterprise
-              layout. Zone order follows ZONE_ORDER, restricted to zones that
-              actually have at least one node.
+    - edges : sequential edges in input order
+    - zones : ordered list of {name, category, node_ids}
     """
     nodes: list[dict[str, str]] = []
     seen_ids: list[str] = []
@@ -348,28 +494,17 @@ def build_flow(
             )
 
     # ── Smart naming: detect paradigm and normalize labels ──────────────────
-    # The flow_builder is the primary intelligence layer for the skill path.
-    # It must produce coherent, self-explanatory zone/node names without any
-    # upstream LLM making holistic naming choices.
-    #
-    # Strategy:
-    #   1. Detect architectural paradigm (medallion, streaming, generic)
-    #   2. Normalize zone names to match detected paradigm
-    #   3. Normalize node labels to align with their zone context
-    #   4. Merge single-node zones that are semantically redundant
     _normalize_naming(nodes, zones)
 
     return {"nodes": nodes, "edges": edges, "zones": zones}
 
 
 # --------------------------------------------------------------------------- #
-# Naming intelligence — paradigm detection + normalization
+# Naming intelligence — paradigm detection + normalization (legacy path)
 # --------------------------------------------------------------------------- #
 
-# Paradigm detection signals
 _MEDALLION_ZONES = {"Bronze Layer", "Silver Layer", "Gold Layer"}
 
-# Generic equivalents for medallion terms
 _MEDALLION_TO_GENERIC = {
     "Bronze Layer": "Raw Layer",
     "Silver Layer": "Curated Layer",
@@ -381,22 +516,12 @@ _MEDALLION_LABEL_MAP = {
     "Gold": "Serving",
 }
 
-# Zone merge candidates: if both exist and the smaller has ≤N nodes, merge
 _MERGE_CANDIDATES = [
-    # (smaller zone, absorb into, max_nodes threshold)
     ("Compute", "Transformation", 1),
 ]
 
 
 def _detect_paradigm(zones: list[dict]) -> str:
-    """
-    Detect the architectural naming paradigm from the zone set.
-
-    Returns one of:
-      - "medallion"  : 2+ of Bronze/Silver/Gold present → keep medallion names
-      - "streaming"  : pipeline has streaming ingestion but no medallion layers
-      - "generic"    : default — use descriptive generic names
-    """
     zone_names = {z["name"] for z in zones}
     present_medallion = _MEDALLION_ZONES & zone_names
     if len(present_medallion) >= 2:
@@ -407,26 +532,21 @@ def _detect_paradigm(zones: list[dict]) -> str:
 def _normalize_naming(nodes: list[dict], zones: list[dict]) -> None:
     """
     In-place normalization of zone names, node labels, and node details
-    based on the detected architectural paradigm.
+    based on the detected architectural paradigm. (Legacy path only.)
     """
     paradigm = _detect_paradigm(zones)
 
     if paradigm != "medallion":
-        # --- Normalize medallion terminology to generic ---
-        # Zone names
         for z in zones:
             if z["name"] in _MEDALLION_TO_GENERIC:
                 z["name"] = _MEDALLION_TO_GENERIC[z["name"]]
-        # Node zone references + labels + details
         for n in nodes:
             if n.get("zone") in _MEDALLION_TO_GENERIC:
                 n["zone"] = _MEDALLION_TO_GENERIC[n["zone"]]
-            # Labels: "Bronze Table" → "Raw Table"
             for medallion_term, generic_term in _MEDALLION_LABEL_MAP.items():
                 if n["label"].startswith(medallion_term):
                     n["label"] = generic_term + n["label"][len(medallion_term):]
                     break
-            # Details: "CDC over silver" → "CDC over curated"
             detail = n.get("detail", "")
             for medallion_term, generic_term in _MEDALLION_LABEL_MAP.items():
                 lc = medallion_term.lower()
@@ -436,9 +556,7 @@ def _normalize_naming(nodes: list[dict], zones: list[dict]) -> None:
                     )
                     break
 
-    # --- Merge semantically redundant zones ---
-    # If "Compute" exists with ≤1 node and "Transformation" also exists,
-    # absorb Compute nodes into Transformation (they're the same pipeline stage)
+    # Merge single-node zones
     zone_by_name = {z["name"]: z for z in zones}
     for smaller, target, max_nodes in _MERGE_CANDIDATES:
         if smaller in zone_by_name and target in zone_by_name:
@@ -447,15 +565,11 @@ def _normalize_naming(nodes: list[dict], zones: list[dict]) -> None:
             if len(sz["node_ids"]) <= max_nodes:
                 tz["node_ids"].extend(sz["node_ids"])
                 zones.remove(sz)
-                # Update node zone references
                 for n in nodes:
                     if n.get("zone") == smaller:
                         n["zone"] = target
 
-    # --- Contextual zone relabeling ---
-    # If "Security & Governance" contains ONLY consumer-facing views (outcome
-    # category nodes), relabel to "Access Layer" since the primary function is
-    # data access control, not governance policy management.
+    # Contextual relabeling
     zone_by_name = {z["name"]: z for z in zones}
     if "Security & Governance" in zone_by_name:
         sec_zone = zone_by_name["Security & Governance"]
@@ -465,25 +579,25 @@ def _normalize_naming(nodes: list[dict], zones: list[dict]) -> None:
             for n in sec_nodes:
                 n["zone"] = "Access Layer"
 
-    # --- Update ZONE_CATEGORY for any renamed zones ---
-    # Ensure renamed zones still have correct visual categories
+    # Update ZONE_CATEGORY for renamed zones
     for z in zones:
         if z["name"] not in ZONE_CATEGORY:
-            # Inherit from original name or default to snow
             if z["name"] in ("Raw Layer", "Curated Layer"):
                 z["category"] = "snow"
             elif z["name"] in ("Serving Layer", "Access Layer"):
                 z["category"] = "outcome"
 
 
+# --------------------------------------------------------------------------- #
+# Citations (shared by both paths)
+# --------------------------------------------------------------------------- #
 def build_citations(nodes: list[dict[str, str]]) -> list[dict[str, str]]:
     """
     Auto-generate documentation citations from flow nodes.
 
     Produces one citation per unique doc_url found across nodes, preserving
     node order. Deduplicates by URL so that multiple nodes pointing to the
-    same docs page (e.g. Bronze Table + Silver Table → create-table) produce
-    only one citation entry.
+    same docs page produce only one citation entry.
     """
     seen_urls: set[str] = set()
     citations: list[dict[str, str]] = []

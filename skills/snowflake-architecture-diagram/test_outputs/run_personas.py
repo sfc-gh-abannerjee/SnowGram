@@ -39,7 +39,8 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(COMPOSER))
 sys.path.insert(0, str(SCRIPTS))
 
-from flow_builder import build_flow, build_citations  # noqa: E402
+from flow_builder import build_flow, build_flow_from_docs, _spec_to_flow, build_citations  # noqa: E402
+from docs_resolver import resolve_pipeline, detect_pipeline_type  # noqa: E402
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
@@ -177,6 +178,30 @@ PERSONAS = [
     },
 ]
 
+# --------------------------------------------------------------------------- #
+# DOCS-DRIVEN PERSONAS — use SnowflakeProductDocs for component resolution
+# --------------------------------------------------------------------------- #
+DOCS_PERSONAS = [
+    {
+        "name": "docs_medallion",
+        "prompt": "medallion lakehouse architecture with S3 ingestion",
+        "title": "Docs-Driven — Modern Medallion",
+        "subtitle": "Dynamic Tables for curated & serving layers",
+    },
+    {
+        "name": "docs_streaming",
+        "prompt": "real-time streaming pipeline from Kafka with sub-second latency",
+        "title": "Docs-Driven — Streaming Pipeline",
+        "subtitle": "Snowpipe Streaming + Dynamic Tables",
+    },
+    {
+        "name": "docs_iot",
+        "prompt": "IoT sensor pipeline with MQTT devices and anomaly detection",
+        "title": "Docs-Driven — IoT Pipeline",
+        "subtitle": "Device telemetry → Dynamic Tables → monitoring",
+    },
+]
+
 
 def run_one(persona: dict, *, blocks_index: dict, take_screenshot: bool) -> None:
     name = persona["name"]
@@ -231,23 +256,92 @@ def run_one(persona: dict, *, blocks_index: dict, take_screenshot: bool) -> None
             print(f"  ✓ {name}_v5.png ({png_path.stat().st_size // 1024} KB)")
 
 
+def run_docs_persona(persona: dict, *, take_screenshot: bool) -> None:
+    """Run a docs-driven persona (no BLOCK_IDs — resolves via SnowflakeProductDocs)."""
+    name = persona["name"]
+    print(f"=== {name} (docs-driven) ===")
+
+    # 1. Resolve pipeline from docs
+    spec = resolve_pipeline(persona["prompt"], use_docs=True)
+    flow = _spec_to_flow(spec)
+    citations = build_citations(flow["nodes"])
+
+    # Save decision (for transparency)
+    decision = {
+        "type": "docs_driven",
+        "pipeline_type": detect_pipeline_type(persona["prompt"]),
+        "spec": spec,
+    }
+    (OUT_DIR / f"{name}_decision.json").write_text(json.dumps(decision, indent=2))
+    print(f"  ✓ {name}_decision.json (docs-driven)")
+
+    # 2. Write state
+    state = {
+        "title": persona["title"],
+        "subtitle": persona["subtitle"],
+        "source": "standalone:docs_driven",
+        "nodes": flow["nodes"],
+        "edges": flow["edges"],
+        "zones": flow["zones"],
+        "citations": citations,
+    }
+    state_path = OUT_DIR / f"{name}_state.json"
+    state_path.write_text(json.dumps(state, indent=2))
+    print(f"  ✓ {name}_state.json ({len(flow['nodes'])} nodes)")
+
+    # 3. Self-contained HTML
+    html_path = OUT_DIR / f"{name}_v5.html"
+    subprocess.run(
+        ["python3", str(SCRIPTS / "render_static.py"),
+         "--state", str(state_path), "--out", str(html_path)],
+        check=True, capture_output=True,
+    )
+    print(f"  ✓ {name}_v5.html ({html_path.stat().st_size // 1024} KB)")
+
+    # 4. Chrome screenshot
+    if take_screenshot and Path(CHROME).exists():
+        png_path = OUT_DIR / f"{name}_v5.png"
+        subprocess.run(
+            [CHROME, "--headless=new", "--disable-gpu", "--no-sandbox",
+             "--no-first-run", "--disable-extensions",
+             "--window-size=2200,920", "--virtual-time-budget=4000",
+             "--force-color-profile=srgb",
+             f"--screenshot={png_path}", f"file://{html_path}"],
+            check=False, capture_output=True, timeout=30,
+        )
+        if png_path.exists():
+            print(f"  ✓ {name}_v5.png ({png_path.stat().st_size // 1024} KB)")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--no-screenshot", action="store_true")
     ap.add_argument("--personas", nargs="+", help="Subset of persona names to run")
+    ap.add_argument("--docs-only", action="store_true", help="Run only docs-driven personas")
+    ap.add_argument("--legacy-only", action="store_true", help="Run only legacy personas")
     args = ap.parse_args(argv)
 
     blocks = json.loads((ASSETS / "component_blocks.json").read_text())
     blocks_index = {b["BLOCK_ID"]: b for b in blocks}
 
-    targets = PERSONAS
-    if args.personas:
-        wanted = set(args.personas)
-        targets = [p for p in PERSONAS if p["name"] in wanted]
+    # Legacy personas
+    if not args.docs_only:
+        targets = PERSONAS
+        if args.personas:
+            wanted = set(args.personas)
+            targets = [p for p in PERSONAS if p["name"] in wanted]
+        for persona in targets:
+            run_one(persona, blocks_index=blocks_index,
+                    take_screenshot=not args.no_screenshot)
 
-    for persona in targets:
-        run_one(persona, blocks_index=blocks_index,
-                take_screenshot=not args.no_screenshot)
+    # Docs-driven personas
+    if not args.legacy_only:
+        docs_targets = DOCS_PERSONAS
+        if args.personas:
+            wanted = set(args.personas)
+            docs_targets = [p for p in DOCS_PERSONAS if p["name"] in wanted]
+        for persona in docs_targets:
+            run_docs_persona(persona, take_screenshot=not args.no_screenshot)
 
     print()
     print(f"Outputs in: {OUT_DIR}")

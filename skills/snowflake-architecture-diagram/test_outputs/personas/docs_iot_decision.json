@@ -1,0 +1,52 @@
+{
+  "type": "docs_driven",
+  "pipeline_type": "iot",
+  "spec": [
+    {
+      "stage": "source",
+      "object_type": "IOT",
+      "label": "IoT Gateway",
+      "detail": "MQTT / device telemetry",
+      "zone": "External Sources"
+    },
+    {
+      "stage": "ingestion",
+      "object_type": "PIPE",
+      "label": "Snowpipe Streaming",
+      "detail": "Sub-second sensor ingest",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+    },
+    {
+      "stage": "raw_storage",
+      "object_type": "TABLE",
+      "label": "Time-Series Table",
+      "detail": "Raw sensor readings",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "transformation",
+      "object_type": "DYNAMIC_TABLE",
+      "label": "Dynamic Table",
+      "detail": "Windowed aggregation",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "serving",
+      "object_type": "DYNAMIC_TABLE",
+      "label": "Dynamic Table",
+      "detail": "Anomaly detection output",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "consumption",
+      "object_type": "WEB_APP",
+      "label": "Monitoring App",
+      "detail": "Operations dashboard",
+      "zone": "Consumption"
+    }
+  ]
+}

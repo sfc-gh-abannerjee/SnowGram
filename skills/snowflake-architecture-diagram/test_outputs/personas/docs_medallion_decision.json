@@ -1,0 +1,52 @@
+{
+  "type": "docs_driven",
+  "pipeline_type": "medallion",
+  "spec": [
+    {
+      "stage": "source",
+      "object_type": "S3",
+      "label": "Cloud Storage",
+      "detail": "Object store / data lake",
+      "zone": "External Sources"
+    },
+    {
+      "stage": "ingestion",
+      "object_type": "PIPE",
+      "label": "Snowpipe",
+      "detail": "Event-driven auto-ingest",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+    },
+    {
+      "stage": "raw_storage",
+      "object_type": "TABLE",
+      "label": "Landing Table",
+      "detail": "Append-only raw data",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "transformation",
+      "object_type": "DYNAMIC_TABLE",
+      "label": "Dynamic Table",
+      "detail": "Declarative cleansing & dedup",
+      "zone": "Curated Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "serving",
+      "object_type": "DYNAMIC_TABLE",
+      "label": "Dynamic Table",
+      "detail": "Business-ready aggregations",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "consumption",
+      "object_type": "BI_TOOL",
+      "label": "Analytics",
+      "detail": "BI dashboards & reports",
+      "zone": "Consumption"
+    }
+  ]
+}

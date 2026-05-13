@@ -1,0 +1,52 @@
+{
+  "type": "docs_driven",
+  "pipeline_type": "streaming",
+  "spec": [
+    {
+      "stage": "source",
+      "object_type": "KAFKA",
+      "label": "Kafka",
+      "detail": "Streaming topic",
+      "zone": "External Sources"
+    },
+    {
+      "stage": "ingestion",
+      "object_type": "PIPE",
+      "label": "Snowpipe Streaming",
+      "detail": "Sub-second row-level ingest",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+    },
+    {
+      "stage": "raw_storage",
+      "object_type": "TABLE",
+      "label": "Staging Table",
+      "detail": "Landing zone for streaming data",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "transformation",
+      "object_type": "DYNAMIC_TABLE",
+      "label": "Dynamic Table",
+      "detail": "Incremental aggregation",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "serving",
+      "object_type": "DYNAMIC_TABLE",
+      "label": "Dynamic Table",
+      "detail": "Real-time serving layer",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "stage": "consumption",
+      "object_type": "STREAMLIT",
+      "label": "Streamlit App",
+      "detail": "Real-time dashboard",
+      "zone": "Consumption"
+    }
+  ]
+}

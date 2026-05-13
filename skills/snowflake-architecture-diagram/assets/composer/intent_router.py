@@ -389,13 +389,74 @@ def route(
 
 
 # --------------------------------------------------------------------------- #
+# DOCS-DRIVEN ROUTING (preferred — uses SnowflakeProductDocs)
+# --------------------------------------------------------------------------- #
+def route_docs_driven(
+    prompt: str,
+    *,
+    use_docs: bool = True,
+) -> dict[str, Any]:
+    """
+    Route using docs-driven pipeline resolution instead of hardcoded blocks.
+
+    This is the modern path that queries SnowflakeProductDocs to determine
+    best-practice components. Falls back to cached/default specs when offline.
+
+    Returns a decision dict:
+        {"type": "docs_driven", "pipeline_type": str, "spec": [...],
+         "confidence": float, "rationale": str}
+    """
+    from . import docs_resolver
+
+    prompt_norm = _normalize(prompt)
+    pipeline_type = docs_resolver.detect_pipeline_type(prompt_norm)
+    spec = docs_resolver.resolve_pipeline(
+        prompt, pipeline_type=pipeline_type, use_docs=use_docs
+    )
+
+    return {
+        "type": "docs_driven",
+        "pipeline_type": pipeline_type,
+        "spec": spec,
+        "confidence": 0.8 if use_docs else 0.6,
+        "rationale": (
+            f"Docs-driven resolution for '{pipeline_type}' pipeline. "
+            f"{'Enriched from live SnowflakeProductDocs.' if use_docs else 'Using cached/default spec (offline).'}"
+        ),
+    }
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 def _main() -> int:
     if len(sys.argv) < 2:
         print("Usage: intent_router.py \"<prompt>\"", file=sys.stderr)
+        print("       intent_router.py --docs \"<prompt>\"  (docs-driven mode)", file=sys.stderr)
         return 2
-    decision = route(" ".join(sys.argv[1:]))
+
+    if sys.argv[1] == "--docs":
+        prompt = " ".join(sys.argv[2:])
+        # Use sys.path hack for CLI invocation (no package context)
+        import importlib.util
+        spec_mod = importlib.util.spec_from_file_location(
+            "docs_resolver", Path(__file__).parent / "docs_resolver.py"
+        )
+        docs_resolver = importlib.util.module_from_spec(spec_mod)
+        spec_mod.loader.exec_module(docs_resolver)
+
+        pipeline_type = docs_resolver.detect_pipeline_type(prompt.lower())
+        pipeline_spec = docs_resolver.resolve_pipeline(prompt, use_docs=True)
+        decision = {
+            "type": "docs_driven",
+            "pipeline_type": pipeline_type,
+            "spec": pipeline_spec,
+            "confidence": 0.8,
+            "rationale": f"Docs-driven resolution for '{pipeline_type}' pipeline.",
+        }
+    else:
+        decision = route(" ".join(sys.argv[1:]))
+
     print(json.dumps(decision, indent=2))
     return 0
 

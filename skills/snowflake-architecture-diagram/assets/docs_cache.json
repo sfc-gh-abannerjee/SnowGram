@@ -1,0 +1,303 @@
+{
+  "entries": {
+    "medallion_765476d54450": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Cloud Storage",
+          "detail": "Object store / data lake",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe",
+          "detail": "Event-driven auto-ingest",
+          "zone": "Ingestion"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Landing Table",
+          "detail": "Append-only raw data",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Declarative cleansing & dedup",
+          "zone": "Curated Layer"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Business-ready aggregations",
+          "zone": "Serving Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "BI dashboards & reports",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778691396.493155
+    },
+    "medallion_38e9c74b654a": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Cloud Storage",
+          "detail": "Object store / data lake",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe",
+          "detail": "Event-driven auto-ingest",
+          "zone": "Ingestion",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Landing Table",
+          "detail": "Append-only raw data",
+          "zone": "Raw Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Declarative cleansing & dedup",
+          "zone": "Curated Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Business-ready aggregations",
+          "zone": "Serving Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "BI dashboards & reports",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778691480.8563259
+    },
+    "medallion_4016ee1b56e5": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Cloud Storage",
+          "detail": "Object store / data lake",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe",
+          "detail": "Event-driven auto-ingest",
+          "zone": "Ingestion"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Landing Table",
+          "detail": "Append-only raw data",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Declarative cleansing & dedup",
+          "zone": "Curated Layer"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Business-ready aggregations",
+          "zone": "Serving Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "BI dashboards & reports",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778691515.213461
+    },
+    "medallion_5790906acadd": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Cloud Storage",
+          "detail": "Object store / data lake",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe",
+          "detail": "Event-driven auto-ingest",
+          "zone": "Ingestion",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Landing Table",
+          "detail": "Append-only raw data",
+          "zone": "Raw Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Declarative cleansing & dedup",
+          "zone": "Curated Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Business-ready aggregations",
+          "zone": "Serving Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "BI dashboards & reports",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778691752.119165
+    },
+    "streaming_5fb2fe2853e9": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "KAFKA",
+          "label": "Kafka",
+          "detail": "Streaming topic",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe Streaming",
+          "detail": "Sub-second row-level ingest",
+          "zone": "Ingestion",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Staging Table",
+          "detail": "Landing zone for streaming data",
+          "zone": "Raw Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Incremental aggregation",
+          "zone": "Transformation",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Real-time serving layer",
+          "zone": "Serving Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "STREAMLIT",
+          "label": "Streamlit App",
+          "detail": "Real-time dashboard",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778691830.87295
+    },
+    "iot_37acbe07a5dc": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "IOT",
+          "label": "IoT Gateway",
+          "detail": "MQTT / device telemetry",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe Streaming",
+          "detail": "Sub-second sensor ingest",
+          "zone": "Ingestion",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Time-Series Table",
+          "detail": "Raw sensor readings",
+          "zone": "Raw Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Windowed aggregation",
+          "zone": "Transformation",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Anomaly detection output",
+          "zone": "Serving Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "WEB_APP",
+          "label": "Monitoring App",
+          "detail": "Operations dashboard",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778691843.2493062
+    }
+  },
+  "created_at": 0
+}

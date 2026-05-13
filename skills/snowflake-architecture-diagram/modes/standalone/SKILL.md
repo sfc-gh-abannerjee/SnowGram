@@ -22,11 +22,25 @@ For Python helpers, import `assets/scripts/skill_paths.py` analogously. The pare
 
 ## Workflow
 
-### Step 1: Match prompt to a template OR collect components
+### Step 1: Match prompt to a template OR resolve via docs
 
-**Goal:** decide whether the user wants a canned reference architecture or a custom component list.
+**Goal:** decide whether the user wants a canned reference architecture, a custom component list, or a docs-driven pipeline resolution.
 
-**Preferred path — automated routing via the intent router:**
+**Preferred path — docs-driven resolution (recommended for new diagrams):**
+
+```bash
+python3 "$COMPOSER_DIR/intent_router.py" --docs "<user's prompt verbatim>"
+```
+
+This queries SnowflakeProductDocs to determine current best-practice components for the pipeline type (medallion, streaming, IoT, batch, security). Returns a pipeline spec with Dynamic Tables for transformation/serving layers by default — aligned with Snowflake's latest guidance.
+
+```jsonc
+{"type": "docs_driven", "pipeline_type": "medallion",
+ "spec": [{"stage": "source", "object_type": "S3", "label": "Cloud Storage", ...}, ...],
+ "confidence": 0.8, "rationale": "..."}
+```
+
+**Alternative — legacy routing via the intent router (backward-compatible):**
 
 ```bash
 python3 "$COMPOSER_DIR/intent_router.py" "<user's prompt verbatim>"

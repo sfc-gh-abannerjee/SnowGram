@@ -1,0 +1,121 @@
+{
+  "_comment": "Minimal static mapping: Snowflake object type → icon + visual category. This is the ONLY hardcoded component knowledge in the skill. Everything else (labels, details, zone assignment, pipeline logic) is resolved dynamically from Snowflake docs at runtime.",
+
+  "DYNAMIC_TABLE": {
+    "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+    "category": "snow"
+  },
+  "TABLE": {
+    "icon": "Snowflake_ICON_RA_Table.svg",
+    "category": "snow"
+  },
+  "EXTERNAL_TABLE": {
+    "icon": "Snowflake_ICON_RA_Table_External.svg",
+    "category": "snow"
+  },
+  "ICEBERG_TABLE": {
+    "icon": "Snowflake_ICON_RA_Table_Iceberg.svg",
+    "category": "snow"
+  },
+  "HYBRID_TABLE": {
+    "icon": "Snowflake_ICON_RA_Table_Hybrid.svg",
+    "category": "snow"
+  },
+  "VIEW": {
+    "icon": "Snowflake_ICON_RA_View.svg",
+    "category": "snow"
+  },
+  "SECURE_VIEW": {
+    "icon": "Snowflake_ICON_RA_View_Secure.svg",
+    "category": "snow"
+  },
+  "MATERIALIZED_VIEW": {
+    "icon": "Snowflake_ICON_RA_View_Materialized.svg",
+    "category": "snow"
+  },
+  "STREAM": {
+    "icon": "Snowflake_ICON_RA_Stream.svg",
+    "category": "snow"
+  },
+  "TASK": {
+    "icon": "Snowflake_ICON_RA_Task.svg",
+    "category": "snow"
+  },
+  "PIPE": {
+    "icon": "Snowflake_ICON_RA_Pipe.svg",
+    "category": "bridge"
+  },
+  "STAGE": {
+    "icon": "Snowflake_ICON_RA_Stage_External.svg",
+    "category": "bridge"
+  },
+  "WAREHOUSE": {
+    "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg",
+    "category": "snow"
+  },
+  "DATABASE": {
+    "icon": "Snowflake_ICON_RA_Snowflake_Database.svg",
+    "category": "snow"
+  },
+  "FUNCTION": {
+    "icon": "Snowflake_ICON_RA_Function.svg",
+    "category": "snow"
+  },
+  "STORED_PROCEDURE": {
+    "icon": "Snowflake_ICON_RA_Function_Stored_Procedure.svg",
+    "category": "snow"
+  },
+  "UDF": {
+    "icon": "Snowflake_ICON_RA_Function_User-Defined_SQL.svg",
+    "category": "snow"
+  },
+  "EXTERNAL_FUNCTION": {
+    "icon": "Snowflake_ICON_RA_Function_External.svg",
+    "category": "snow"
+  },
+  "ROLE": {
+    "icon": "Snowflake_ICON_RA_Role.svg",
+    "category": "snow"
+  },
+  "MASKING_POLICY": {
+    "icon": "Snowflake_ICON_RA_Policy_Masking.svg",
+    "category": "snow"
+  },
+  "ROW_ACCESS_POLICY": {
+    "icon": "Snowflake_ICON_RA_Policy_Row.svg",
+    "category": "snow"
+  },
+  "TAG": {
+    "icon": "Snowflake_ICON_RA_Tag.svg",
+    "category": "snow"
+  },
+  "VOLUME": {
+    "icon": "Snowflake_ICON_RA_Volume.svg",
+    "category": "snow"
+  },
+
+  "_external_systems": {
+    "S3": {"icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem"},
+    "AZURE_BLOB": {"icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem"},
+    "GCS": {"icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem"},
+    "KAFKA": {"icon": "Snowflake_ICON_Kafka_Connectors.svg", "category": "onprem"},
+    "IOT": {"icon": "Snowflake_ICON_IoT.svg", "category": "onprem"},
+    "DATA_SHARE": {"icon": "Snowflake_ICON_Sharing_Collaboration.svg", "category": "onprem"},
+    "MARKETPLACE": {"icon": "Snowflake_ICON_Marketplace.svg", "category": "onprem"},
+    "NATIVE_APP": {"icon": "Snowflake_ICON_Native_App.svg", "category": "onprem"}
+  },
+
+  "_consumption": {
+    "BI_TOOL": {"icon": "Snowflake_ICON_Embedded_Analytics.svg", "category": "outcome"},
+    "STREAMLIT": {"icon": "Snowflake_ICON_Streamlit_in_Snowflake.svg", "category": "outcome"},
+    "SNOWPARK": {"icon": "Snowflake_ICON_Snowpark.svg", "category": "outcome"},
+    "CORTEX": {"icon": "Snowflake_ICON_Cortex.svg", "category": "outcome"},
+    "SPCS": {"icon": "Snowflake_ICON_Snowpark_Containers.svg", "category": "outcome"},
+    "WEB_APP": {"icon": "Snowflake_ICON_Web_App.svg", "category": "outcome"}
+  },
+
+  "_fallback": {
+    "icon": "Snowflake_ICON_Architecture.svg",
+    "category": "snow"
+  }
+}
