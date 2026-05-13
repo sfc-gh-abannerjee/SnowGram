@@ -100,6 +100,8 @@ type AgentResult = {
   bestPractices?: string[];
   antiPatterns?: string[];
   components?: Array<{ name: string; purpose: string; configuration: string; bestPractice: string; source?: string }>;
+  componentSummary?: string;
+  stats?: string;
   rawResponse?: string;
   // Conversation persistence - enables multi-turn dialogue
   threadId?: number;
@@ -2350,9 +2352,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           await parseMermaidAndCreateDiagram(mermaidCode, spec);
         }
 
-        // Extract overview for final message - look for Architecture Overview section
-        const overviewMatch = fullText.match(/##\s*Architecture Overview\s*\n([\s\S]*?)(?=\n##\s|```|$)/i);
-        const overview = overviewMatch ? overviewMatch[1].trim() : '';
+        // Extract overview for final message - supports both deployed spec (Section 1)
+        // and legacy format (## Architecture Overview)
+        const section1Match = fullText.match(/###\s*Section\s*1[:\s]*Acknowledgment\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|```|$)/i);
+        const legacyOverviewMatch = fullText.match(/##\s*Architecture Overview\s*\n([\s\S]*?)(?=\n##\s|```|$)/i);
+        const overview = (section1Match ? section1Match[1].trim() : '') 
+          || (legacyOverviewMatch ? legacyOverviewMatch[1].trim() : '');
         
         // Final message - preserve markdown formatting for ReactMarkdown to render
         // Strip code blocks and artifact section headers (shown in dropdowns instead)
