@@ -231,11 +231,11 @@
   .connector-path {
     fill: none;
     stroke: var(--connector-color);
-    stroke-width: 1.5;
-    stroke-dasharray: 6 4;
+    stroke-width: 1.3;
+    stroke-dasharray: 5 4;
     stroke-linecap: round;
     stroke-linejoin: round;
-    opacity: 0.75;
+    opacity: 0.7;
     animation: connector-flow 1.2s linear infinite;
   }
   .connector-dot {
@@ -972,24 +972,15 @@
         if (useHorizontal) {
           var dx = tgtZoneCx - srcZoneCx;
 
-          if (horizontalGap) {
-            // True gap between zones — route through the gap
-            if (dx >= 0) {
-              x1 = srcZoneRect.right - cardRect.left + edgeMargin;
-              x2 = tgtZoneRect.left - cardRect.left - edgeMargin;
-            } else {
-              x1 = srcZoneRect.left - cardRect.left - edgeMargin;
-              x2 = tgtZoneRect.right - cardRect.left + edgeMargin;
-            }
+          // Always route from/to NODE edges (not zone edges) for clarity.
+          // This naturally spreads connectors vertically since each node
+          // has a different Y position within its zone.
+          if (dx >= 0) {
+            x1 = srcRect.right - cardRect.left + edgeMargin;
+            x2 = tgtRect.left - cardRect.left - edgeMargin;
           } else {
-            // Zones overlap horizontally — use node edges
-            if (dx >= 0) {
-              x1 = srcRect.right - cardRect.left + edgeMargin;
-              x2 = tgtRect.left - cardRect.left - edgeMargin;
-            } else {
-              x1 = srcRect.left - cardRect.left - edgeMargin;
-              x2 = tgtRect.right - cardRect.left + edgeMargin;
-            }
+            x1 = srcRect.left - cardRect.left - edgeMargin;
+            x2 = tgtRect.right - cardRect.left + edgeMargin;
           }
           // Always use node Y-centers so line connects to/from the actual nodes
           // Stagger Y when multiple edges exit/enter the same node
@@ -1006,12 +997,38 @@
           if (dx >= 0 && x2 <= x1) x2 = x1 + 16;
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
-          // Orthogonal: H → V → H with turn at gap midpoint
-          var turnX = x1 + (x2 - x1) * 0.5 + laneOffset;
-          d = 'M' + x1 + ',' + y1 +
-              ' L' + turnX + ',' + y1 +
-              ' L' + turnX + ',' + y2 +
-              ' L' + x2 + ',' + y2;
+          var vDist = Math.abs(y2 - y1);
+          // If source and target are nearly aligned vertically, draw a direct line
+          // (no orthogonal detour needed)
+          if (vDist < 12) {
+            // Nearly straight — slight curve to indicate directionality
+            var midX = (x1 + x2) / 2;
+            d = 'M' + x1 + ',' + y1 +
+                ' C' + midX + ',' + y1 + ' ' + midX + ',' + y2 + ' ' + x2 + ',' + y2;
+          } else {
+            // Orthogonal: H → V → H with rounded corners at turns
+            // Bias turnX closer to exit when gap is short (avoids long horizontal travel)
+            var hDist = Math.abs(x2 - x1);
+            var turnRatio = hDist > 120 ? 0.5 : 0.3;
+            var turnX = x1 + (x2 - x1) * turnRatio + laneOffset;
+            var r = 6; // corner radius
+            var vDir = y2 > y1 ? 1 : -1;
+            var hDir = turnX > x1 ? 1 : -1;
+            var hDir2 = x2 > turnX ? 1 : -1;
+            if (vDist < r * 2.5 || Math.abs(turnX - x1) < r * 2) {
+              d = 'M' + x1 + ',' + y1 +
+                  ' L' + turnX + ',' + y1 +
+                  ' L' + turnX + ',' + y2 +
+                  ' L' + x2 + ',' + y2;
+            } else {
+              d = 'M' + x1 + ',' + y1 +
+                  ' L' + (turnX - hDir * r) + ',' + y1 +
+                  ' Q' + turnX + ',' + y1 + ' ' + turnX + ',' + (y1 + vDir * r) +
+                  ' L' + turnX + ',' + (y2 - vDir * r) +
+                  ' Q' + turnX + ',' + y2 + ' ' + (turnX + hDir2 * r) + ',' + y2 +
+                  ' L' + x2 + ',' + y2;
+            }
+          }
         } else {
           // Vertical: exit bottom/top using node centers for X
           var dy = tgtNodeCy - srcNodeCy;
