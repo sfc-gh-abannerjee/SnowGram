@@ -71,7 +71,7 @@ The tracks exist because their audiences have fundamentally different constraint
 
 ### 1. Cortex Agent (`SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT`)
 
-**Spec File**: `/Users/abannerjee/Documents/SnowGram/agent_spec_v5.yaml`
+**Spec File**: `backend/agent/agent_spec_deployed.yaml`
 **Deploy Command**: `ALTER AGENT SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT SET AGENT_SPEC = '...'`
 
 **Improvement Areas**:
@@ -170,7 +170,7 @@ response = await snowgram_agent.run(
 ```
 IF component_names_wrong:
     ROOT_CAUSE = "agent_instructions"
-    TARGET = agent_spec_v5.yaml:instructions.orchestration
+    TARGET = backend/agent/agent_spec_deployed.yaml:instructions.orchestration
     
 ELIF components_missing:
     IF user_term_not_in_synonyms:
@@ -182,11 +182,11 @@ ELIF components_missing:
         
 ELIF connections_wrong:
     ROOT_CAUSE = "agent_instructions"
-    TARGET = agent_spec_v5.yaml (edge direction guidance)
+    TARGET = backend/agent/agent_spec_deployed.yaml (edge direction guidance)
     
 ELIF tool_not_called:
     ROOT_CAUSE = "agent_tool_config"
-    TARGET = agent_spec_v5.yaml:tools section
+    TARGET = backend/agent/agent_spec_deployed.yaml:tools section
     
 ELIF layout_broken:
     ROOT_CAUSE = "frontend_code"
@@ -199,7 +199,7 @@ ELIF layout_broken:
 
 | Root Cause | Improvement Action | Agent to Invoke |
 |------------|-------------------|-----------------|
-| `agent_instructions` | Edit agent_spec_v5.yaml, redeploy | `$cortex-agent` skill |
+| `agent_instructions` | Edit backend/agent/agent_spec_deployed.yaml, redeploy | `$cortex-agent` skill |
 | `semantic_view` | INSERT INTO COMPONENT_SYNONYMS | `$semantic-view` skill |
 | `suggest_function` | ALTER FUNCTION with fixed SQL | `$snowgram-debugger` |
 | `agent_tool_config` | Update tool_resources in spec | `$cortex-agent` skill |
@@ -246,7 +246,7 @@ skill("cortex-agent")
 
 **Target for SnowGram**:
 - Agent: `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT`
-- Spec File: `/Users/abannerjee/Documents/SnowGram/agent_spec_v5.yaml`
+- Spec File: `backend/agent/agent_spec_deployed.yaml`
 
 ### `$semantic-view` (Semantic View Optimization)
 
@@ -372,7 +372,7 @@ Use these prompts to verify improvements:
 
 | File | Purpose | When to Modify |
 |------|---------|----------------|
-| `agent_spec_v5.yaml` | Agent instructions and tool config | Wrong component names, tool order |
+| `backend/agent/agent_spec_deployed.yaml` | Agent instructions and tool config | Wrong component names, tool order |
 | `deploy_agent_v4.sql` | Agent deployment SQL | After any spec change |
 | `COMPONENT_SYNONYMS` table | User term → component mappings | Missing synonyms |
 | `COMPONENT_MAP_SV` view | Semantic view for queries | After table changes |
@@ -387,10 +387,10 @@ Use these prompts to verify improvements:
 ### Redeploy Agent After Spec Change
 ```bash
 # Generate compact JSON from YAML
-python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('agent_spec_v5.yaml'))))" > agent_spec_v5.json
+python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('backend/agent/agent_spec_deployed.yaml'))))" > agent_spec_deployed.json
 
 # Deploy via SQL
-snow sql -q "ALTER AGENT SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT SET AGENT_SPEC = '\$(cat agent_spec_v5.json)'"
+snow sql -q "ALTER AGENT SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT SET AGENT_SPEC = '\$(cat agent_spec_deployed.json)'"
 ```
 
 ### Add Synonym to Semantic View
