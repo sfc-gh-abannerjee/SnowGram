@@ -15,13 +15,13 @@
 
 export const LAYOUT_CONSTANTS = {
   /** Standard node width used by ELK and medallion layout */
-  STANDARD_NODE_WIDTH: 150,
+  STANDARD_NODE_WIDTH: 160,
   /** Standard node height used by ELK and medallion layout */
   STANDARD_NODE_HEIGHT: 130,
-  /** Fallback node width when style is not set */
-  DEFAULT_NODE_WIDTH: 180,
+  /** Fallback node width when style is not set - increased to reduce label truncation */
+  DEFAULT_NODE_WIDTH: 200,
   /** Fallback node height when style is not set */
-  DEFAULT_NODE_HEIGHT: 140,
+  DEFAULT_NODE_HEIGHT: 150,
   /** Horizontal padding inside boundaries */
   BOUNDARY_PADDING_X: 24,
   /** Top padding for boundary label room */

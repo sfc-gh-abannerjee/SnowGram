@@ -475,6 +475,7 @@ export function layoutWithLanes(
   const TOP_MARGIN = 60;
   const LANE_LABEL_WIDTH = 40;
   const SECTION_COLUMN_WIDTH = 200;
+  const BOUNDARY_MARGIN_LEFT = 80;  // Extra margin for source boundaries (Producer App)
   
   // Analyze the subgraph structure to determine layout regions
   const laneSubgraphs: Array<{ id: string; index: number; label: string }> = [];
@@ -548,15 +549,22 @@ export function layoutWithLanes(
   const numLanes = laneSubgraphs.length || laneNodes.size;
   console.log(`[layoutWithLanes] Creating labels: numLanes=${numLanes}, laneSubgraphs=`, laneSubgraphs.map(s => s.label));
   
-  // Calculate LANE_START_X early so badges can be positioned relative to content
-  const LANE_START_X = LEFT_MARGIN + LANE_LABEL_WIDTH + 30;
+  // =============================================================================
+  // HORIZONTAL LANE LAYOUT: Lanes are COLUMNS arranged left-to-right (1A→1B→1C→1D)
+  // Each lane is a vertical column. Badges appear at TOP of each column.
+  // Nodes within each lane are stacked vertically within their column.
+  // =============================================================================
   
-  // Add lane labels (positioned INSIDE content area, adjacent to first component)
-  // Reference architecture shows badges at START of each row, inside diagram bounds
+  const LANE_COLUMN_WIDTH = 220;  // Width of each lane column
+  const LANE_START_X = LEFT_MARGIN;
+  const BADGE_Y = TOP_MARGIN - 50;  // Badges at TOP, above content
+  
+  // Add lane labels (positioned at TOP of each horizontal column)
+  // Reference architecture: 1A, 1B, 1C, 1D flow left-to-right as column headers
   for (let i = 0; i < numLanes; i++) {
     const laneInfo = laneSubgraphs[i];
     const label = laneInfo?.label || String(i + 1);
-    const laneY = TOP_MARGIN + i * (LANE_HEIGHT + LANE_PADDING);
+    const laneX = LANE_START_X + i * LANE_COLUMN_WIDTH;
     
     if (label) {
       labelNodes.push({
@@ -568,8 +576,8 @@ export function layoutWithLanes(
           backgroundColor: '#7C3AED',  // Purple for lane badges
           textColor: '#FFFFFF',
         },
-        // Position badge at start of lane content area (not far left margin)
-        position: { x: LANE_START_X - 50, y: laneY + (LANE_HEIGHT - 36) / 2 },
+        // Position badge at TOP CENTER of each lane column
+        position: { x: laneX + (LANE_COLUMN_WIDTH - 36) / 2, y: BADGE_Y },
         style: {
           width: 36,
           height: 36,
@@ -582,18 +590,15 @@ export function layoutWithLanes(
           fontWeight: 'bold',
           fontSize: '14px',
           border: 'none',
+          zIndex: 100,  // Ensure badges render above node boxes
         },
       });
     }
   }
   
-  // Calculate where sections start (after all lane content)
-  let maxLaneX = LEFT_MARGIN + LANE_LABEL_WIDTH + 30;
-  for (const [laneIdx, nodesInLane] of laneNodes) {
-    const laneEndX = LEFT_MARGIN + LANE_LABEL_WIDTH + 30 + nodesInLane.length * COLUMN_WIDTH;
-    maxLaneX = Math.max(maxLaneX, laneEndX);
-  }
-  const SECTION_START_X = maxLaneX + 50;
+  // Calculate where sections start (after all lane columns)
+  // With horizontal lanes, sections start after the rightmost lane column
+  const SECTION_START_X = LANE_START_X + numLanes * LANE_COLUMN_WIDTH + 50;
   
   // Add section labels (top badges above section columns)
   for (let i = 0; i < sectionSubgraphs.length; i++) {
@@ -624,36 +629,88 @@ export function layoutWithLanes(
           fontWeight: 'bold',
           fontSize: '14px',
           border: 'none',
+          zIndex: 100,  // Ensure badges render above node boxes
         },
       });
     }
   }
   
-  // Position boundary nodes (e.g., producer) - centered vertically spanning all lanes
-  const totalLaneHeight = numLanes * LANE_HEIGHT + (numLanes - 1) * LANE_PADDING;
-  boundaryNodes.forEach((node, idx) => {
+  // Position boundary nodes based on edge flow direction
+  // Sources (only outgoing edges) go LEFT, Sinks (only incoming edges) go RIGHT
+  // With horizontal lanes, calculate total content height for vertical centering
+  
+  // First, calculate max nodes in any lane to determine content height
+  let maxNodesInAnyLane = 1;
+  for (const [_laneIdx, nodesInLane] of laneNodes) {
+    if (nodesInLane.length > maxNodesInAnyLane) {
+      maxNodesInAnyLane = nodesInLane.length;
+    }
+  }
+  const VERTICAL_SPACING = NODE_HEIGHT + 30;
+  const totalContentHeight = maxNodesInAnyLane * NODE_HEIGHT + (maxNodesInAnyLane - 1) * 30;
+  
+  // Analyze boundary nodes to classify as source or sink
+  const sourceBoundaryNodes: typeof boundaryNodes = [];
+  const sinkBoundaryNodes: typeof boundaryNodes = [];
+  
+  for (const node of boundaryNodes) {
+    const hasOutgoing = edges.some(e => e.source === node.id);
+    const hasIncoming = edges.some(e => e.target === node.id);
+    
+    if (hasOutgoing && !hasIncoming) {
+      // Source: only sends edges (e.g., Producer App)
+      sourceBoundaryNodes.push(node);
+    } else if (hasIncoming && !hasOutgoing) {
+      // Sink: only receives edges (e.g., Consumer App)
+      sinkBoundaryNodes.push(node);
+    } else if (hasIncoming && hasOutgoing) {
+      // Both: treat as source (left side) for now
+      sourceBoundaryNodes.push(node);
+    } else {
+      // No edges: default to left
+      sourceBoundaryNodes.push(node);
+    }
+  }
+  
+  // Position source boundary nodes on LEFT (with extra margin for spacing)
+  sourceBoundaryNodes.forEach((node, idx) => {
     node.position = {
-      x: LEFT_MARGIN - 60 - idx * 140,
-      y: TOP_MARGIN + totalLaneHeight / 2 - NODE_HEIGHT / 2,
+      x: -BOUNDARY_MARGIN_LEFT - idx * 140,
+      y: TOP_MARGIN + totalContentHeight / 2 - NODE_HEIGHT / 2,
     };
   });
   
-  // Position nodes in lanes (LANE_START_X already calculated above for badge positioning)
+  // Calculate right edge position (after all lanes are laid out)
+  // We'll update sink positions after lane layout - store reference for now
+  const sinkBoundaryNodeIds = new Set(sinkBoundaryNodes.map(n => n.id));
+  
+  // =============================================================================
+  // HORIZONTAL LANE NODE POSITIONING
+  // Each lane is a COLUMN. Lane index determines X position.
+  // Nodes within each lane are stacked VERTICALLY within their column.
+  // =============================================================================
   const sortedLaneIndices = Array.from(laneNodes.keys()).sort((a, b) => a - b);
   
   for (const laneIdx of sortedLaneIndices) {
     const nodesInLane = laneNodes.get(laneIdx)!;
-    const laneY = TOP_MARGIN + laneIdx * (LANE_HEIGHT + LANE_PADDING);
     
-    // Sort nodes within lane by their position in the flow
-    const nodeOrder = orderNodesInLane(nodesInLane, edges);
+    // Calculate X position for this lane column
+    const laneX = LANE_START_X + laneIdx * LANE_COLUMN_WIDTH;
     
-    nodeOrder.forEach((node, colIdx) => {
+    // Stack nodes vertically within this lane column
+    // Center the stack vertically based on tallest column
+    const stackHeight = nodesInLane.length;
+    const totalStackHeight = stackHeight * NODE_HEIGHT + (stackHeight - 1) * 30;
+    const startY = TOP_MARGIN + (totalContentHeight - totalStackHeight) / 2;
+    
+    nodesInLane.forEach((node, stackIdx) => {
       node.position = {
-        x: LANE_START_X + colIdx * COLUMN_WIDTH,
-        y: laneY + (LANE_HEIGHT - NODE_HEIGHT) / 2,
+        x: laneX + (LANE_COLUMN_WIDTH - NODE_WIDTH) / 2,  // Center node within column
+        y: startY + stackIdx * VERTICAL_SPACING,
       };
     });
+    
+    console.log(`[layoutWithLanes] Lane ${laneIdx}: ${nodesInLane.length} nodes at x=${laneX}`);
   }
   
   // Position section nodes
@@ -694,9 +751,38 @@ export function layoutWithLanes(
   // Position ungrouped nodes at the bottom
   ungroupedNodes.forEach((node, idx) => {
     node.position = {
-      x: LANE_START_X + idx * COLUMN_WIDTH,
-      y: TOP_MARGIN + numLanes * (LANE_HEIGHT + LANE_PADDING) + 50,
+      x: LANE_START_X + idx * LANE_COLUMN_WIDTH,
+      y: TOP_MARGIN + totalContentHeight + 50,
     };
+  });
+  
+  // Position SINK boundary nodes on the RIGHT (after all lane/section content)
+  // Calculate the rightmost X position from all positioned nodes
+  let maxRightX = LANE_START_X;
+  for (const [_laneIdx, nodesInLane] of laneNodes) {
+    for (const node of nodesInLane) {
+      const rightEdge = node.position.x + NODE_WIDTH;
+      if (rightEdge > maxRightX) {
+        maxRightX = rightEdge;
+      }
+    }
+  }
+  for (const [_sectionId, nodesInSection] of sectionNodes) {
+    for (const node of nodesInSection) {
+      const rightEdge = node.position.x + NODE_WIDTH;
+      if (rightEdge > maxRightX) {
+        maxRightX = rightEdge;
+      }
+    }
+  }
+  
+  // Position sink boundary nodes to the right of all content
+  sinkBoundaryNodes.forEach((node, idx) => {
+    node.position = {
+      x: maxRightX + 80 + idx * 140,  // 80px gap after rightmost content
+      y: TOP_MARGIN + totalContentHeight / 2 - NODE_HEIGHT / 2,
+    };
+    console.log(`[layoutWithLanes] Positioned sink boundary node ${node.id} at x=${node.position.x}`);
   });
   
   // Filter out existing badge nodes from Mermaid parse - we'll use our positioned labelNodes instead
@@ -788,13 +874,169 @@ export function layoutWithLanes(
 }
 
 /**
- * Order nodes within a lane based on edge connections.
- * Nodes that are sources come before targets.
+ * Analyze lane structure to detect fan-in patterns (multiple sources → shared target).
+ * Returns an array of "columns" where each column can have multiple vertically-stacked nodes.
+ * 
+ * Example: For path_1b with kinesis, event_hubs, pubsub → compute:
+ * Returns: [[kinesis, event_hubs, pubsub], [compute]]
+ * These get stacked vertically in column 0, then compute in column 1.
+ * 
+ * CROSS-REGION FAN-IN: Also detects when all nodes in a lane connect to the SAME target
+ * outside the lane (e.g., path_1c: s3, azure_blob, gcs → snowpipe in section_2).
  */
-function orderNodesInLane(nodes: Node[], edges: Edge[]): Node[] {
+function analyzeLaneStructure(
+  nodes: Node[], 
+  edges: Edge[]
+): { columns: Node[][]; requiresVerticalStack: boolean } {
+  if (nodes.length <= 1) return { columns: [nodes], requiresVerticalStack: false };
+  
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const inDegree = new Map<string, number>();
+  const outEdges = new Map<string, string[]>();
+  const inEdges = new Map<string, string[]>();
+  // Track edges going OUT of the lane to external targets
+  const externalOutEdges = new Map<string, string[]>();
+  
+  for (const node of nodes) {
+    inDegree.set(node.id, 0);
+    outEdges.set(node.id, []);
+    inEdges.set(node.id, []);
+    externalOutEdges.set(node.id, []);
+  }
+  
+  // Count in-degree within lane and track edge directions (including cross-region)
+  for (const edge of edges) {
+    const sourceInLane = nodeIds.has(edge.source);
+    const targetInLane = nodeIds.has(edge.target);
+    
+    if (sourceInLane && targetInLane) {
+      // Intra-lane edge
+      inDegree.set(edge.target, (inDegree.get(edge.target) || 0) + 1);
+      outEdges.get(edge.source)?.push(edge.target);
+      inEdges.get(edge.target)?.push(edge.source);
+    } else if (sourceInLane && !targetInLane) {
+      // Cross-region edge: source in lane, target outside
+      externalOutEdges.get(edge.source)?.push(edge.target);
+    }
+  }
+  
+  // Detect INTRA-LANE fan-in pattern: nodes with multiple incoming edges from lane sources
+  const fanInTargets: string[] = [];
+  for (const [nodeId, degree] of inDegree) {
+    if (degree >= 2) {
+      fanInTargets.push(nodeId);
+    }
+  }
+  
+  // Detect CROSS-REGION fan-in pattern: multiple lane nodes connecting to SAME external target
+  // This handles cases like path_1c where s3, azure_blob, gcs all → snowpipe (in section_2)
+  const externalTargetCounts = new Map<string, string[]>(); // external target → sources in this lane
+  for (const [nodeId, targets] of externalOutEdges) {
+    for (const target of targets) {
+      if (!externalTargetCounts.has(target)) {
+        externalTargetCounts.set(target, []);
+      }
+      externalTargetCounts.get(target)!.push(nodeId);
+    }
+  }
+  
+  // Find external targets that have 2+ sources from this lane (cross-region fan-in)
+  const crossRegionFanInSources: string[] = [];
+  for (const [externalTarget, sources] of externalTargetCounts) {
+    if (sources.length >= 2) {
+      crossRegionFanInSources.push(...sources);
+      console.log(`[analyzeLaneStructure] Cross-region fan-in detected: ${sources.join(', ')} → ${externalTarget} (external)`);
+    }
+  }
+  
+  // If we have intra-lane OR cross-region fan-in patterns, group parallel sources together
+  if (fanInTargets.length > 0 || crossRegionFanInSources.length > 0) {
+    const columns: Node[][] = [];
+    const placed = new Set<string>();
+    
+    // Find nodes with in-degree 0 (sources) - these should be stacked vertically if they share a target
+    const sources = nodes.filter(n => (inDegree.get(n.id) || 0) === 0);
+    
+    // Group sources by their shared INTRA-LANE target
+    const sourcesByTarget = new Map<string, Node[]>();
+    for (const source of sources) {
+      const targets = outEdges.get(source.id) || [];
+      for (const target of targets) {
+        if (fanInTargets.includes(target)) {
+          if (!sourcesByTarget.has(target)) {
+            sourcesByTarget.set(target, []);
+          }
+          sourcesByTarget.get(target)!.push(source);
+        }
+      }
+    }
+    
+    // First column: vertically stack all sources that share a fan-in target (intra-lane)
+    const stackedSources: Node[] = [];
+    for (const [_target, sourcesForTarget] of sourcesByTarget) {
+      if (sourcesForTarget.length >= 2) {
+        for (const src of sourcesForTarget) {
+          if (!placed.has(src.id)) {
+            stackedSources.push(src);
+            placed.add(src.id);
+          }
+        }
+      }
+    }
+    
+    // Also stack CROSS-REGION fan-in sources (they share an external target)
+    for (const sourceId of crossRegionFanInSources) {
+      if (!placed.has(sourceId)) {
+        const node = nodes.find(n => n.id === sourceId);
+        if (node) {
+          stackedSources.push(node);
+          placed.add(sourceId);
+        }
+      }
+    }
+    
+    if (stackedSources.length > 0) {
+      columns.push(stackedSources);
+    }
+    
+    // Add non-stacked sources as individual columns
+    for (const source of sources) {
+      if (!placed.has(source.id)) {
+        columns.push([source]);
+        placed.add(source.id);
+      }
+    }
+    
+    // Add fan-in targets in the next column
+    const fanInNodes = nodes.filter(n => fanInTargets.includes(n.id) && !placed.has(n.id));
+    if (fanInNodes.length > 0) {
+      columns.push(fanInNodes);
+      fanInNodes.forEach(n => placed.add(n.id));
+    }
+    
+    // Topologically sort remaining nodes
+    const remaining = nodes.filter(n => !placed.has(n.id));
+    if (remaining.length > 0) {
+      const sorted = orderNodesSimple(remaining, edges);
+      for (const node of sorted) {
+        columns.push([node]);
+      }
+    }
+    
+    return { columns, requiresVerticalStack: stackedSources.length >= 2 };
+  }
+  
+  // No fan-in pattern - use simple linear ordering
+  const sorted = orderNodesSimple(nodes, edges);
+  return { columns: sorted.map(n => [n]), requiresVerticalStack: false };
+}
+
+/**
+ * Simple topological ordering without fan-in detection.
+ */
+function orderNodesSimple(nodes: Node[], edges: Edge[]): Node[] {
   if (nodes.length <= 1) return nodes;
   
-  // Build adjacency for nodes in this lane
   const nodeIds = new Set(nodes.map(n => n.id));
   const inDegree = new Map<string, number>();
   const outEdges = new Map<string, string[]>();
@@ -811,7 +1053,6 @@ function orderNodesInLane(nodes: Node[], edges: Edge[]): Node[] {
     }
   }
   
-  // Topological sort
   const result: Node[] = [];
   const queue: string[] = [];
   
@@ -831,7 +1072,6 @@ function orderNodesInLane(nodes: Node[], edges: Edge[]): Node[] {
     }
   }
   
-  // Add any remaining nodes not reached by topological sort
   for (const node of nodes) {
     if (!result.includes(node)) {
       result.push(node);
@@ -839,6 +1079,15 @@ function orderNodesInLane(nodes: Node[], edges: Edge[]): Node[] {
   }
   
   return result;
+}
+
+/**
+ * Order nodes within a lane based on edge connections.
+ * Nodes that are sources come before targets.
+ * @deprecated Use analyzeLaneStructure for better parallel path handling
+ */
+function orderNodesInLane(nodes: Node[], edges: Edge[]): Node[] {
+  return orderNodesSimple(nodes, edges);
 }
 
 export default layoutWithELK

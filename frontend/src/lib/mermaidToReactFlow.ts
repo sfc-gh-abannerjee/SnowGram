@@ -477,7 +477,8 @@ export function convertMermaidToFlow(
     const def = lines.find(l => l.startsWith(`${id}[`));
     if (def) {
       const m = def.match(nodeDefRegex);
-      if (m) return cleanText(m[2]);
+      // Strip quotes before cleanText (same pattern as subgraph labels at line 614)
+      if (m) return cleanText(m[2].replace(/["]/g, ''));
     }
     return cleanText(id);
   };
