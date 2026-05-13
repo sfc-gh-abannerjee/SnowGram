@@ -131,6 +131,13 @@ SNOWGRAM_DB_AGENTS_SNOWGRAM_AGENT/versions/
 backend/elk_diagram/output/
 backend/elk_diagram/elk_layout/*.json
 
+# Ralph convergence loop debug artifacts (auto-generated)
+backend/tests/.ralph/
+.ralph/
+
+# Cortex Code workflow plans (session artifacts)
+.cortex/plans/
+
 
 
 
