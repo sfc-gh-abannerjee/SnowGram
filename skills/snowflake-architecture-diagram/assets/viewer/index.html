@@ -888,6 +888,11 @@
     // Pre-pass: count edges per zone-pair to compute lane offsets
     var gapCounts = {};  // "srcZoneId|tgtZoneId" → count
     var gapIndex = {};   // edgeIdx → index within its gap group
+    // Also track per-node fan-in/fan-out for Y staggering
+    var nodeOutCount = {};  // nodeId → total outgoing edges
+    var nodeOutIdx = {};    // edgeIdx → index within source node's outgoing set
+    var nodeInCount = {};   // nodeId → total incoming edges
+    var nodeInIdx = {};     // edgeIdx → index within target node's incoming set
     edges.forEach(function(edge, idx) {
       var s = card.querySelector('[data-node-id="' + edge.source + '"]');
       var t = card.querySelector('[data-node-id="' + edge.target + '"]');
@@ -898,6 +903,14 @@
       if (!gapCounts[key]) gapCounts[key] = 0;
       gapIndex[idx] = gapCounts[key];
       gapCounts[key]++;
+      // Fan-out tracking (source node)
+      if (!nodeOutCount[edge.source]) nodeOutCount[edge.source] = 0;
+      nodeOutIdx[idx] = nodeOutCount[edge.source];
+      nodeOutCount[edge.source]++;
+      // Fan-in tracking (target node)
+      if (!nodeInCount[edge.target]) nodeInCount[edge.target] = 0;
+      nodeInIdx[idx] = nodeInCount[edge.target];
+      nodeInCount[edge.target]++;
     });
 
     edges.forEach(function(edge, edgeIdx) {
@@ -909,14 +922,17 @@
       const tgtZone = tgtEl.closest('.zone');
       const sameZone = srcZone && tgtZone && srcZone === tgtZone;
 
-      // Lane offset: only apply when multiple edges share the same zone pair gap
-      // For most edges (unique gap), offset is 0 — connector stays centered
+      // Lane offset: spread multiple edges sharing the same zone-pair gap
+      // Uses adaptive spacing based on available gap width and edge count
       var laneOffset = 0;
       if (gapIndex[edgeIdx] !== undefined) {
         var key = ((srcZone.querySelector('.zone-name') || {}).textContent || '') + '|' + ((tgtZone.querySelector('.zone-name') || {}).textContent || '');
         var total = gapCounts[key] || 1;
         if (total > 1) {
-          laneOffset = (gapIndex[edgeIdx] - (total - 1) / 2) * 6;
+          // Adaptive spacing: use more px when fewer edges, less when many
+          // Cap at 14px per lane, min 5px, scale down with edge count
+          var laneSpacing = Math.max(5, Math.min(14, 40 / total));
+          laneOffset = (gapIndex[edgeIdx] - (total - 1) / 2) * laneSpacing;
         }
       }
 
@@ -976,8 +992,15 @@
             }
           }
           // Always use node Y-centers so line connects to/from the actual nodes
-          y1 = srcNodeCy;
-          y2 = tgtNodeCy;
+          // Stagger Y when multiple edges exit/enter the same node
+          var srcOutTotal = nodeOutCount[edge.source] || 1;
+          var srcOutI = nodeOutIdx[edgeIdx] !== undefined ? nodeOutIdx[edgeIdx] : 0;
+          var tgtInTotal = nodeInCount[edge.target] || 1;
+          var tgtInI = nodeInIdx[edgeIdx] !== undefined ? nodeInIdx[edgeIdx] : 0;
+          var srcYStagger = srcOutTotal > 1 ? (srcOutI - (srcOutTotal - 1) / 2) * 10 : 0;
+          var tgtYStagger = tgtInTotal > 1 ? (tgtInI - (tgtInTotal - 1) / 2) * 10 : 0;
+          y1 = srcNodeCy + srcYStagger;
+          y2 = tgtNodeCy + tgtYStagger;
 
           // Ensure connector always moves in the intended direction
           if (dx >= 0 && x2 <= x1) x2 = x1 + 16;
