@@ -368,8 +368,6 @@ def build_flow(
 
 # Paradigm detection signals
 _MEDALLION_ZONES = {"Bronze Layer", "Silver Layer", "Gold Layer"}
-_STREAMING_SIGNALS = {"Snowpipe Streaming", "Kafka", "IoT Gateway", "Snowpipe"}
-_SECURITY_SIGNALS = {"Secure View", "RLS View", "Masking Policy", "Row Access Policy"}
 
 # Generic equivalents for medallion terms
 _MEDALLION_TO_GENERIC = {
@@ -383,11 +381,10 @@ _MEDALLION_LABEL_MAP = {
     "Gold": "Serving",
 }
 
-# Zone merge candidates: if both exist and one has ≤1 node, merge into the other
+# Zone merge candidates: if both exist and the smaller has ≤N nodes, merge
 _MERGE_CANDIDATES = [
-    # (smaller zone, absorb into, condition: smaller has ≤ N nodes)
+    # (smaller zone, absorb into, max_nodes threshold)
     ("Compute", "Transformation", 1),
-    ("Security & Governance", "Consumption", 0),  # only merge if Security is empty
 ]
 
 
