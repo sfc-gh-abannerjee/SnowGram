@@ -37,6 +37,36 @@ This document is the **authoritative source** for the autonomous feedback loop t
 
 ---
 
+## Dual-Track Design
+
+SnowGram intentionally maintains **two independent generation tracks** that serve different user populations. They share no layout code by design.
+
+### Track 1 — Standalone CoCo Skill
+
+**Location**: `skills/snowflake-architecture-diagram/`
+
+A fully local generation path that requires no Snowflake-side agent deployment. The flow is:
+
+```
+CoCo skill → flow_builder.py → state JSON → index.html viewer
+```
+
+Everything runs client-side within Cortex Code. This track targets users who cannot or prefer not to deploy the Snowflake-side agent — for example, quick ad-hoc diagrams during a customer call, or environments where the `SNOWGRAM_DB` objects don't exist.
+
+### Track 2 — SnowGram Agent + GUI
+
+**Location**: `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT` (server) + `frontend/` (client)
+
+The Snowflake-deployed interactive path. Server-side: a Cortex Agent backed by tool functions (`SUGGEST_COMPONENTS_JSON`, `GENERATE_MERMAID_FROM_COMPONENTS`, etc.) and the `COMPONENT_MAP_SV` semantic view. Client-side: a Next.js 15 frontend rendering diagrams via ReactFlow and ELK.js layout.
+
+This track powers the full interactive GUI with multi-tab support, conversational refinement, and persistent diagram state.
+
+### Why Two Tracks?
+
+The tracks exist because their audiences have fundamentally different constraints. Track 1 optimizes for zero-setup portability; Track 2 optimizes for rich interactivity and Snowflake-native intelligence. Merging them would compromise both. The autonomous improvement loop documented below applies exclusively to Track 2.
+
+---
+
 ## Core Components to Improve
 
 ### 1. Cortex Agent (`SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT`)
