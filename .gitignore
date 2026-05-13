@@ -138,6 +138,9 @@ backend/tests/.ralph/
 # Cortex Code workflow plans (session artifacts)
 .cortex/plans/
 
+# Cortex Code stash backups (auto-generated patch archives)
+.cortex/stash_backups/
+
 
 
 
