@@ -998,35 +998,13 @@
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
           var vDist = Math.abs(y2 - y1);
-          // Routing strategy:
-          // - Small vDist (<12px): direct straight line (aligned nodes)
-          // - Otherwise: orthogonal H→V→H with the vertical turn placed
-          //   close to the TARGET (80% of the way across the gap).
-          //   This keeps vertical segments near the destination zone edge,
-          //   preventing them from passing through unrelated nodes mid-gap.
-          if (vDist < 12) {
-            d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
-          } else {
-            // Place turn at 80% toward target + lane offset for separation
-            var turnX = x1 + (x2 - x1) * 0.8 + laneOffset;
-            var r = 6; // corner radius
-            var vDir = y2 > y1 ? 1 : -1;
-            var hDir = turnX > x1 ? 1 : -1;
-            var hDir2 = x2 > turnX ? 1 : -1;
-            if (vDist < r * 2.5 || Math.abs(turnX - x1) < r * 2) {
-              d = 'M' + x1 + ',' + y1 +
-                  ' L' + turnX + ',' + y1 +
-                  ' L' + turnX + ',' + y2 +
-                  ' L' + x2 + ',' + y2;
-            } else {
-              d = 'M' + x1 + ',' + y1 +
-                  ' L' + (turnX - hDir * r) + ',' + y1 +
-                  ' Q' + turnX + ',' + y1 + ' ' + turnX + ',' + (y1 + vDir * r) +
-                  ' L' + turnX + ',' + (y2 - vDir * r) +
-                  ' Q' + turnX + ',' + y2 + ' ' + (turnX + hDir2 * r) + ',' + y2 +
-                  ' L' + x2 + ',' + y2;
-            }
-          }
+          // Simple direct routing: straight line from source node edge to
+          // target node edge. For architecture diagrams with clear L→R flow,
+          // direct lines are cleaner than orthogonal routing because:
+          // 1. Each line has a unique start/end point (no bundling)
+          // 2. No vertical segments in gaps that create false associations
+          // 3. Direction of flow is immediately clear from the line angle
+          d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
         } else {
           // Vertical: exit bottom/top using node centers for X
           var dy = tgtNodeCy - srcNodeCy;
