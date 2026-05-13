@@ -32,6 +32,7 @@ import { hexToRgb as hexToRgbUtil, getLabelColor } from './lib/colorUtils';
 import { generateMermaidFromDiagram } from './lib/mermaidExport';
 import { boundingBox, layoutDAG, fitAllBoundaries, LAYOUT_CONSTANTS } from './lib/layoutUtils';
 import { getFlowStageOrder } from './lib/elkLayoutUtils';
+import { calculateNodeDimensions, NODE_SIZE_CONSTRAINTS } from './lib/textMeasure';
 // PERF: Lazy load heavy markdown/syntax dependencies (~150KB bundle savings)
 const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
 const SyntaxHighlighter = dynamic(
@@ -2752,6 +2753,23 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     });
     debugLog(`[Layout Preservation] Captured ${existingPositions.size} existing positions`);
     
+    // ================================================================
+    // TEMPLATE DETECTION: Force mermaid path for templates with badges
+    // Templates (like STREAMING_DATA_STACK) define badges using :::laneBadge
+    // and :::sectionBadge classDef styles. The mermaid path correctly parses
+    // these into laneLabelNode components with proper positioning.
+    // The spec path (below) doesn't parse badges from mermaid, causing them
+    // to be missing when the agent returns both JSON spec AND mermaid.
+    // ================================================================
+    const hasTemplateBadges = mermaidCode && (
+      mermaidCode.includes(':::laneBadge') || 
+      mermaidCode.includes(':::sectionBadge')
+    );
+    if (hasTemplateBadges) {
+      debugLog('[Pipeline] Template with badges detected - forcing mermaid path for correct badge rendering');
+      spec = undefined; // Force mermaid-only path
+    }
+    
     if (spec?.nodes?.length) {
       // ================================================================
       // BACKEND-DRIVEN LAYOUT: Check if agent provided positions
@@ -2989,14 +3007,21 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         debugWarn(`[Pipeline] Edge loss in enforceAccountBoundaries: ${normalizedFinal.edges.length} → ${enforcedBoundaries.edges.length}`);
       }
       
-      // CRITICAL: Enforce consistent node sizes for handle alignment
-      // All non-boundary nodes must have identical dimensions
-      const STANDARD_NODE_WIDTH = 150;
-      const STANDARD_NODE_HEIGHT = 130;
+      // CRITICAL: Apply dynamic node sizes based on label text length
+      // This ensures nodes resize to fit their content while maintaining consistency
+      const BASE_NODE_HEIGHT = 130;
       
       const normalizedNodesWithSize = enforcedBoundaries.nodes.map(n => {
         const isBoundary = ((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary');
         if (isBoundary) return n; // Keep boundary sizes as-is
+        
+        // Calculate dynamic width based on label text
+        const label = (n.data as any)?.label || '';
+        const hasIcon = !!(n.data as any)?.icon;
+        const { width: dynamicWidth, height: dynamicHeight, shouldWrap } = 
+          typeof window !== 'undefined' 
+            ? calculateNodeDimensions(label, { hasIcon, baseHeight: BASE_NODE_HEIGHT })
+            : { width: NODE_SIZE_CONSTRAINTS.MIN_WIDTH, height: BASE_NODE_HEIGHT, shouldWrap: false };
         
         // Phase 5: Apply flowStageOrder-based coloring
         const flowStage = (n.data as any)?.flowStageOrder;
@@ -3004,10 +3029,14 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         
         return {
           ...n,
+          data: {
+            ...(n.data as any),
+            shouldWrap,  // Pass to node component for text wrapping
+          },
           style: {
             ...(n.style || {}),
-            width: STANDARD_NODE_WIDTH,
-            height: STANDARD_NODE_HEIGHT,
+            width: dynamicWidth,
+            height: dynamicHeight,
             // Apply stage-based colors (overrides previous styling)
             border: `2px solid ${stageColor.border}`,
             background: stageColor.background,

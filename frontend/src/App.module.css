@@ -2956,6 +2956,32 @@
 .react-flow__panel.react-flow__attribution {
   display: none !important;
 }
+/* ===== EXPORT MODE - Hide UI elements during screenshot capture ===== */
+:global(.export-mode) .instructionsPanel {
+  display: none !important;
+}
+
+:global(.export-mode) .panelActions {
+  display: none !important;
+}
+
+:global(.export-mode) .actionButton {
+  display: none !important;
+}
+
+/* Hide zoom controls and minimap during export */
+:global(.export-mode) .react-flow__panel {
+  display: none !important;
+}
+
+:global(.export-mode) .react-flow__minimap {
+  display: none !important;
+}
+
+:global(.export-mode) .react-flow__controls {
+  display: none !important;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {

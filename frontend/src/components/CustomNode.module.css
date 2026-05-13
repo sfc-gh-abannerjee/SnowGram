@@ -51,6 +51,8 @@
   position: relative;
   width: 100%;
   height: 100%;
+  container-type: inline-size;  /* Enable container queries for dynamic sizing */
+  container-name: node-content;
 }
 
 .boundaryNode {
@@ -116,8 +118,10 @@
 }
 
 .iconContainer {
-  width: 52px;
-  height: 52px;
+  /* Dynamic sizing using CSS Container Queries (MDN 2025) */
+  /* Uses 40% of container width, clamped between 36px and 64px */
+  width: clamp(36px, 40cqi, 64px);
+  height: clamp(36px, 40cqi, 64px);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -151,6 +155,18 @@
   transition: background 0.15s ease;
   overflow-wrap: break-word;
   background: transparent;
+  /* Support for multi-line labels - NO TRUNCATION */
+  line-height: 1.3;
+  max-height: none;  /* Allow full text display */
+  overflow: visible;
+  /* Removed -webkit-line-clamp to prevent label truncation */
+}
+
+/* When text should wrap (set via data attribute) */
+.labelWrap {
+  white-space: normal;
+  -webkit-line-clamp: 2;
+  max-height: 2.6em;
 }
 
 .label:hover {
@@ -266,5 +282,14 @@
 /* Selected state in dark mode - minimal border change only */
 :global(.react-flow__node.selected) .nodeContainer[data-dark-mode="true"] {
   border-color: #60A5FA;
+}
+
+/* ===== EXPORT MODE - Hide interactive elements during screenshot ===== */
+:global(.export-mode) .deleteButton {
+  display: none !important;
+}
+
+:global(.export-mode) .handle {
+  opacity: 0 !important;
 }
 
