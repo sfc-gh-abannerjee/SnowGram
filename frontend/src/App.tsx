@@ -4809,6 +4809,13 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                       </div>
                     )}
                     
+                    {/* Narrative response text — rendered BEFORE the code-block
+                        expanders so users read the description first, then
+                        click into the code blocks if they want the raw output. */}
+                    <div className={styles.chatMarkdown}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                    </div>
+
                     {/* JSON Specification - expandable with copy button */}
                     {m.jsonSpec && (() => {
                       // Show a streaming indicator while this message is being
@@ -4919,10 +4926,6 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                       </div>
                       );
                     })()}
-                    
-                    <div className={styles.chatMarkdown}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
-                    </div>
                   </div>
                 </div>
               ))}
