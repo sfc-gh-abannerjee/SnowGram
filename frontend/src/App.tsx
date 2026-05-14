@@ -4720,7 +4720,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                     )}
                     
                     {/* JSON Specification - expandable with copy button */}
-                    {m.jsonSpec && (
+                    {m.jsonSpec && (() => {
+                      // Show a streaming indicator while this message is being
+                      // generated (only on the last message and only while
+                      // chatSending is true).
+                      const isStreaming = chatSending && idx === chatMessages.length - 1;
+                      return (
                       <div className={styles.codeArtifactSection}>
                         <div className={styles.codeArtifactHeader}>
                           <button 
@@ -4739,6 +4744,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                           >
                             <DataObjectIcon className={styles.codeArtifactIcon} />
                             <span>JSON Specification</span>
+                            {isStreaming && (
+                              <span className={styles.streamingIndicator} aria-label="generating">
+                                <span className={styles.streamingDot} />
+                                generating
+                              </span>
+                            )}
                             <ExpandMoreIcon className={`${styles.codeArtifactChevron} ${expandedJsonSpec.has(idx) ? styles.expanded : ''}`} />
                           </button>
                           <button 
@@ -4762,10 +4773,13 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                           </div>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
                     
                     {/* Mermaid Diagram - expandable with copy button */}
-                    {m.mermaidCode && (
+                    {m.mermaidCode && (() => {
+                      const isStreaming = chatSending && idx === chatMessages.length - 1;
+                      return (
                       <div className={styles.codeArtifactSection}>
                         <div className={styles.codeArtifactHeader}>
                           <button 
@@ -4784,6 +4798,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                           >
                             <AccountTreeIcon className={styles.codeArtifactIcon} />
                             <span>Mermaid Diagram</span>
+                            {isStreaming && (
+                              <span className={styles.streamingIndicator} aria-label="generating">
+                                <span className={styles.streamingDot} />
+                                generating
+                              </span>
+                            )}
                             <ExpandMoreIcon className={`${styles.codeArtifactChevron} ${expandedMermaid.has(idx) ? styles.expanded : ''}`} />
                           </button>
                           <button 
@@ -4807,7 +4827,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                           </div>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
                     
                     <div className={styles.chatMarkdown}>
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
