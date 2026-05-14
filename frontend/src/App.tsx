@@ -610,6 +610,18 @@ const App: React.FC = () => {
   const [chatResizing, setChatResizing] = useState<string | null>(null); // 'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'
   const [clearSpin, setClearSpin] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  // ============================================================================
+  // In-app console panel (bottom of viewport, collapsed by default)
+  // Captures console.log/warn/error/info/debug + window error events so users
+  // can copy/paste log output without opening DevTools.
+  // ============================================================================
+  type LogLevel = 'log' | 'warn' | 'error' | 'info' | 'debug';
+  interface LogEntry { ts: number; level: LogLevel; message: string }
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [logPanelOpen, setLogPanelOpen] = useState(false);
+  const [logPanelHeight, setLogPanelHeight] = useState(220);
+  const [logPanelResizing, setLogPanelResizing] = useState(false);
+  const [logCopied, setLogCopied] = useState(false);
   // Pipeline toggle (debug-panel UI). Initialized from localStorage so the
   // checkbox reflects the same flag parseMermaidAndCreateDiagram reads each
   // time it runs. Defaults to false (legacy pipeline).
@@ -659,6 +671,84 @@ const App: React.FC = () => {
   useEffect(() => {
     setIsHydrated(true);
   }, []);
+
+  // Patch the global console so log output also lands in the in-app panel.
+  // Each entry is normalized to a single line (whitespace collapsed) so users
+  // can copy/paste the panel contents without ragged formatting.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const original = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error,
+      info: console.info,
+      debug: console.debug,
+    };
+    const formatArgs = (args: any[]) => args.map(a => {
+      if (a == null) return String(a);
+      if (typeof a === 'string') return a;
+      if (a instanceof Error) return `${a.name}: ${a.message}${a.stack ? ' | ' + a.stack : ''}`;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    }).join(' ').replace(/\s+/g, ' ').trim();
+
+    const wrap = (level: LogLevel) => (...args: any[]) => {
+      try { (original[level] as any)(...args); } catch {}
+      const msg = formatArgs(args);
+      if (!msg) return;
+      setLogEntries(prev => {
+        const next = [...prev, { ts: Date.now(), level, message: msg }];
+        return next.length > 1000 ? next.slice(-1000) : next;
+      });
+    };
+
+    console.log = wrap('log');
+    console.warn = wrap('warn');
+    console.error = wrap('error');
+    console.info = wrap('info');
+    console.debug = wrap('debug');
+
+    const onError = (e: ErrorEvent) => {
+      setLogEntries(prev => [...prev, {
+        ts: Date.now(),
+        level: 'error',
+        message: `[window.error] ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`,
+      }]);
+    };
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const reason = e.reason instanceof Error
+        ? `${e.reason.name}: ${e.reason.message}`
+        : (typeof e.reason === 'string' ? e.reason : JSON.stringify(e.reason));
+      setLogEntries(prev => [...prev, {
+        ts: Date.now(),
+        level: 'error',
+        message: `[unhandledrejection] ${reason}`,
+      }]);
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+
+    return () => {
+      Object.assign(console, original);
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
+
+  // Resize handler for the log panel — drag the top edge to set height
+  useEffect(() => {
+    if (!logPanelResizing) return;
+    const onMove = (e: MouseEvent) => {
+      const newHeight = Math.max(80, Math.min(window.innerHeight - 100, window.innerHeight - e.clientY));
+      setLogPanelHeight(newHeight);
+    };
+    const onUp = () => setLogPanelResizing(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [logPanelResizing]);
 
   // TEST HOOK: Expose parseMermaidAndCreateDiagram for visual testing
   // This enables automated visual quality testing via Playwright
@@ -5032,6 +5122,84 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           </div>
         </div>
       )}
+
+      {/* In-app log console — captures console.* output and window errors.
+          Drag the top edge to resize when expanded. */}
+      <div
+        className={`${styles.logPanel} ${logPanelOpen ? styles.logPanelOpen : ''}`}
+        style={{ height: logPanelOpen ? logPanelHeight : 28 }}
+      >
+        {logPanelOpen && (
+          <div
+            className={styles.logPanelResize}
+            onMouseDown={(e) => { e.preventDefault(); setLogPanelResizing(true); }}
+            title="Drag to resize"
+          />
+        )}
+        <div className={styles.logPanelHeader}>
+          <button
+            className={styles.logPanelToggle}
+            onClick={() => setLogPanelOpen((o) => !o)}
+            title={logPanelOpen ? 'Collapse console' : 'Expand console'}
+          >
+            <span className={styles.logPanelChevron}>{logPanelOpen ? '▾' : '▴'}</span>
+            <span>Console</span>
+            <span className={styles.logPanelCount}>{logEntries.length}</span>
+            {logEntries.some(l => l.level === 'error') && (
+              <span className={styles.logPanelErrorBadge}>
+                {logEntries.filter(l => l.level === 'error').length} errors
+              </span>
+            )}
+          </button>
+          <div className={styles.logPanelActions}>
+            <button
+              className={styles.logPanelButton}
+              onClick={async () => {
+                const text = logEntries
+                  .map(l => `[${new Date(l.ts).toISOString().slice(11, 23)}] [${l.level}] ${l.message}`)
+                  .join('\n');
+                try {
+                  await navigator.clipboard.writeText(text);
+                  setLogCopied(true);
+                  setTimeout(() => setLogCopied(false), 1500);
+                } catch (err) {
+                  console.error('clipboard write failed', err);
+                }
+              }}
+              title="Copy all logs to clipboard"
+            >
+              {logCopied ? 'Copied ✓' : 'Copy'}
+            </button>
+            <button
+              className={styles.logPanelButton}
+              onClick={() => setLogEntries([])}
+              title="Clear log buffer"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        {logPanelOpen && (
+          <div className={styles.logPanelBody}>
+            {logEntries.length === 0 ? (
+              <div className={styles.logPanelEmpty}>No log output yet. Try sending a prompt.</div>
+            ) : (
+              logEntries.map((entry, i) => (
+                <div
+                  key={i}
+                  className={`${styles.logPanelEntry} ${styles[`logLevel_${entry.level}`] ?? ''}`}
+                >
+                  <span className={styles.logPanelTime}>
+                    {new Date(entry.ts).toISOString().slice(11, 23)}
+                  </span>
+                  <span className={styles.logPanelLevel}>{entry.level}</span>
+                  <span className={styles.logPanelMessage}>{entry.message}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
