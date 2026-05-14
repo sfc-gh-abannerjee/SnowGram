@@ -1,5 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import { Edge, Node } from 'reactflow';
+import type {
+  DiagramSpec,
+  DiagramNode,
+  DiagramEdge,
+  DiagramGroup,
+  DiagramBadge,
+  GroupType,
+} from './types/diagramSpec';
 
 type Catalog = Record<string, any>;
 
@@ -390,7 +398,8 @@ export function convertMermaidToFlow(
   const lines = unescapedMermaid.split('\n').map(l => l.trim()).filter(Boolean);
   // Edge regex: handles arrows like --> , -->, -->|"label"|, -.->|label|, etc.
   // Format: source -->|"optional label"| target  OR  source --> target
-  const edgeRegex = /^([\w-]+)\s*([-.=]+>)\s*(?:\|[^|]*\|\s*)?([\w-]+)/;
+  // Group 1: source ID, Group 2: arrow type, Group 3: optional label, Group 4: target ID
+  const edgeRegex = /^([\w-]+)\s*([-.=]+>)\s*(?:\|\s*"?([^|"]*)"?\s*\|\s*)?([\w-]+)/;
   const nodeDefRegex = /^([\w-]+)\s*\[(.+)\]/;
   // Invisible link regex: handles ~~~ syntax for alignment without visible edges
   // Format: source ~~~ target (used to associate badges with their target subgraphs)
@@ -660,7 +669,9 @@ export function convertMermaidToFlow(
     const m = line.match(edgeRegex);
     if (m) {
       const source = m[1];
-      const target = m[3];  // Group 3: target node (group 2 is the arrow type)
+      const arrowType = m[2]; // e.g., "-->", "-.->"
+      const edgeLabel = m[3]?.trim() || undefined; // Captured label between |...|
+      const target = m[4];  // Group 4: target node (was group 3 before label capture)
       const sourceNode = ensureNode(source);
       const targetNode = ensureNode(target);
       
@@ -687,6 +698,8 @@ export function convertMermaidToFlow(
       
       const sourceId = sourceNode.id;
       const targetId = targetNode.id;
+      const isDotted = arrowType.includes('.');
+      const isThick = arrowType.includes('=');
       edges.push({
         id: `${sourceId}-${targetId}-${edges.length}`,
         source: sourceId,
@@ -695,7 +708,18 @@ export function convertMermaidToFlow(
         animated: true,
         sourceHandle: 'right-source',
         targetHandle: 'left-target',
-        style: { stroke: '#29B5E8', strokeWidth: 2 },
+        label: edgeLabel,
+        labelStyle: edgeLabel ? { fontSize: 12, fontWeight: 500 } : undefined,
+        labelBgPadding: edgeLabel ? [4, 2] : undefined,
+        labelBgBorderRadius: edgeLabel ? 4 : undefined,
+        labelBgStyle: edgeLabel
+          ? { fill: isDarkMode ? '#1e3a4a' : '#FFFFFF', opacity: 0.9 }
+          : undefined,
+        style: {
+          stroke: '#29B5E8',
+          strokeWidth: isThick ? 3 : 2,
+          strokeDasharray: isDotted ? '5 5' : undefined,
+        },
         deletable: true,
       });
     }
@@ -787,5 +811,141 @@ function matchComponent(label: string, catalog: Catalog): string {
   }
 
   return label;
+}
+
+// ============================================================================
+// DIAGRAMSPEC BRIDGE
+// ============================================================================
+// Adapter that converts the existing Mermaid parser output into the canonical
+// DiagramSpec format. This lets the new unifiedLayout pipeline consume Mermaid
+// without us having to fork/rewrite the entire 600-line parser.
+//
+// The original convertMermaidToFlow() remains for backward compat; new code
+// should call parseMermaidToSpec() instead.
+// ============================================================================
+
+/**
+ * Parse Mermaid flowchart code into the canonical DiagramSpec format.
+ *
+ * This wraps convertMermaidToFlow() and transforms its output into the
+ * structured spec consumed by unifiedLayout.
+ */
+export function parseMermaidToSpec(
+  mermaidCode: string,
+  componentCatalog: Catalog,
+  isDarkMode = false,
+): DiagramSpec {
+  const parsed = convertMermaidToFlow(mermaidCode, componentCatalog, isDarkMode);
+
+  // Detect direction from flowchart declaration
+  const direction: 'LR' | 'TB' = /flowchart\s+TB|graph\s+TB/i.test(mermaidCode) ? 'TB' : 'LR';
+
+  // Filter out helper/spacer nodes that are template artifacts
+  const isHelper = (n: Node): boolean => {
+    const id = n.id.toLowerCase();
+    return (
+      id.startsWith('spacer') ||
+      id.startsWith('label_area_') ||
+      id.startsWith('label_streaming') ||
+      id.startsWith('label_batch') ||
+      id.startsWith('label_native') ||
+      id.startsWith('label_cdc') ||
+      id.startsWith('label_transform') ||
+      id.startsWith('label_write') ||
+      id.startsWith('label_scale') ||
+      id.startsWith('label_process') ||
+      id.startsWith('label_analyze') ||
+      id.startsWith('label_deliver')
+    );
+  };
+
+  // Separate badges from content nodes
+  const badgeNodes = parsed.nodes.filter(n => (n.data as any)?.isBadgeNode === true);
+  const contentNodes = parsed.nodes.filter(
+    n => !((n.data as any)?.isBadgeNode === true) && !isHelper(n),
+  );
+
+  // Build DiagramNode list from content nodes
+  const specNodes: DiagramNode[] = contentNodes.map(n => {
+    const data = n.data as any;
+    return {
+      id: n.id,
+      label: data?.label ?? n.id,
+      componentType: data?.componentType ?? 'Table',
+      groupId: data?.subgraph,
+      flowStageOrder: data?.flowStageOrder,
+      layer: data?.layer,
+    };
+  });
+
+  // Build DiagramEdge list (label captured by parser at edgeRegex group 3)
+  const specEdges: DiagramEdge[] = parsed.edges
+    .filter(e => {
+      // Skip edges to/from helper nodes
+      const sourceIsHelper = isHelper({ id: e.source } as Node);
+      const targetIsHelper = isHelper({ id: e.target } as Node);
+      return !sourceIsHelper && !targetIsHelper;
+    })
+    .map(e => {
+      const dasharray = (e.style as any)?.strokeDasharray;
+      const strokeWidth = (e.style as any)?.strokeWidth;
+      const style: 'solid' | 'dotted' | 'thick' =
+        dasharray ? 'dotted' : strokeWidth >= 3 ? 'thick' : 'solid';
+      return {
+        source: e.source,
+        target: e.target,
+        label: typeof e.label === 'string' ? e.label : undefined,
+        style,
+      };
+    });
+
+  // Build DiagramGroup list from layoutInfo (skip groups that only contain helpers)
+  const specGroups: DiagramGroup[] = [];
+  if (parsed.layoutInfo) {
+    const liveGroupIds = new Set(specNodes.map(n => n.groupId).filter((id): id is string => !!id));
+    for (const [id, info] of parsed.layoutInfo) {
+      // Only include groups that contain at least one live (non-helper) node,
+      // OR boundary/container groups (which legitimately have no children)
+      if (!liveGroupIds.has(id) && info.type !== 'boundary') continue;
+      const groupType: GroupType =
+        info.type === 'group'
+          ? 'container'
+          : (info.type as GroupType);
+      specGroups.push({
+        id,
+        label: info.label,
+        type: groupType,
+        parentId: info.parent,
+        index: info.index,
+        style: { background: info.color },
+      });
+    }
+  }
+
+  // Build DiagramBadge list from badge nodes
+  const specBadges: DiagramBadge[] = badgeNodes
+    .filter(b => {
+      const targetGroup = (b.data as any)?.subgraph;
+      return targetGroup && specGroups.some(g => g.id === targetGroup);
+    })
+    .map(b => {
+      const data = b.data as any;
+      const variant: 'lane' | 'section' = data?.badgeClass === 'sectionBadge' ? 'section' : 'lane';
+      return {
+        id: b.id,
+        label: data?.label ?? b.id,
+        groupId: data?.subgraph,
+        variant,
+      };
+    });
+
+  return {
+    nodes: specNodes,
+    edges: specEdges,
+    groups: specGroups,
+    badges: specBadges,
+    direction,
+    mermaidSource: mermaidCode,
+  };
 }
 
