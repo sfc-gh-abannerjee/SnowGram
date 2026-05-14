@@ -613,6 +613,12 @@
         <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
           <path d="M1,1 L9,4 L1,7" fill="none" stroke="var(--connector-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </marker>
+        <marker id="arrowhead-right" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="0" markerUnits="userSpaceOnUse">
+          <path d="M1,1 L9,4 L1,7" fill="none" stroke="var(--connector-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
+        <marker id="arrowhead-left" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="180" markerUnits="userSpaceOnUse">
+          <path d="M1,1 L9,4 L1,7" fill="none" stroke="var(--connector-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </marker>
       </defs>
     </svg>
     <div class="flow" id="diagram-flow"></div>
@@ -936,6 +942,8 @@
       const sameZone = srcZone && tgtZone && srcZone === tgtZone;
 
       var x1, y1, x2, y2, d;
+      var useFixedArrow = false;  // true → use direction-locked marker
+      var arrowDir = 'right';     // 'right' or 'left' for fixed-orientation arrows
 
       if (sameZone) {
         // Within-zone: straight vertical from node bottom to node top
@@ -987,26 +995,42 @@
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
           var vDist = Math.abs(y2 - y1);
+          arrowDir = (dx >= 0) ? 'right' : 'left';
           if (vDist < 4) {
             // Same row — straight horizontal (0 turns)
             d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
           } else {
-            // Cross-row — channel-track H→V→H routing.
-            // V placed at evenly-distributed track X within the gap so both
-            // the source-Y H exit and target-Y H arrival have substantial
-            // length. Multiple edges sharing the gap get distinct tracks
-            // (sorted by avgY) to minimize crossings.
-            var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
-            var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
-            var gapWidth = gapRight - gapLeft;
-            var eKey = gapKey[edgeIdx];
-            var total = eKey ? (gapCounts[eKey] || 1) : 1;
-            var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
-            var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
-            d = 'M' + x1 + ',' + y1 +
-                ' L' + trackX + ',' + y1 +
-                ' L' + trackX + ',' + y2 +
-                ' L' + x2 + ',' + y2;
+            // Determine if source and target are on adjacent rows.
+            var tgtNodes = tgtZone.querySelectorAll('.flow-node').length || 1;
+            var srcNodes = srcZone.querySelectorAll('.flow-node').length || 1;
+            var tgtRowH = tgtZoneRect.height / tgtNodes;
+            var srcRowH = srcZoneRect.height / srcNodes;
+            var maxAdjacentSpan = Math.max(tgtRowH, srcRowH) * 1.2;
+
+            if (vDist <= maxAdjacentSpan) {
+              // Adjacent rows — true 1-turn L-shape (H→V).
+              // Long horizontal exit at source-Y across the gap, then a
+              // single short vertical drop into target-Y at target-X.
+              // The arrow uses a direction-locked marker so it points
+              // horizontally despite the path ending with a V segment.
+              d = 'M' + x1 + ',' + y1 +
+                  ' L' + x2 + ',' + y1 +
+                  ' L' + x2 + ',' + y2;
+              useFixedArrow = true;
+            } else {
+              // 2+ rows apart — channel-track H→V→H (V in middle of gap).
+              var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
+              var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
+              var gapWidth = gapRight - gapLeft;
+              var eKey = gapKey[edgeIdx];
+              var total = eKey ? (gapCounts[eKey] || 1) : 1;
+              var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
+              var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
+              d = 'M' + x1 + ',' + y1 +
+                  ' L' + trackX + ',' + y1 +
+                  ' L' + trackX + ',' + y2 +
+                  ' L' + x2 + ',' + y2;
+            }
           }
         } else {
           // Vertical: exit bottom/top using node centers for X
@@ -1042,7 +1066,10 @@
       const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       pathEl.setAttribute('d', d);
       pathEl.setAttribute('class', 'connector-path');
-      pathEl.setAttribute('marker-end', 'url(#arrowhead)');
+      var markerId = useFixedArrow
+        ? (arrowDir === 'left' ? 'arrowhead-left' : 'arrowhead-right')
+        : 'arrowhead';
+      pathEl.setAttribute('marker-end', 'url(#' + markerId + ')');
       svg.appendChild(pathEl);
     });
   }
