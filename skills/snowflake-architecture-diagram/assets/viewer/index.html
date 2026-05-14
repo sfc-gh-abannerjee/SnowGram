@@ -991,30 +991,33 @@
             // Same row — straight horizontal (0 turns)
             d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
           } else {
-            // Channel-track routing: compute trackX from gap geometry.
-            var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
-            var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
-            var gapWidth = gapRight - gapLeft;
-            var eKey = gapKey[edgeIdx];
-            var total = eKey ? (gapCounts[eKey] || 1) : 1;
-            var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
-            var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
+            // Determine if source and target are on adjacent rows.
+            // Compute target zone's row height: zoneHeight / nodeCount.
+            // If the V span is at most one row, the L-shape's vertical segment
+            // won't pass alongside any intermediate node — safe to use 1 turn.
+            var tgtNodes = tgtZone.querySelectorAll('.flow-node').length || 1;
+            var srcNodes = srcZone.querySelectorAll('.flow-node').length || 1;
+            var tgtRowH = tgtZoneRect.height / tgtNodes;
+            var srcRowH = srcZoneRect.height / srcNodes;
+            var maxAdjacentSpan = Math.max(tgtRowH, srcRowH) * 1.2;
 
-            // Minimize turns: if track is near x1 or x2, collapse to 1 turn (L-shape)
-            var nearSrc = Math.abs(trackX - x1) < 12;
-            var nearTgt = Math.abs(trackX - x2) < 12;
-            if (nearSrc) {
-              // Track at source X — just go vertical then horizontal (1 turn)
-              d = 'M' + x1 + ',' + y1 +
-                  ' L' + x1 + ',' + y2 +
-                  ' L' + x2 + ',' + y2;
-            } else if (nearTgt) {
-              // Track at target X — go horizontal then vertical (1 turn)
+            if (vDist <= maxAdjacentSpan) {
+              // Adjacent rows — collapse to L-shape (1 turn).
+              // H→V at target X: horizontal at source Y across the gap,
+              // then short vertical at target's left edge to target Y.
               d = 'M' + x1 + ',' + y1 +
                   ' L' + x2 + ',' + y1 +
                   ' L' + x2 + ',' + y2;
             } else {
-              // Standard H→V→H (2 turns)
+              // 2+ rows apart — use channel-track to keep V in the gap
+              // so it doesn't pass alongside intermediate nodes.
+              var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
+              var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
+              var gapWidth = gapRight - gapLeft;
+              var eKey = gapKey[edgeIdx];
+              var total = eKey ? (gapCounts[eKey] || 1) : 1;
+              var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
+              var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
               d = 'M' + x1 + ',' + y1 +
                   ' L' + trackX + ',' + y1 +
                   ' L' + trackX + ',' + y2 +
