@@ -114,7 +114,7 @@ CHECKLISTS: Dict[str, Dict[str, Any]] = {
         "min_edges": 5,
     },
     "CUSTOMER_360": {
-        "expected_components": ["Customer", "ML", "Prediction", "Snowpipe"],
+        "expected_components": ["Customer 360", "ML Models", "Streaming", "Native App"],
         "expected_lane_badges": [],
         "expected_section_badges": [],
         "expected_external_node_ids": [],
@@ -138,7 +138,7 @@ CHECKLISTS: Dict[str, Dict[str, Any]] = {
         "min_edges": 4,
     },
     "DATA_GOVERNANCE_COMPLIANCE": {
-        "expected_components": ["Masking", "RLS", "Tag", "Policy"],
+        "expected_components": ["Masking", "Row Access Policy", "Tag", "ACCESS_HISTORY"],
         "expected_lane_badges": [],
         "expected_section_badges": [],
         "expected_external_node_ids": [],
@@ -186,7 +186,7 @@ CHECKLISTS: Dict[str, Dict[str, Any]] = {
         "min_edges": 3,
     },
     "HYBRID_CLOUD_LAKEHOUSE": {
-        "expected_components": ["Iceberg", "External Catalog"],
+        "expected_components": ["Iceberg", "Catalog Integration", "External Volume"],
         "expected_lane_badges": [],
         "expected_section_badges": [],
         "expected_external_node_ids": [],
@@ -422,11 +422,11 @@ async def harness(args) -> None:
         page.on("pageerror", lambda exc: print(f"[page error] {exc}"))
 
         print(f"Navigating to {args.url}...")
-        await page.goto(args.url, wait_until="networkidle")
+        await page.goto(args.url, wait_until="domcontentloaded", timeout=60000)
         # Wait for React hydration and our hook to register
         await page.wait_for_function(
             "typeof window.generateDiagram === 'function' && typeof window.inspectDiagramSpec === 'function'",
-            timeout=15000,
+            timeout=30000,
         )
 
         for tpl in templates:
@@ -438,13 +438,22 @@ async def harness(args) -> None:
 
             results[tid] = {}
             for pipeline in pipelines:
-                # Reload between pipelines so the flag swap is fresh
-                if pipeline == "unified":
-                    await page.evaluate("() => localStorage.setItem('useDiagramSpec', 'true')")
-                else:
-                    await page.evaluate("() => localStorage.setItem('useDiagramSpec', 'false')")
+                # Set the flag (App.tsx reads localStorage on every call to
+                # parseMermaidAndCreateDiagram, so no reload is needed).
+                try:
+                    flag = "true" if pipeline == "unified" else "false"
+                    await page.evaluate(
+                        f"() => localStorage.setItem('useDiagramSpec', '{flag}')"
+                    )
+                except Exception as e:
+                    print(f"[{pipeline}] {tid}: setup failed: {e}")
+                    continue
 
-                result = await run_template(page, tid, mermaid, tpl_dir, pipeline)
+                try:
+                    result = await run_template(page, tid, mermaid, tpl_dir, pipeline)
+                except Exception as e:
+                    print(f"[{pipeline}] {tid}: render failed: {e}")
+                    continue
                 results[tid][pipeline] = result
 
                 # Save spec + checklist

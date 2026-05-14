@@ -1,0 +1,55 @@
+flowchart LR
+    subgraph bronze["Bronze Layer (Raw)"]
+        bronze_db["BRONZE_DB"]
+        bronze_schema["Bronze Schema"]
+        bronze_raw["Raw Tables<br/>Append-Only<br/>VARIANT for JSON"]
+    end
+
+    subgraph silver["Silver Layer (Cleaned)"]
+        stream_b["Stream<br/>CDC Tracking"]
+        task_silver["Serverless Task<br/>Data Quality"]
+        silver_db["SILVER_DB"]
+        silver_tables["Cleaned Tables<br/>SCD Type 2<br/>Deduplication"]
+    end
+
+    subgraph gold["Gold Layer (Business)"]
+        dyn_table["Dynamic Tables<br/>TARGET_LAG=DOWNSTREAM<br/>Set Refresh Mode"]
+        gold_db["GOLD_DB"]
+        gold_agg["Business Aggregates<br/>Clustered"]
+    end
+
+    subgraph compute["Warehouse Strategy"]
+        wh_transform["WH_TRANSFORM<br/>DT Dedicated"]
+        wh_bi["WH_BI_ANALYTICS<br/>Multi-Cluster<br/>Auto-Scale"]
+    end
+
+    subgraph governance["Governance"]
+        tags["Schema Tags<br/>BRONZE, SILVER, GOLD"]
+        lineage["Data Lineage"]
+    end
+
+    subgraph bi["Analytics"]
+        bi_tools["BI Tools"]
+    end
+
+    bronze_raw --> stream_b
+    stream_b --> task_silver
+    task_silver --> silver_tables
+    silver_tables --> dyn_table
+    dyn_table --> gold_agg
+    gold_agg --> bi_tools
+    
+    bronze_db --> tags
+    silver_db --> tags
+    gold_db --> tags
+    tags --> lineage
+    
+    wh_transform -.-> dyn_table
+    wh_bi -.-> bi_tools
+
+    style bronze fill:#CD7F32,stroke:#8B4513
+    style silver fill:#C0C0C0,stroke:#808080
+    style gold fill:#FFD700,stroke:#DAA520
+    style compute fill:#E6E6FA,stroke:#9370DB
+    style governance fill:#98D8C8,stroke:#2ECC71
+    style bi fill:#F2C94C,stroke:#333

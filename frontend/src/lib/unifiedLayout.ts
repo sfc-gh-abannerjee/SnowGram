@@ -22,7 +22,7 @@ import {
   DiagramGroup,
   DiagramBadge,
 } from './types/diagramSpec';
-import { NODE_DIMENSIONS } from './textMeasure';
+import { NODE_DIMENSIONS, calculateNodeDimensions } from './textMeasure';
 import { LAYER_COLORS, getStageColor } from './mermaidToReactFlow';
 import { resolveIcon } from './iconResolver';
 
@@ -64,12 +64,20 @@ export function unifiedLayout(
 ): UnifiedLayoutResult {
   const lanes = spec.groups.filter(g => g.type === 'lane').sort((a, b) => a.index - b.index);
   const sections = spec.groups.filter(g => g.type === 'section').sort((a, b) => a.index - b.index);
+  const laneAndSectionIds = new Set<string>([
+    ...lanes.map(l => l.id),
+    ...sections.map(s => s.id),
+  ]);
 
-  // Build node→group lookup
+  // Build node→group lookup. Lane/section group members are positioned by
+  // their group; everything else (container groups like producer/consumer,
+  // top-level boundary groups, ungrouped) goes through edge-propagation
+  // column layout so source nodes end up on the far left and sinks on the
+  // far right of the canvas.
   const nodesByGroup = new Map<string, DiagramNode[]>();
   const ungrouped: DiagramNode[] = [];
   for (const n of spec.nodes) {
-    if (n.groupId) {
+    if (n.groupId && laneAndSectionIds.has(n.groupId)) {
       if (!nodesByGroup.has(n.groupId)) nodesByGroup.set(n.groupId, []);
       nodesByGroup.get(n.groupId)!.push(n);
     } else {
@@ -128,20 +136,63 @@ export function unifiedLayout(
     });
   });
 
-  // Ungrouped nodes: use edge-propagation column layout (matches old layoutWithELK)
+  // Ungrouped nodes (producer, consumer, and any standalone nodes).
+  // Classify each as source (only outgoing edges in the graph), sink (only
+  // incoming), or middle. Sources go to the far left of the canvas, sinks
+  // to the far right of all positioned content.
   if (ungrouped.length > 0) {
-    const columnLayout = layoutByEdgePropagation(ungrouped, spec.edges);
-    const ungroupedStartX = sections.length > 0
-      ? sectionStartX + sections.length * SECTION_COLUMN_WIDTH + 50
-      : laneStartX;
-    columnLayout.forEach(({ id, col, row, totalRows }) => {
-      const stackHeight = totalRows * VERTICAL_SPACING - ROW_SPACING;
-      const startY = TOP_MARGIN + (maxStackHeight - stackHeight) / 2;
-      positions.set(id, {
-        x: ungroupedStartX + col * (NODE_WIDTH + NODE_DIMENSIONS.COL_SPACING),
-        y: startY + row * VERTICAL_SPACING,
+    const allEdges = spec.edges;
+    const sources: DiagramNode[] = [];
+    const sinks: DiagramNode[] = [];
+    const middle: DiagramNode[] = [];
+    for (const n of ungrouped) {
+      const hasIn = allEdges.some(e => e.target === n.id);
+      const hasOut = allEdges.some(e => e.source === n.id);
+      if (hasOut && !hasIn) sources.push(n);
+      else if (hasIn && !hasOut) sinks.push(n);
+      else middle.push(n);
+    }
+
+    // Determine the rightmost positioned X so far so we can place sinks past it
+    let rightmostX = laneStartX;
+    for (const [, nodes] of nodesByGroup) {
+      for (const n of nodes) {
+        const p = positions.get(n.id);
+        if (p) rightmostX = Math.max(rightmostX, p.x + NODE_WIDTH);
+      }
+    }
+
+    // Sources: stack vertically at the far left (negative X relative to lanes)
+    const sourcesX = laneStartX - LANE_COLUMN_WIDTH;
+    sources.forEach((n, idx) => {
+      positions.set(n.id, {
+        x: sourcesX,
+        y: TOP_MARGIN + (maxStackHeight / 2) - NODE_HEIGHT / 2 + idx * VERTICAL_SPACING,
       });
     });
+
+    // Sinks: stack vertically to the right of all content
+    const sinksX = rightmostX + 80;
+    sinks.forEach((n, idx) => {
+      positions.set(n.id, {
+        x: sinksX,
+        y: TOP_MARGIN + (maxStackHeight / 2) - NODE_HEIGHT / 2 + idx * VERTICAL_SPACING,
+      });
+    });
+
+    // Middle (no edges or both): use edge-propagation column layout
+    if (middle.length > 0) {
+      const columnLayout = layoutByEdgePropagation(middle, spec.edges);
+      const middleStartX = sinksX + 200;
+      columnLayout.forEach(({ id, col, row, totalRows }) => {
+        const stackHeight = totalRows * VERTICAL_SPACING - ROW_SPACING;
+        const startY = TOP_MARGIN + (maxStackHeight - stackHeight) / 2;
+        positions.set(id, {
+          x: middleStartX + col * (NODE_WIDTH + NODE_DIMENSIONS.COL_SPACING),
+          y: startY + row * VERTICAL_SPACING,
+        });
+      });
+    }
   }
 
   // Build ReactFlow nodes
@@ -273,15 +324,27 @@ function buildAccountBoundaries(
     return false;
   };
 
-  // Classify content nodes
+  // Classify content nodes. For External, only include nodes inside a
+  // 'lane' or 'section' group whose ancestor is NOT snowflake. This excludes
+  // standalone nodes like producer/consumer that sit at the extremes —
+  // including them would stretch the External bbox across the entire canvas
+  // and cause it to overlap the Snowflake bbox.
+  const isInLayoutGroup = (groupId: string | undefined): boolean => {
+    if (!groupId) return false;
+    const g = groupById.get(groupId);
+    if (!g) return false;
+    return g.type === 'lane' || g.type === 'section';
+  };
+
   const internalNodes: typeof spec.nodes = [];
   const externalNodes: typeof spec.nodes = [];
   for (const n of spec.nodes) {
     if (snowflakeGroupIds.size > 0 && ancestorIsSnowflake(n.groupId)) {
       internalNodes.push(n);
-    } else {
+    } else if (isInLayoutGroup(n.groupId)) {
       externalNodes.push(n);
     }
+    // Else: standalone (e.g., producer, consumer) — don't include in any bbox
   }
 
   // If neither group is identifiable, skip boundaries entirely.
@@ -454,6 +517,22 @@ function specNodeToFlowNode(
     ? getStageColor(n.flowStageOrder, options.isDarkMode)
     : null;
 
+  // Compute dynamic width/height from label so nodes don't collapse to 1ch
+  // and wrap each character vertically. Mirrors the legacy pipeline's
+  // calculateNodeDimensions usage in App.tsx.
+  let width: number = NODE_DIMENSIONS.WIDTH_DEFAULT;
+  let height: number = NODE_DIMENSIONS.HEIGHT_DEFAULT;
+  let shouldWrap = false;
+  if (typeof window !== 'undefined') {
+    const dim = calculateNodeDimensions(n.label, {
+      hasIcon: true,
+      baseHeight: NODE_DIMENSIONS.HEIGHT_DEFAULT,
+    });
+    width = dim.width;
+    height = dim.height;
+    shouldWrap = dim.shouldWrap;
+  }
+
   return {
     id: n.id,
     type: 'snowflakeNode',
@@ -466,6 +545,7 @@ function specNodeToFlowNode(
       labelColor: options.isDarkMode ? '#E5EDF5' : '#0F172A',
       isDarkMode: options.isDarkMode,
       showHandles: true,
+      shouldWrap,
       subgraph: n.groupId,
     },
     position: positions.get(n.id) ?? { x: 0, y: 0 },
@@ -474,6 +554,8 @@ function specNodeToFlowNode(
       borderRadius: 8,
       background: stageColor?.background ?? background,
       color: options.isDarkMode ? '#e5f2ff' : '#0F172A',
+      width,
+      height,
     },
   };
 }

@@ -1,0 +1,37 @@
+{
+  "template_id": "STREAMING_DATA_STACK",
+  "pipeline": "legacy",
+  "pass_rate": 100.0,
+  "checks": [
+    {
+      "name": "no_raw_syntax_in_labels",
+      "passed": true,
+      "detail": "all labels clean"
+    },
+    {
+      "name": "no_helper_nodes_leaked",
+      "passed": true,
+      "detail": "no helpers in spec"
+    },
+    {
+      "name": "min_edges",
+      "passed": true,
+      "detail": "35 edges (min 25)"
+    },
+    {
+      "name": "expected_components_present",
+      "passed": true,
+      "detail": "all 16 present"
+    },
+    {
+      "name": "expected_lane_badges_present",
+      "passed": true,
+      "detail": "all 4 lane badges present"
+    },
+    {
+      "name": "expected_section_badges_present",
+      "passed": true,
+      "detail": "all 5 section badges present"
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+flowchart TD
+    subgraph source["Source Layer"]
+        s3["AWS S3<br/>Data Lake"]
+    end
+
+    subgraph ingestion["Ingestion Layer"]
+        stage["External Stage<br/>@S3_STAGE"]
+        pipe["Snowpipe<br/>Batch Load"]
+        table_raw["Staging Table<br/>VARIANT for JSON"]
+    end
+
+    subgraph transform["Transformation Layer"]
+        stream["Stream<br/>CDC"]
+        task_clean["Serverless Task<br/>Cleansing"]
+        table_clean["Clean Table"]
+    end
+
+    subgraph dimensional["Dimensional Model"]
+        task_dim["Task<br/>Dimensions"]
+        dim_customer["DIM_CUSTOMER<br/>SCD Type 2"]
+        dim_product["DIM_PRODUCT"]
+        task_fact["Task<br/>Facts"]
+        fact_sales["FACT_SALES<br/>Clustered by Date"]
+    end
+
+    subgraph marts["Data Marts"]
+        view_mart["SALES_MART<br/>Secure View"]
+    end
+
+    subgraph security["Security Layer"]
+        masking["Dynamic Masking<br/>PII Protection"]
+        rls["Row Access Policy"]
+        roles["ANALYST, MANAGER<br/>Functional Roles"]
+    end
+
+    subgraph compute["Warehouse Strategy"]
+        wh_load["WH_LOADING<br/>Ingestion"]
+        wh_transform["WH_TRANSFORM"]
+        wh_bi["WH_BI_ANALYTICS<br/>Multi-Cluster<br/>Standard Scaling"]
+    end
+
+    subgraph bi["BI Tools"]
+        powerbi["Power BI"]
+    end
+
+    s3 --> stage --> pipe --> table_raw
+    table_raw --> stream --> task_clean --> table_clean
+    table_clean --> task_dim --> dim_customer & dim_product
+    table_clean --> task_fact --> fact_sales
+    dim_customer & dim_product --> fact_sales
+    fact_sales --> view_mart --> masking
+    masking --> rls --> roles
+    roles --> powerbi
+    
+    wh_load -.-> pipe
+    wh_transform -.-> task_clean & task_dim & task_fact
+    wh_bi -.-> powerbi
+
+    style source fill:#FF9900,stroke:#fff
+    style ingestion fill:#29B5E8,stroke:#fff
+    style transform fill:#29B5E8,stroke:#fff
+    style dimensional fill:#29B5E8,stroke:#fff
+    style marts fill:#4ECDC4,stroke:#fff
+    style security fill:#95E1D3,stroke:#333
+    style compute fill:#E6E6FA,stroke:#9370DB
+    style bi fill:#F2C94C,stroke:#333

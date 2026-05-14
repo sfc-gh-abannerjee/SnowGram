@@ -1,0 +1,52 @@
+flowchart TD
+    subgraph sources["Source Data"]
+        source_table["Source Tables<br/>CUSTOMER_PII"]
+    end
+    
+    subgraph classification["Data Classification"]
+        classify["SYSTEM$CLASSIFY<br/>Auto-Classification"]
+        tags["Object Tags<br/>PII, SENSITIVE"]
+    end
+    
+    subgraph policies["Policy Layer"]
+        masking["Dynamic Data Masking<br/>Owner Rights"]
+        row_access["Row Access Policy<br/>Mapping Tables"]
+        projection["Projection Policy"]
+    end
+    
+    subgraph access["Access Control"]
+        roles["Functional Roles<br/>ANALYST, MANAGER"]
+        db_roles["Database Roles<br/>For Sharing"]
+        is_role["IS_ROLE_IN_SESSION<br/>Not CURRENT_ROLE"]
+    end
+    
+    subgraph audit["Audit & Compliance"]
+        access_history["ACCESS_HISTORY<br/>Account Usage"]
+        query_history["QUERY_HISTORY<br/>Who Queried What"]
+        login_history["LOGIN_HISTORY"]
+    end
+    
+    subgraph sharing["Secure Sharing"]
+        share["Secure Share<br/>CURRENT_ACCOUNT Check"]
+        reader["Reader Accounts<br/>Resource Monitors"]
+    end
+    
+    source_table --> classify
+    classify --> tags
+    tags --> masking & row_access & projection
+    masking --> roles
+    row_access --> roles
+    roles --> db_roles
+    db_roles --> is_role
+    is_role --> access_history
+    access_history --> query_history
+    query_history --> login_history
+    roles --> share
+    share --> reader
+    
+    style sources fill:#E8F4FD,stroke:#29B5E8
+    style classification fill:#FFE4B5,stroke:#FFA500
+    style policies fill:#FF6B6B,stroke:#CC0000
+    style access fill:#E6E6FA,stroke:#9370DB
+    style audit fill:#98D8C8,stroke:#2ECC71
+    style sharing fill:#DDA0DD,stroke:#8B008B

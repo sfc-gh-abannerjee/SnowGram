@@ -1,0 +1,64 @@
+flowchart LR
+    subgraph clients["Clients"]
+        client["Client Applications"]
+    end
+    
+    subgraph api["API Layer"]
+        api_gateway["API Gateway<br/>REST Endpoints"]
+    end
+    
+    subgraph serverless_compute["Serverless Compute"]
+        lambda["AWS Lambda"]
+        azure_func["Azure Functions"]
+        cloud_func["GCP Cloud Functions"]
+    end
+    
+    subgraph transactional["Transactional Storage"]
+        oltp["OLTP Database"]
+        nosql["NoSQL Database"]
+    end
+    
+    subgraph serverless_etl["Serverless ETL"]
+        glue["AWS Glue"]
+        adf["Azure Data Factory"]
+    end
+    
+    subgraph snowflake["Snowflake Data Cloud"]
+        subgraph operational["Operational"]
+            hybrid["Hybrid Tables<br/>Index-Based Reads<br/>Row Locking<br/>CTAS Bulk Load"]
+        end
+        
+        subgraph storage["Storage"]
+            json["Native JSON<br/>VARIANT Type"]
+        end
+        
+        subgraph compute["Compute"]
+            vw_ops["WH_OPERATIONAL<br/>X-Small Multi-Cluster"]
+            vw_analytics["WH_ANALYTICS<br/>Workload Isolated"]
+        end
+        
+        subgraph tasks["Serverless"]
+            serverless_tasks["Serverless Tasks<br/>Auto-Scaling"]
+        end
+    end
+    
+    client --> api_gateway
+    api_gateway --> lambda & azure_func & cloud_func
+    lambda --> oltp
+    azure_func --> nosql
+    cloud_func --> oltp
+    oltp --> glue
+    nosql --> adf
+    glue --> json
+    adf --> json
+    json --> hybrid
+    hybrid --> vw_ops
+    json --> vw_analytics
+    serverless_tasks --> json
+    
+    style clients fill:#E8F4FD,stroke:#29B5E8
+    style api fill:#FFE4B5,stroke:#FFA500
+    style serverless_compute fill:#E6E6FA,stroke:#9370DB
+    style transactional fill:#FFDAB9,stroke:#FF8C00
+    style serverless_etl fill:#D8BFD8,stroke:#8B008B
+    style snowflake fill:#E0F7FA,stroke:#00ACC1

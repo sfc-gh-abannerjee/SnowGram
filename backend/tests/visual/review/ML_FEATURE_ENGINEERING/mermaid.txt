@@ -1,0 +1,58 @@
+flowchart LR
+    subgraph sources["Data Sources"]
+        app["Application<br/>Training Data"]
+        streaming["Streaming Service"]
+        data_lake["Data Lake"]
+    end
+    
+    subgraph snowflake["Snowflake"]
+        subgraph ingestion["Ingestion"]
+            snowpipe["Snowpipe"]
+            external_table["External Tables"]
+            iceberg["Iceberg Tables<br/>Open Format"]
+        end
+        
+        subgraph processing["Feature Engineering"]
+            tasks["Serverless Tasks<br/>Scheduled"]
+            snowpark_proc["Snowpark Python<br/>DataFrame API"]
+            snowpark_ml["Snowpark ML<br/>scikit-learn<br/>XGBoost"]
+        end
+        
+        subgraph training["Model Training"]
+            snowpark_wh["Snowpark-Optimized WH<br/>16x Memory"]
+            spcs["Snowpark Container Services<br/>GPU Inference"]
+        end
+        
+        subgraph registry["Model Management"]
+            model_registry["Model Registry<br/>Schema-Level Objects<br/>Versioning"]
+            model_udf["Model as UDF<br/>Batch Inference"]
+        end
+        
+        subgraph cortex["Cortex AI"]
+            cortex_ml["Cortex ML Functions<br/>Classification, Forecast"]
+            cortex_llm["Cortex LLM<br/>COMPLETE, SUMMARIZE"]
+        end
+    end
+    
+    subgraph viz["Visualization"]
+        streamlit["Streamlit in Snowflake<br/>ML Dashboards"]
+    end
+    
+    app --> streaming & data_lake
+    streaming --> snowpipe
+    data_lake --> snowpipe & external_table & iceberg
+    snowpipe & external_table & iceberg --> tasks
+    tasks --> snowpark_proc
+    snowpark_proc --> snowpark_ml
+    snowpark_ml --> snowpark_wh
+    snowpark_wh --> model_registry
+    model_registry --> model_udf
+    model_registry --> spcs
+    snowpark_ml --> cortex_ml
+    cortex_ml --> cortex_llm
+    model_udf --> streamlit
+    cortex_llm --> streamlit
+    
+    style sources fill:#E8F4FD,stroke:#29B5E8
+    style snowflake fill:#E0F7FA,stroke:#00ACC1
+    style viz fill:#FFE4E1,stroke:#FF6B6B

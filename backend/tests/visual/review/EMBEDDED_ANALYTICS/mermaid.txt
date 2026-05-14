@@ -1,0 +1,50 @@
+flowchart LR
+    subgraph application["Application Layer"]
+        api["API / Web Tier<br/>SLA Enforcement"]
+        app["Application<br/>User Requests"]
+    end
+    
+    subgraph transactional["Transactional Layer"]
+        oltp["OLTP Database<br/>SQL or NoSQL"]
+        hybrid["Snowflake Hybrid Tables<br/>Index-Based Reads<br/>Row Locking"]
+    end
+    
+    subgraph etl["ETL / Data Integration"]
+        fivetran["FiveTran"]
+        matillion["Matillion"]
+        dbt["dbt"]
+        hvr["HVR"]
+    end
+    
+    subgraph snowflake["Snowflake"]
+        subgraph storage["Historical Data"]
+            historical["Historical Data<br/>CTAS Bulk Loading"]
+        end
+        
+        subgraph compute["Compute Isolation"]
+            vw_app["WH_APP_QUERIES<br/>X-Small Multi-Cluster<br/>Standard Scaling"]
+            vw_bi["WH_BI_ANALYTICS<br/>Sized for Working Set"]
+        end
+    end
+    
+    subgraph visualization["Visualization"]
+        streamlit["Streamlit in Snowflake"]
+        embedded_bi["Embedded BI Tools"]
+    end
+    
+    app --> api
+    api --> oltp
+    api --> hybrid
+    oltp --> fivetran & matillion & dbt & hvr
+    fivetran & matillion & dbt & hvr --> historical
+    historical --> vw_app
+    historical --> vw_bi
+    vw_app --> streamlit
+    vw_bi --> embedded_bi
+    hybrid --> vw_app
+    
+    style application fill:#E8F4FD,stroke:#29B5E8
+    style transactional fill:#FFE4B5,stroke:#FFA500
+    style etl fill:#E6E6FA,stroke:#9370DB
+    style snowflake fill:#E0F7FA,stroke:#00ACC1
+    style visualization fill:#FFE4E1,stroke:#FF6B6B
