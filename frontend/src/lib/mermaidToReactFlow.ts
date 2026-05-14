@@ -486,8 +486,19 @@ export function convertMermaidToFlow(
     const def = lines.find(l => l.startsWith(`${id}[`));
     if (def) {
       const m = def.match(nodeDefRegex);
-      // Strip quotes before cleanText (same pattern as subgraph labels at line 614)
-      if (m) return cleanText(m[2].replace(/["]/g, ''));
+      if (m) {
+        // Strip Mermaid shape characters that wrap the label text:
+        //   [/"text"/] parallelogram, [\"text"\] reverse parallelogram,
+        //   [/"text"\] trapezoid,     [\"text"/] reverse trapezoid,
+        //   [["text"]] subroutine,    [("text")] cylinder
+        // The outer [...] is already consumed by nodeDefRegex; strip what's inside.
+        let inner = m[2];
+        // Remove matched outer wrappers (paren, bracket, slash, backslash) at edges
+        inner = inner.replace(/^[\[\(\\\/]+\s*/, '').replace(/\s*[\]\)\\\/]+$/, '');
+        // Strip quotes
+        inner = inner.replace(/["]/g, '');
+        return cleanText(inner);
+      }
     }
     return cleanText(id);
   };
