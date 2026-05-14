@@ -4666,51 +4666,52 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                   </div>
                 </div>
               ))}
+
+              {/* Starter prompts - compact chips inside the scrollable area to avoid
+                  overflowing into the chat input row when the panel is short. */}
+              {chatMessages.length <= 1 && !chatSending && (
+                <div className={styles.starterPrompts}>
+                  <div className={styles.starterHint}>
+                    <span>Try a reference architecture</span>
+                    <span className={styles.starterHintActions}>click to send • hold ⌥ to edit</span>
+                  </div>
+                  <div className={styles.starterChips}>
+                    {[
+                      { icon: '/icons/Snowflake_ICON_RA_Stream.svg', label: 'Streaming', prompt: 'Generate a Snowflake Streaming Data Stack reference architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Security.svg', label: 'Security Analytics', prompt: 'Generate a Snowflake Security Analytics architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Cloud.svg', label: 'Serverless', prompt: 'Generate a Snowflake Serverless Data Stack architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Users.svg', label: 'Customer 360', prompt: 'Generate a Snowflake Customer 360 architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Embedded_Analytics.svg', label: 'Embedded Analytics', prompt: 'Generate a Snowflake Embedded Analytics architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_IoT.svg', label: 'IoT', prompt: 'Generate a Snowflake IoT Reference Architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Workloads_AI.svg', label: 'ML Pipeline', prompt: 'Generate a Snowflake Machine Learning architecture diagram' },
+                    ].map((starter, i) => (
+                      <button
+                        key={i}
+                        className={styles.starterChip}
+                        onClick={(e) => {
+                          if (e.altKey || e.metaKey) {
+                            // Alt/Option or Cmd: fill input for editing
+                            setChatInput(starter.prompt);
+                          } else {
+                            // Normal click: send immediately
+                            setChatInput(starter.prompt);
+                            handleSendChatWithPrompt(starter.prompt);
+                          }
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setChatInput(starter.prompt);
+                        }}
+                      >
+                        <img src={starter.icon} alt="" className={styles.starterChipIcon} />
+                        <span>{starter.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            
-            {/* Starter prompts - compact chips above input */}
-            {chatMessages.length <= 1 && !chatSending && (
-              <div className={styles.starterPrompts}>
-                <div className={styles.starterHint}>
-                  <span>Try a reference architecture</span>
-                  <span className={styles.starterHintActions}>click to send • hold ⌥ to edit</span>
-                </div>
-                <div className={styles.starterChips}>
-                  {[
-                    { icon: '/icons/Snowflake_ICON_RA_Stream.svg', label: 'Streaming', prompt: 'Generate a Snowflake Streaming Data Stack reference architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Security.svg', label: 'Security Analytics', prompt: 'Generate a Snowflake Security Analytics architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Cloud.svg', label: 'Serverless', prompt: 'Generate a Snowflake Serverless Data Stack architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Users.svg', label: 'Customer 360', prompt: 'Generate a Snowflake Customer 360 architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Embedded_Analytics.svg', label: 'Embedded Analytics', prompt: 'Generate a Snowflake Embedded Analytics architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_IoT.svg', label: 'IoT', prompt: 'Generate a Snowflake IoT Reference Architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Workloads_AI.svg', label: 'ML Pipeline', prompt: 'Generate a Snowflake Machine Learning architecture diagram' },
-                  ].map((starter, i) => (
-                    <button
-                      key={i}
-                      className={styles.starterChip}
-                      onClick={(e) => {
-                        if (e.altKey || e.metaKey) {
-                          // Alt/Option or Cmd: fill input for editing
-                          setChatInput(starter.prompt);
-                        } else {
-                          // Normal click: send immediately
-                          setChatInput(starter.prompt);
-                          handleSendChatWithPrompt(starter.prompt);
-                        }
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setChatInput(starter.prompt);
-                      }}
-                    >
-                      <img src={starter.icon} alt="" className={styles.starterChipIcon} />
-                      <span>{starter.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            
+
             <div className={styles.chatInputRow}>
               <textarea
                 className={styles.chatInput}
