@@ -920,11 +920,27 @@
     var gapIndex = {};   // edgeIdx → sorted index within its gap group
     var gapKey = {};     // edgeIdx → gap key string
     var gapCounts = {};  // gap key → total edges in that gap
+    // Separate pool that ONLY counts V-needing edges (rowDiff >= 1).
+    // L-shape and channel-track share this pool so their V columns are
+    // distributed evenly across the gap and never collide at the same X.
+    var vGapEdges = {};
+    var vGapIndex = {};
+    var vGapKey = {};
+    var vGapCounts = {};
     // Per-node fan-in/fan-out for Y staggering
     var nodeOutCount = {};
     var nodeOutIdx = {};
     var nodeInCount = {};
     var nodeInIdx = {};
+    function rowIdxOfPre(el) {
+      var zoneEl = el.closest('.zone');
+      if (!zoneEl) return -1;
+      var nodes = zoneEl.querySelectorAll('.flow-node');
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i] === el) return i;
+      }
+      return -1;
+    }
     edges.forEach(function(edge, idx) {
       var s = card.querySelector('[data-node-id="' + edge.source + '"]');
       var t = card.querySelector('[data-node-id="' + edge.target + '"]');
@@ -937,6 +953,18 @@
       if (!gapEdges[key]) gapEdges[key] = [];
       gapEdges[key].push({ idx: idx, avgY: (srcCy + tgtCy) / 2 });
       gapKey[idx] = key;
+      // V-needing pool: only edges that will produce a vertical column
+      // (different rows in their respective zones).
+      var srcRowIdx = rowIdxOfPre(s);
+      var tgtRowIdx = rowIdxOfPre(t);
+      var rowDiff = (srcRowIdx >= 0 && tgtRowIdx >= 0)
+        ? Math.abs(srcRowIdx - tgtRowIdx)
+        : 0;
+      if (rowDiff >= 1) {
+        if (!vGapEdges[key]) vGapEdges[key] = [];
+        vGapEdges[key].push({ idx: idx, avgY: (srcCy + tgtCy) / 2 });
+        vGapKey[idx] = key;
+      }
       // Fan-out tracking
       if (!nodeOutCount[edge.source]) nodeOutCount[edge.source] = 0;
       nodeOutIdx[idx] = nodeOutCount[edge.source];
@@ -953,6 +981,14 @@
       gapCounts[key] = group.length;
       group.forEach(function(item, sortedIdx) {
         gapIndex[item.idx] = sortedIdx;
+      });
+    });
+    Object.keys(vGapEdges).forEach(function(key) {
+      var group = vGapEdges[key];
+      group.sort(function(a, b) { return a.avgY - b.avgY; });
+      vGapCounts[key] = group.length;
+      group.forEach(function(item, sortedIdx) {
+        vGapIndex[item.idx] = sortedIdx;
       });
     });
 
@@ -1049,44 +1085,43 @@
             var commonY = (y1 + y2) / 2;
             d = 'M' + x1 + ',' + commonY + ' L' + x2 + ',' + commonY;
           } else if (rowDiff === 1) {
-            // Adjacent rows — H→V→H L-shape.
-            // Position the V in the visible gap BETWEEN zones, 12px before
-            // the target zone's edge so it doesn't hug the zone border.
-            // Falls back to gap midpoint when the zone gap is too narrow.
-            var srcZoneEdge = (dx >= 0 ? srcZoneRect.right : srcZoneRect.left) - cardRect.left;
-            var tgtZoneEdge = (dx >= 0 ? tgtZoneRect.left : tgtZoneRect.right) - cardRect.left;
-            var breathing = 12;
+            // Adjacent rows — H→V→H L-shape, with V column distributed
+            // across the gap based on the V-needing edge index. This
+            // prevents two V columns in the same gap from landing at
+            // the same X (which makes connectors look merged or makes
+            // it ambiguous which line goes where). Channel-track uses
+            // the same pool so L-shapes and 2+row tracks coordinate.
+            var vKey = vGapKey[edgeIdx];
+            var vTotal = vKey ? (vGapCounts[vKey] || 1) : 1;
+            var vIdx = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
+            // Distribute across [min(x1,x2)+4, max(x1,x2)-4] — 4px clear
+            // of source/target nodes but otherwise full gap range.
+            var stubMinX = Math.min(x1, x2) + 4;
+            var stubMaxX = Math.max(x1, x2) - 4;
             var stubX;
-            if (dx >= 0) {
-              var minStub = srcZoneEdge + breathing;
-              var maxStub = tgtZoneEdge - breathing;
-              stubX = (minStub <= maxStub) ? maxStub : (srcZoneEdge + tgtZoneEdge) / 2;
+            if (stubMaxX > stubMinX) {
+              stubX = stubMinX + (stubMaxX - stubMinX) * (vIdx + 1) / (vTotal + 1);
             } else {
-              var minStubL = tgtZoneEdge + breathing;
-              var maxStubL = srcZoneEdge - breathing;
-              stubX = (minStubL <= maxStubL) ? minStubL : (srcZoneEdge + tgtZoneEdge) / 2;
+              stubX = (x1 + x2) / 2;
             }
             d = 'M' + x1 + ',' + y1 +
                 ' L' + stubX + ',' + y1 +
                 ' L' + stubX + ',' + y2 +
                 ' L' + x2 + ',' + y2;
           } else {
-            // 2+ rows apart — channel-track H→V→H (V in middle of gap).
-            var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
-            var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
-            var gapWidth = gapRight - gapLeft;
-            var eKey = gapKey[edgeIdx];
-            var total = eKey ? (gapCounts[eKey] || 1) : 1;
-            var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
-            var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
-            // Clamp trackX into a safe region between source exit and
-            // target entry so the V never lands inside a zone (which
-            // would cause the line to hug a zone's interior edge or
-            // backtrack across the source node's right boundary).
-            var minTrackX = Math.min(x1, x2) + 12;
-            var maxTrackX = Math.max(x1, x2) - 12;
-            if (minTrackX < maxTrackX) {
-              trackX = Math.max(minTrackX, Math.min(maxTrackX, trackX));
+            // 2+ rows apart — channel-track H→V→H.
+            // Shares the V-needing stagger pool with L-shape so all
+            // V columns in this gap are evenly distributed.
+            var vKey2 = vGapKey[edgeIdx];
+            var vTotal2 = vKey2 ? (vGapCounts[vKey2] || 1) : 1;
+            var vIdx2 = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
+            var trackMinX = Math.min(x1, x2) + 4;
+            var trackMaxX = Math.max(x1, x2) - 4;
+            var trackX;
+            if (trackMaxX > trackMinX) {
+              trackX = trackMinX + (trackMaxX - trackMinX) * (vIdx2 + 1) / (vTotal2 + 1);
+            } else {
+              trackX = (x1 + x2) / 2;
             }
             d = 'M' + x1 + ',' + y1 +
                 ' L' + trackX + ',' + y1 +

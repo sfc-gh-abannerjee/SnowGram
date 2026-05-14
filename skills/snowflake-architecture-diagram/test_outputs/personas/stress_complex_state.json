@@ -130,8 +130,8 @@
       "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
     },
     {
-      "id": "cortex_ml",
-      "label": "Cortex ML",
+      "id": "snowflake_ml",
+      "label": "Snowflake ML",
       "detail": "Demand forecasting",
       "icon": "Snowflake_ICON_Cortex.svg",
       "category": "outcome",
@@ -202,7 +202,7 @@
     },
     {
       "source": "dt_ml_features",
-      "target": "cortex_ml"
+      "target": "snowflake_ml"
     }
   ],
   "zones": [
@@ -254,7 +254,7 @@
       "node_ids": [
         "tableau",
         "streamlit_app",
-        "cortex_ml"
+        "snowflake_ml"
       ]
     }
   ],
@@ -306,7 +306,7 @@
     },
     {
       "url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview",
-      "title": "Cortex ML",
+      "title": "Snowflake ML",
       "excerpt": "Demand forecasting"
     }
   ]
