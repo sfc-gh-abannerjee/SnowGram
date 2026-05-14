@@ -2308,14 +2308,18 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               setChatMessages((msgs) => {
                 const updated = [...msgs];
                 const lastMsg = updated[updated.length - 1];
+                // Precedence: prior value (e.g., a tool_result that already
+                // captured the full mermaid/json) > complete fenced extraction
+                // > partial in-progress fragment. Without this ordering, a
+                // partial mid-stream extraction would clobber the full code
+                // a tool_result set, leaving the dropdown expander empty.
                 updated[updated.length - 1] = { 
                   ...lastMsg,
                   role: 'assistant', 
                   text: displayText || 'Thinking...',
                   timestamp: lastMsg.timestamp || new Date().toISOString(),
-                  // Update code artifacts progressively for dropdown display
-                  jsonSpec: currentJsonSpec || lastMsg.jsonSpec,
-                  mermaidCode: currentMermaidCode || lastMsg.mermaidCode
+                  jsonSpec: lastMsg.jsonSpec || streamingJsonSpec || partialJsonSpec,
+                  mermaidCode: lastMsg.mermaidCode || streamingMermaidCode || partialMermaidCode,
                 };
                 return updated;
               });
@@ -2612,11 +2616,17 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               setChatMessages((msgs) => {
                 const updated = [...msgs];
                 const lastMsg = updated[updated.length - 1];
+                // Precedence: prior value (e.g., from a tool_result that already
+                // captured the full mermaid) > complete fenced extraction from
+                // the agent text > partial in-progress fragment. Without this
+                // ordering, partial extractions during streaming would clobber
+                // the full mermaid that tool_result set, leaving the dropdown
+                // expander with whitespace-only content.
                 updated[updated.length - 1] = {
                   ...lastMsg,
                   text: displayText || 'Thinking...',
-                  jsonSpec: currentJsonSpec || lastMsg.jsonSpec,
-                  mermaidCode: currentMermaidCode || lastMsg.mermaidCode,
+                  jsonSpec: lastMsg.jsonSpec || streamingJsonSpec || partialJsonSpec,
+                  mermaidCode: lastMsg.mermaidCode || streamingMermaidCode || partialMermaidCode,
                 };
                 return updated;
               });
