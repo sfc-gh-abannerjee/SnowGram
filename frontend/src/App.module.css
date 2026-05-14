@@ -2115,6 +2115,72 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* GFM tables — render markdown tables as proper HTML tables.
+   Wrapped in a horizontally-scrollable container so wide tables in the
+   narrow chat panel never overflow the bubble. */
+.chatMarkdown table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.92em;
+  line-height: 1.4;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.chatMarkdown thead {
+  background: rgba(41, 181, 232, 0.08);
+}
+.chatMarkdown th,
+.chatMarkdown td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+.chatMarkdown th:last-child,
+.chatMarkdown td:last-child {
+  border-right: none;
+}
+.chatMarkdown tr:last-child td {
+  border-bottom: none;
+}
+.chatMarkdown th {
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+}
+.chatMarkdown tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.025);
+}
+.chatMarkdown tbody tr:hover {
+  background: rgba(41, 181, 232, 0.06);
+}
+.darkMode .chatMarkdown table {
+  border-color: #1f2937;
+}
+.darkMode .chatMarkdown thead {
+  background: rgba(41, 181, 232, 0.12);
+}
+.darkMode .chatMarkdown th,
+.darkMode .chatMarkdown td {
+  border-color: #1f2937;
+}
+.darkMode .chatMarkdown th {
+  color: #e5edf5;
+}
+.darkMode .chatMarkdown tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.025);
+}
+.darkMode .chatMarkdown tbody tr:hover {
+  background: rgba(41, 181, 232, 0.1);
+}
+
 /* Thinking section styles - Snowflake STAR BLUE brand color (#71D3DC) */
 .thinkingSection {
   margin: 8px 0;
