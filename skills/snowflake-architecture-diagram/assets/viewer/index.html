@@ -988,12 +988,10 @@
 
           var vDist = Math.abs(y2 - y1);
           if (vDist < 4) {
-            // Same row — straight horizontal
+            // Same row — straight horizontal (0 turns)
             d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
           } else {
             // Channel-track routing: compute trackX from gap geometry.
-            // The gap channel spans from source zone right edge to target zone left edge.
-            // Each edge gets an evenly-spaced track within that channel.
             var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
             var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
             var gapWidth = gapRight - gapLeft;
@@ -1001,10 +999,27 @@
             var total = eKey ? (gapCounts[eKey] || 1) : 1;
             var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
             var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
-            d = 'M' + x1 + ',' + y1 +
-                ' L' + trackX + ',' + y1 +
-                ' L' + trackX + ',' + y2 +
-                ' L' + x2 + ',' + y2;
+
+            // Minimize turns: if track is near x1 or x2, collapse to 1 turn (L-shape)
+            var nearSrc = Math.abs(trackX - x1) < 12;
+            var nearTgt = Math.abs(trackX - x2) < 12;
+            if (nearSrc) {
+              // Track at source X — just go vertical then horizontal (1 turn)
+              d = 'M' + x1 + ',' + y1 +
+                  ' L' + x1 + ',' + y2 +
+                  ' L' + x2 + ',' + y2;
+            } else if (nearTgt) {
+              // Track at target X — go horizontal then vertical (1 turn)
+              d = 'M' + x1 + ',' + y1 +
+                  ' L' + x2 + ',' + y1 +
+                  ' L' + x2 + ',' + y2;
+            } else {
+              // Standard H→V→H (2 turns)
+              d = 'M' + x1 + ',' + y1 +
+                  ' L' + trackX + ',' + y1 +
+                  ' L' + trackX + ',' + y2 +
+                  ' L' + x2 + ',' + y2;
+            }
           }
         } else {
           // Vertical: exit bottom/top using node centers for X
