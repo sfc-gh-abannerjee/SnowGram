@@ -1094,15 +1094,21 @@
             var vKey = vGapKey[edgeIdx];
             var vTotal = vKey ? (vGapCounts[vKey] || 1) : 1;
             var vIdx = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
-            // Distribute across [min(x1,x2)+4, max(x1,x2)-4] — 4px clear
-            // of source/target nodes but otherwise full gap range.
+            // Distribute across [min(x1,x2)+4, max(x1,x2)-4]. Use an
+            // edge-anchored spread (idx/(N-1)) instead of (idx+1)/(N+1)
+            // so the FIRST V lands near the source side of the gap and
+            // the LAST V lands near the target side. This maximizes
+            // visual separation between adjacent V columns and stops
+            // them from looking like a single stairstepped path.
             var stubMinX = Math.min(x1, x2) + 4;
             var stubMaxX = Math.max(x1, x2) - 4;
             var stubX;
-            if (stubMaxX > stubMinX) {
-              stubX = stubMinX + (stubMaxX - stubMinX) * (vIdx + 1) / (vTotal + 1);
-            } else {
+            if (stubMaxX <= stubMinX) {
               stubX = (x1 + x2) / 2;
+            } else if (vTotal === 1) {
+              stubX = (stubMinX + stubMaxX) / 2;
+            } else {
+              stubX = stubMinX + (stubMaxX - stubMinX) * vIdx / (vTotal - 1);
             }
             d = 'M' + x1 + ',' + y1 +
                 ' L' + stubX + ',' + y1 +
@@ -1111,17 +1117,20 @@
           } else {
             // 2+ rows apart — channel-track H→V→H.
             // Shares the V-needing stagger pool with L-shape so all
-            // V columns in this gap are evenly distributed.
+            // V columns in this gap are evenly distributed along the
+            // gap's edge-anchored range.
             var vKey2 = vGapKey[edgeIdx];
             var vTotal2 = vKey2 ? (vGapCounts[vKey2] || 1) : 1;
             var vIdx2 = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
             var trackMinX = Math.min(x1, x2) + 4;
             var trackMaxX = Math.max(x1, x2) - 4;
             var trackX;
-            if (trackMaxX > trackMinX) {
-              trackX = trackMinX + (trackMaxX - trackMinX) * (vIdx2 + 1) / (vTotal2 + 1);
-            } else {
+            if (trackMaxX <= trackMinX) {
               trackX = (x1 + x2) / 2;
+            } else if (vTotal2 === 1) {
+              trackX = (trackMinX + trackMaxX) / 2;
+            } else {
+              trackX = trackMinX + (trackMaxX - trackMinX) * vIdx2 / (vTotal2 - 1);
             }
             d = 'M' + x1 + ',' + y1 +
                 ' L' + trackX + ',' + y1 +
