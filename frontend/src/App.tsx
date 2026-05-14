@@ -666,6 +666,15 @@ const App: React.FC = () => {
           return false;
         }
       };
+      // Expose the parsed DiagramSpec for harness/checklist inspection.
+      (window as any).inspectDiagramSpec = (mermaidCode: string) => {
+        try {
+          return parseMermaidToSpec(mermaidCode, COMPONENT_CATEGORIES, isDarkMode);
+        } catch (e) {
+          console.error('[Test Hook] inspectDiagramSpec error:', e);
+          return null;
+        }
+      };
       debugLog('[Test Hook] window.generateDiagram registered');
     }
     return () => {
