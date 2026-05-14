@@ -151,6 +151,13 @@ export function unifiedLayout(
   const badgeNodes = buildBadgeNodes(spec.badges, lanes, sections, nodesByGroup, positions);
   flowNodes.push(...badgeNodes);
 
+  // Add account boundaries computed from subgraph membership.
+  // A node is "Snowflake-internal" iff one of its ancestor groups has
+  // id or label matching 'snowflake' (case-insensitive). Otherwise external.
+  const boundaryNodes = buildAccountBoundaries(spec, positions, options);
+  // Boundaries render BEHIND content nodes (lower zIndex)
+  flowNodes.unshift(...boundaryNodes);
+
   // Build ReactFlow edges
   const flowEdges: Edge[] = spec.edges.map((e, idx) => specEdgeToFlowEdge(e, idx, options));
 
@@ -218,8 +225,150 @@ function orderNodesByTopology(nodes: DiagramNode[], edges: { source: string; tar
 }
 
 // ---------------------------------------------------------------------------
-// Edge-propagation column layout (for ungrouped nodes)
+// Account boundary placement (Snowflake / External Sources)
 // ---------------------------------------------------------------------------
+
+const BOUNDARY_PADDING = 40;
+const BOUNDARY_LABEL_OFFSET = 20;
+const BOUNDARY_GAP = 60; // horizontal gap between External and Snowflake boundaries
+
+/**
+ * Build account-boundary nodes (Snowflake + External Sources) by classifying
+ * each content node via its group ancestry.
+ *
+ * Replaces the legacy keyword-based isExternalNode / addAccountBoundaries
+ * with subgraph-membership semantics: a node is internal iff any ancestor
+ * group has id or label matching 'snowflake' (case-insensitive).
+ */
+function buildAccountBoundaries(
+  spec: DiagramSpec,
+  positions: Map<string, { x: number; y: number }>,
+  options: UnifiedLayoutOptions,
+): Node[] {
+  // Build group lookup
+  const groupById = new Map(spec.groups.map(g => [g.id, g]));
+
+  // Locate the Snowflake boundary group (if any). Templates conventionally
+  // use a top-level group with id='snowflake' or label containing 'Snowflake'.
+  const snowflakeGroupIds = new Set<string>();
+  for (const g of spec.groups) {
+    const idLower = g.id.toLowerCase();
+    const labelLower = g.label.toLowerCase();
+    if (idLower === 'snowflake' || idLower === 'snowflake_account' ||
+        labelLower === 'snowflake' || labelLower === 'snowflake account' ||
+        labelLower.includes('snowflake account')) {
+      snowflakeGroupIds.add(g.id);
+    }
+  }
+
+  // Resolve ancestry: returns true if any ancestor of `groupId` is in the Snowflake set.
+  const ancestorIsSnowflake = (groupId: string | undefined): boolean => {
+    let current: string | undefined = groupId;
+    const seen = new Set<string>(); // cycle guard
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      if (snowflakeGroupIds.has(current)) return true;
+      current = groupById.get(current)?.parentId;
+    }
+    return false;
+  };
+
+  // Classify content nodes
+  const internalNodes: typeof spec.nodes = [];
+  const externalNodes: typeof spec.nodes = [];
+  for (const n of spec.nodes) {
+    if (snowflakeGroupIds.size > 0 && ancestorIsSnowflake(n.groupId)) {
+      internalNodes.push(n);
+    } else {
+      externalNodes.push(n);
+    }
+  }
+
+  // If neither group is identifiable, skip boundaries entirely.
+  if (snowflakeGroupIds.size === 0 || internalNodes.length === 0) {
+    return [];
+  }
+
+  // Compute bounding boxes (accounts for node width/height)
+  const bbox = (nodes: typeof spec.nodes) => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const n of nodes) {
+      const p = positions.get(n.id);
+      if (!p) continue;
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + NODE_WIDTH);
+      maxY = Math.max(maxY, p.y + NODE_HEIGHT);
+    }
+    if (minX === Infinity) return null;
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  };
+
+  const internalBox = bbox(internalNodes);
+  const externalBox = bbox(externalNodes);
+
+  const result: Node[] = [];
+
+  if (internalBox) {
+    result.push(makeBoundaryNode(
+      'account_boundary_snowflake',
+      'Snowflake Account',
+      internalBox,
+      '#29B5E8', // Snowflake brand blue
+      options,
+    ));
+  }
+
+  if (externalBox) {
+    result.push(makeBoundaryNode(
+      'account_boundary_external',
+      'External Sources',
+      externalBox,
+      '#94A3B8', // neutral slate
+      options,
+    ));
+  }
+
+  return result;
+}
+
+function makeBoundaryNode(
+  id: string,
+  label: string,
+  box: { x: number; y: number; w: number; h: number },
+  borderColor: string,
+  options: UnifiedLayoutOptions,
+): Node {
+  return {
+    id,
+    type: 'snowflakeNode',
+    data: {
+      label,
+      componentType: id, // 'account_boundary_snowflake' or 'account_boundary_external'
+      isAccountBoundary: true,
+      isDarkMode: options.isDarkMode,
+      showHandles: false,
+      labelColor: options.isDarkMode ? '#94A3B8' : '#64748B',
+    },
+    position: {
+      x: box.x - BOUNDARY_PADDING,
+      y: box.y - BOUNDARY_PADDING - BOUNDARY_LABEL_OFFSET,
+    },
+    style: {
+      width: box.w + BOUNDARY_PADDING * 2,
+      height: box.h + BOUNDARY_PADDING * 2 + BOUNDARY_LABEL_OFFSET,
+      border: `2px dashed ${borderColor}`,
+      borderRadius: 12,
+      background: 'transparent',
+      color: borderColor,
+      pointerEvents: 'none',
+      zIndex: -1, // render behind content
+    },
+    draggable: false,
+    selectable: false,
+  };
+}
+
 
 /**
  * Assign nodes to columns using edge propagation.
