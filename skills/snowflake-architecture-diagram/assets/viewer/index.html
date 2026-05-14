@@ -996,41 +996,53 @@
 
           var vDist = Math.abs(y2 - y1);
           arrowDir = (dx >= 0) ? 'right' : 'left';
-          if (vDist < 4) {
-            // Same row — straight horizontal (0 turns)
-            d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
-          } else {
-            // Determine if source and target are on adjacent rows.
-            var tgtNodes = tgtZone.querySelectorAll('.flow-node').length || 1;
-            var srcNodes = srcZone.querySelectorAll('.flow-node').length || 1;
-            var tgtRowH = tgtZoneRect.height / tgtNodes;
-            var srcRowH = srcZoneRect.height / srcNodes;
-            var maxAdjacentSpan = Math.max(tgtRowH, srcRowH) * 1.2;
 
-            if (vDist <= maxAdjacentSpan) {
-              // Adjacent rows — true 1-turn L-shape (H→V).
-              // Long horizontal exit at source-Y across the gap, then a
-              // single short vertical drop into target-Y at target-X.
-              // The arrow uses a direction-locked marker so it points
-              // horizontally despite the path ending with a V segment.
-              d = 'M' + x1 + ',' + y1 +
-                  ' L' + x2 + ',' + y1 +
-                  ' L' + x2 + ',' + y2;
-              useFixedArrow = true;
-            } else {
-              // 2+ rows apart — channel-track H→V→H (V in middle of gap).
-              var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
-              var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
-              var gapWidth = gapRight - gapLeft;
-              var eKey = gapKey[edgeIdx];
-              var total = eKey ? (gapCounts[eKey] || 1) : 1;
-              var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
-              var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
-              d = 'M' + x1 + ',' + y1 +
-                  ' L' + trackX + ',' + y1 +
-                  ' L' + trackX + ',' + y2 +
-                  ' L' + x2 + ',' + y2;
+          // Compute row index of source/target within their zones.
+          // Using row INDEX rather than absolute Y distance reliably
+          // identifies "same row" connections even when zones have
+          // different node counts (and thus different row spacing).
+          function rowIdxOf(el) {
+            var zoneEl = el.closest('.zone');
+            if (!zoneEl) return -1;
+            var nodes = zoneEl.querySelectorAll('.flow-node');
+            for (var i = 0; i < nodes.length; i++) {
+              if (nodes[i] === el) return i;
             }
+            return -1;
+          }
+          var srcRowIdx = rowIdxOf(srcEl);
+          var tgtRowIdx = rowIdxOf(tgtEl);
+          var rowDiff = (srcRowIdx >= 0 && tgtRowIdx >= 0)
+            ? Math.abs(srcRowIdx - tgtRowIdx)
+            : 999;
+
+          if (rowDiff === 0) {
+            // Same row — snap to common Y for true horizontal line.
+            // Avoids tiny V kinks when zones have slight Y misalignment.
+            var commonY = (y1 + y2) / 2;
+            d = 'M' + x1 + ',' + commonY + ' L' + x2 + ',' + commonY;
+          } else if (rowDiff === 1) {
+            // Adjacent rows — true 1-turn L-shape (H→V).
+            // Long horizontal exit at source-Y, single vertical drop at
+            // target-X. Arrow uses direction-locked marker so it points
+            // horizontally despite the path ending with a V segment.
+            d = 'M' + x1 + ',' + y1 +
+                ' L' + x2 + ',' + y1 +
+                ' L' + x2 + ',' + y2;
+            useFixedArrow = true;
+          } else {
+            // 2+ rows apart — channel-track H→V→H (V in middle of gap).
+            var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
+            var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
+            var gapWidth = gapRight - gapLeft;
+            var eKey = gapKey[edgeIdx];
+            var total = eKey ? (gapCounts[eKey] || 1) : 1;
+            var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
+            var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
+            d = 'M' + x1 + ',' + y1 +
+                ' L' + trackX + ',' + y1 +
+                ' L' + trackX + ',' + y2 +
+                ' L' + x2 + ',' + y2;
           }
         } else {
           // Vertical: exit bottom/top using node centers for X
