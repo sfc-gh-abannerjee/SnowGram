@@ -1088,27 +1088,23 @@
             // Adjacent rows — H→V→H L-shape, with V column distributed
             // across the gap based on the V-needing edge index. This
             // prevents two V columns in the same gap from landing at
-            // the same X (which makes connectors look merged or makes
-            // it ambiguous which line goes where). Channel-track uses
-            // the same pool so L-shapes and 2+row tracks coordinate.
+            // the same X. Channel-track uses the same pool so L-shapes
+            // and 2+row tracks coordinate.
+            // Use (idx+1)/(N+1) formula which keeps Vs in the central
+            // portion of the gap — this avoids the extreme positions
+            // (one V hugging the source zone edge, one hugging the
+            // target zone edge) that come with the edge-anchored
+            // idx/(N-1) variant.
             var vKey = vGapKey[edgeIdx];
             var vTotal = vKey ? (vGapCounts[vKey] || 1) : 1;
             var vIdx = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
-            // Distribute across [min(x1,x2)+4, max(x1,x2)-4]. Use an
-            // edge-anchored spread (idx/(N-1)) instead of (idx+1)/(N+1)
-            // so the FIRST V lands near the source side of the gap and
-            // the LAST V lands near the target side. This maximizes
-            // visual separation between adjacent V columns and stops
-            // them from looking like a single stairstepped path.
             var stubMinX = Math.min(x1, x2) + 4;
             var stubMaxX = Math.max(x1, x2) - 4;
             var stubX;
-            if (stubMaxX <= stubMinX) {
-              stubX = (x1 + x2) / 2;
-            } else if (vTotal === 1) {
-              stubX = (stubMinX + stubMaxX) / 2;
+            if (stubMaxX > stubMinX) {
+              stubX = stubMinX + (stubMaxX - stubMinX) * (vIdx + 1) / (vTotal + 1);
             } else {
-              stubX = stubMinX + (stubMaxX - stubMinX) * vIdx / (vTotal - 1);
+              stubX = (x1 + x2) / 2;
             }
             d = 'M' + x1 + ',' + y1 +
                 ' L' + stubX + ',' + y1 +
@@ -1116,21 +1112,17 @@
                 ' L' + x2 + ',' + y2;
           } else {
             // 2+ rows apart — channel-track H→V→H.
-            // Shares the V-needing stagger pool with L-shape so all
-            // V columns in this gap are evenly distributed along the
-            // gap's edge-anchored range.
+            // Shares the V-needing stagger pool with L-shape.
             var vKey2 = vGapKey[edgeIdx];
             var vTotal2 = vKey2 ? (vGapCounts[vKey2] || 1) : 1;
             var vIdx2 = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
             var trackMinX = Math.min(x1, x2) + 4;
             var trackMaxX = Math.max(x1, x2) - 4;
             var trackX;
-            if (trackMaxX <= trackMinX) {
-              trackX = (x1 + x2) / 2;
-            } else if (vTotal2 === 1) {
-              trackX = (trackMinX + trackMaxX) / 2;
+            if (trackMaxX > trackMinX) {
+              trackX = trackMinX + (trackMaxX - trackMinX) * (vIdx2 + 1) / (vTotal2 + 1);
             } else {
-              trackX = trackMinX + (trackMaxX - trackMinX) * vIdx2 / (vTotal2 - 1);
+              trackX = (x1 + x2) / 2;
             }
             d = 'M' + x1 + ',' + y1 +
                 ' L' + trackX + ',' + y1 +
