@@ -1054,12 +1054,13 @@
       var arrowDir = 'right';     // 'right' or 'left' for fixed-orientation arrows
 
       if (sameZone) {
-        // Within-zone routing. Adjacent rows = straight vertical. Non-adjacent
-        // rows must detour around intermediate node(s) — but the exit and
-        // entry must still read as vertical (out the bottom of source, into
-        // the top of target). To achieve that, we draw a clearly visible
-        // downward stub from src.bottom, then bend just past the card edge,
-        // descend, and bend back to enter tgt.top with a matching upward stub.
+        // Within-zone routing. Adjacent rows = straight vertical (clean
+        // top-to-bottom). Non-adjacent rows must skip intermediate node(s);
+        // we route exit DOWN from src.bottom (clear "out of source"), out
+        // to a side channel, descend past the intermediates, then enter
+        // the target from its SIDE — NOT via a top-down stub at column
+        // center, which would visually masquerade as an adjacent edge
+        // between two intermediate boxes.
         const srcRect = srcEl.getBoundingClientRect();
         const tgtRect = tgtEl.getBoundingClientRect();
         x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
@@ -1081,62 +1082,48 @@
           // Adjacent rows — straight vertical is correct.
           d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
         } else {
-          // Non-adjacent — bend just past the card edge to skip intermediates.
-          // Find the next sibling card in the travel direction so we can
-          // place the bend point at the MIDPOINT of the inter-card gap
-          // (well below src.bottom, well above tgt.top). This produces a
-          // long, visible downward stub that reads as "exits source bottom".
+          // Non-adjacent — exit DOWN, side-channel, enter target's SIDE.
+          // The exit stub from src.bottom should extend at least to the
+          // midpoint of the inter-card gap below src so it reads clearly
+          // as "out the bottom".
           var nextRow = goingDownward ? srcRow + 1 : srcRow - 1;
           var nextEl = (nextRow >= 0 && nextRow < zoneNodes.length) ? zoneNodes[nextRow] : null;
           var stubBendY;
           if (nextEl) {
             var nextRect = nextEl.getBoundingClientRect();
             if (goingDownward) {
-              // Bend halfway between src.bottom and next-sibling.top.
-              var nextTop = nextRect.top - cardRect.top;
-              stubBendY = (y1 + nextTop) / 2;
+              stubBendY = (y1 + (nextRect.top - cardRect.top)) / 2;
             } else {
-              var nextBot = nextRect.bottom - cardRect.top;
-              stubBendY = (y1 + nextBot) / 2;
+              stubBendY = (y1 + (nextRect.bottom - cardRect.top)) / 2;
             }
           } else {
             stubBendY = goingDownward ? y1 + 14 : y1 - 14;
           }
 
-          // Mirror: bend point near target.
-          var prevRow = goingDownward ? tgtRow - 1 : tgtRow + 1;
-          var prevEl = (prevRow >= 0 && prevRow < zoneNodes.length) ? zoneNodes[prevRow] : null;
-          var tgtBendY;
-          if (prevEl) {
-            var prevRect = prevEl.getBoundingClientRect();
-            if (goingDownward) {
-              var prevBot = prevRect.bottom - cardRect.top;
-              tgtBendY = (prevBot + y2) / 2;
-            } else {
-              var prevTop = prevRect.top - cardRect.top;
-              tgtBendY = (prevTop + y2) / 2;
-            }
-          } else {
-            tgtBendY = goingDownward ? y2 - 14 : y2 + 14;
-          }
-
-          // Side channel: just past the card edge (10-14px), NOT all the way
-          // out in the zone gutter. This keeps the detour visually subtle.
+          // Side channel just past the card edge (12-22px, NOT all the
+          // way out in the gutter). Stagger by edge index so multiple
+          // skip-edges in the same column don't overlap.
           var nodeRightEdge = srcRect.right - cardRect.left;
-          var nodeLeftEdge = srcRect.left - cardRect.left;
-          // Default: route on the right (canonical direction in LTR layout).
-          // Stagger by edge index so multiple skip-edges in the same column
-          // don't overlap exactly.
-          var sideOffset = 12 + (edgeIdx % 4) * 5;
+          var sideOffset = 14 + (edgeIdx % 3) * 6;
           var sideX = nodeRightEdge + sideOffset;
 
-          // Path: src.bottom → midpoint of gap → side channel → mirror midpoint → tgt.top
+          // Enter target's RIGHT side at its CENTER y. This makes the
+          // final approach a clear horizontal arrow that cannot be
+          // confused with an adjacent vertical edge between two
+          // intermediate boxes.
+          var tgtRightEdge = tgtRect.right - cardRect.left;
+          var tgtCenterY = (tgtRect.top + tgtRect.height / 2) - cardRect.top;
+
           d = 'M' + x1 + ',' + y1 +
               ' L' + x1 + ',' + stubBendY +
               ' L' + sideX + ',' + stubBendY +
-              ' L' + sideX + ',' + tgtBendY +
-              ' L' + x2 + ',' + tgtBendY +
-              ' L' + x2 + ',' + y2;
+              ' L' + sideX + ',' + tgtCenterY +
+              ' L' + tgtRightEdge + ',' + tgtCenterY;
+
+          // Use a left-pointing arrowhead (line approaches target's right
+          // edge moving leftward).
+          useFixedArrow = true;
+          arrowDir = 'left';
         }
       } else {
         // Cross-zone: channel-track orthogonal routing
