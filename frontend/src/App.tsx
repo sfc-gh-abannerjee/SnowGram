@@ -2033,7 +2033,10 @@ const flattenToolResultContent = (raw: any): string => {
   if (typeof raw === 'object') {
     if (typeof raw.text === 'string') return raw.text;
     if (raw.json !== undefined) {
-      return typeof raw.json === 'string' ? raw.json : JSON.stringify(raw.json, null, 2);
+      // The .json may itself be a SQL-function envelope or another nested
+      // structure — recurse so we keep unwrapping until we hit a string.
+      if (typeof raw.json === 'string') return raw.json;
+      return flattenToolResultContent(raw.json);
     }
     // Snowflake SQL-function envelope: tools backed by a UDF/UDTF return
     // { execution_type:'function', query_id:'...', result:'<actual output>',
@@ -2162,6 +2165,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       let streamedThinking = '';
       let fullText = '';
       let toolExtractedMermaid = '';  // Track Mermaid extracted from tool results
+      let toolExtractedJsonSpec = '';  // Track JSON spec extracted from tool results
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -2277,6 +2281,10 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 toolExtractedMermaid = extractedMermaid;
                 debugLog('[Chat] Extracted Mermaid from tool result:', extractedMermaid.slice(0, 100) + '...');
               }
+              if (extractedJsonSpec) {
+                toolExtractedJsonSpec = extractedJsonSpec;
+                debugLog('[Chat] Extracted JSON spec from tool result');
+              }
               
               // Update the tool call status and store the result
               setChatMessages((msgs) => {
@@ -2363,18 +2371,25 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               setChatMessages((msgs) => {
                 const updated = [...msgs];
                 const lastMsg = updated[updated.length - 1];
-                // Precedence: prior value (e.g., a tool_result that already
-                // captured the full mermaid/json) > complete fenced extraction
-                // > partial in-progress fragment. Without this ordering, a
-                // partial mid-stream extraction would clobber the full code
-                // a tool_result set, leaving the dropdown expander empty.
+                // Precedence (highest wins):
+                //   1. Complete fenced extraction from agent text
+                //      (streamingMermaidCode/JsonSpec) — authoritative
+                //   2. tool_result-extracted value (toolExtractedMermaid /
+                //      toolExtractedJsonSpec) — full payload, instant
+                //   3. Latest partial from agent text — grows char-by-char as
+                //      chunks stream in, gives users live feedback
+                //   4. Prior lastMsg value — preserve if nothing new
+                // Note: partial OVER lastMsg is intentional. Each chunk's
+                // partialMermaidCode is the cumulative streamed-so-far text,
+                // so it always grows; using lastMsg first would lock the
+                // dropdown to the first tiny fragment forever.
                 updated[updated.length - 1] = { 
                   ...lastMsg,
                   role: 'assistant', 
                   text: displayText || 'Thinking...',
                   timestamp: lastMsg.timestamp || new Date().toISOString(),
-                  jsonSpec: lastMsg.jsonSpec || streamingJsonSpec || partialJsonSpec,
-                  mermaidCode: lastMsg.mermaidCode || streamingMermaidCode || partialMermaidCode,
+                  jsonSpec: streamingJsonSpec || toolExtractedJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: streamingMermaidCode || toolExtractedMermaid || partialMermaidCode || lastMsg.mermaidCode,
                 };
                 return updated;
               });
@@ -2563,6 +2578,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       let streamedThinking = '';
       let fullText = '';
       let toolExtractedMermaid = '';  // Track Mermaid extracted from tool results
+      let toolExtractedJsonSpec = '';  // Track JSON spec extracted from tool results
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -2609,6 +2625,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               const toolResult = { name: toolName, result: flatResult || rawResult, input: data.result.input };
               
               let extractedMermaid: string | undefined;
+              let extractedJsonSpec: string | undefined;
               if ((toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' || toolName.includes('COMPOSE') || toolName.includes('DIAGRAM')) && rawResult) {
                 const resultStr = flatResult || (typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult));
                 const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram)/i);
@@ -2617,11 +2634,16 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                   const mermaidMatch = resultStr.match(/```mermaid\s*([\s\S]*?)```/);
                   if (mermaidMatch) extractedMermaid = mermaidMatch[1].trim();
                 }
+                const jsonMatch = resultStr.match(/```json\s*([\s\S]*?)```/);
+                if (jsonMatch) extractedJsonSpec = jsonMatch[1].trim();
               }
               
               // CRITICAL: Store extracted Mermaid for use in final diagram processing
               if (extractedMermaid) {
                 toolExtractedMermaid = extractedMermaid;
+              }
+              if (extractedJsonSpec) {
+                toolExtractedJsonSpec = extractedJsonSpec;
               }
               
               setChatMessages((msgs) => {
@@ -2675,17 +2697,16 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               setChatMessages((msgs) => {
                 const updated = [...msgs];
                 const lastMsg = updated[updated.length - 1];
-                // Precedence: prior value (e.g., from a tool_result that already
-                // captured the full mermaid) > complete fenced extraction from
-                // the agent text > partial in-progress fragment. Without this
-                // ordering, partial extractions during streaming would clobber
-                // the full mermaid that tool_result set, leaving the dropdown
-                // expander with whitespace-only content.
+                // Precedence (highest wins):
+                //   1. Complete fenced extraction from agent text (authoritative)
+                //   2. tool_result-extracted value (full payload, instant)
+                //   3. Latest partial — grows char-by-char as chunks stream
+                //   4. Prior lastMsg value
                 updated[updated.length - 1] = {
                   ...lastMsg,
                   text: displayText || 'Thinking...',
-                  jsonSpec: lastMsg.jsonSpec || streamingJsonSpec || partialJsonSpec,
-                  mermaidCode: lastMsg.mermaidCode || streamingMermaidCode || partialMermaidCode,
+                  jsonSpec: streamingJsonSpec || toolExtractedJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: streamingMermaidCode || toolExtractedMermaid || partialMermaidCode || lastMsg.mermaidCode,
                 };
                 return updated;
               });
