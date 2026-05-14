@@ -102,24 +102,72 @@ cortex search docs "iceberg external catalog"
 
 Collect up to 5 citations as `[{url, title, excerpt}]` objects.
 
-### Step 3: Write state.json + launch viewer
+### Step 3: Render the diagram
+
+**REQUIRED — use one of these two commands. Do NOT improvise an HTML
+file or use a CDN-loaded Mermaid renderer.** The bundled viewer has
+custom orthogonal connector routing, line jumps, hover-traceable
+connections, and Snowflake-aligned styling that hand-rolled HTML
+cannot reproduce.
+
+#### 3a. File output (one-shot, sharable HTML) — preferred when CoCo runs non-interactively or the user asks to "save / export / render to a file"
 
 ```bash
-# Write state.json
+python3 $SKILL_DIR/assets/scripts/diagram_from_prompt.py \
+    "<the user's prompt verbatim>" \
+    --out <user-requested-output-path>.html
+```
+
+This single command runs the intent router, picks the best-fit
+template, builds the state JSON, and renders a self-contained
+~3 MB HTML with everything embedded (viewer JS, all Snowflake
+icons as data URIs, state JSON). No server, no internet required
+to view it.
+
+You can override the title with `--title "Custom Title"`.
+
+For compose-from-blocks (multi-source freeform prompts that don't
+fit a single template), fall through to Step 3c below.
+
+#### 3b. Interactive viewer (live local server) — when the user says "show me / open the viewer / let me iterate live"
+
+```bash
+# Write state.json into the viewer's expected location
 cat > $SKILL_DIR/assets/viewer/state.json <<EOF
 {
-  "mermaid": "<the Mermaid code>",
+  "mermaid": "<the Mermaid code from Step 2>",
   "title": "<template name or freeform title>",
-  "source": "standalone:template:<TEMPLATE_ID>"  // or "standalone:freeform"
+  "source": "standalone:template:<TEMPLATE_ID>",
   "citations": [...]
 }
 EOF
 
-# Launch
+# Launch a local HTTP server + open the browser
 $SKILL_DIR/assets/scripts/launch_viewer.sh
 ```
 
-The viewer opens at `http://localhost:<port>/`. User can download `.mmd`, `.svg`, `.png`.
+The viewer opens at `http://localhost:<port>/`. User can download `.mmd`, `.svg`, `.png` from the viewer header.
+
+#### 3c. Compose-from-blocks path (advanced)
+
+When the intent router returns `{"type": "compose", ...}` instead of
+`{"type": "template", ...}`, you'll need to compose Mermaid manually
+and either pass through `render_static.py` directly or write the
+viewer state.json:
+
+```bash
+# Compose Mermaid from a list of BLOCK_IDs
+python3 $SKILL_DIR/assets/composer/composer.py --block-ids '["..."]' > /tmp/diagram.mmd
+
+# Build state.json then render
+cat > /tmp/state.json <<EOF
+{ "mermaid": "$(cat /tmp/diagram.mmd | python3 -c 'import sys,json;print(json.dumps(sys.stdin.read())[1:-1])')",
+  "title": "<title>", "source": "standalone:freeform", "citations": [] }
+EOF
+python3 $SKILL_DIR/assets/scripts/render_static.py --state /tmp/state.json --out <out>.html
+```
+
+**Default behavior**: prefer 3a (one-shot) unless the user explicitly asks for the live viewer.
 
 ### Step 4: Iteration
 
@@ -140,7 +188,9 @@ Always rewrite `state.json` and reload the viewer (the user can refresh the brow
 | `$SKILL_DIR/assets/component_blocks.json` | BLOCK_ID lookup |
 | `$SKILL_DIR/assets/component_synonyms.json` | Term -> component_type fuzzy match |
 | `cortex search docs "<query>"` | Documentation enrichment |
-| `$SKILL_DIR/assets/scripts/launch_viewer.sh` | Spawn viewer + open browser |
+| `python3 $SKILL_DIR/assets/scripts/diagram_from_prompt.py "<prompt>" --out <out.html>` | **One-shot prompt → HTML.** Preferred for non-interactive output. |
+| `$SKILL_DIR/assets/scripts/launch_viewer.sh` | Spawn viewer + open browser (interactive flow) |
+| `python3 $SKILL_DIR/assets/scripts/render_static.py --state <s.json> --out <out.html>` | Render an existing state.json to self-contained HTML (lower-level than diagram_from_prompt.py) |
 | `$SKILL_DIR/assets/scripts/stop_viewer.sh` | Stop viewer |
 
 ## Stopping points
