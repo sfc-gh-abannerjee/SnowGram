@@ -619,7 +619,6 @@
       <button id="btn-mmd">Download .mmd</button>
       <button id="btn-svg">Download .svg</button>
       <button id="btn-png">Download .png</button>
-      <button id="btn-html">Download .html</button>
       <button id="btn-theme" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
         <svg class="moon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
         <svg class="sun"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1447,10 +1446,6 @@
       const a = document.createElement('a');
       a.download = safeName() + '.png'; a.href = dataUrl; a.click();
     } catch (e) { alert('PNG export failed: ' + (e.message || e)); }
-  });
-  document.getElementById('btn-html').addEventListener('click', () => {
-    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-    download(safeName() + '.html', new Blob([html], { type: 'text/html;charset=utf-8' }));
   });
 
   // Boot
