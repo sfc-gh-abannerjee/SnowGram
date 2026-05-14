@@ -105,6 +105,8 @@ Valid `component_overrides` keys: `source | ingestion | raw_storage | transforma
 
 A single command does the rest: routing → baseline state → knowledge-pack overlay → prompt customization → self-contained HTML.
 
+**REQUIRED — invoke `diagram_from_prompt.py`. Do NOT write a state.json by hand. Do NOT generate Mermaid manually. Do NOT improvise an HTML file.** The script is the only correct path because it stamps `routing` metadata, populates `zone.node_ids`, applies the knowledge pack overlay, runs the prompt customizer, and embeds icons as data URIs. Hand-rolled state JSONs will render incorrectly (missing zone.node_ids → empty zones in the viewer).
+
 ```bash
 python3 "$SCRIPTS_DIR/diagram_from_prompt.py" \
     "<user prompt verbatim>" \

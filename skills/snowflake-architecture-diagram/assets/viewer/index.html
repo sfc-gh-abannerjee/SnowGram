@@ -753,6 +753,18 @@
     const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
     const zones = Array.isArray(state.zones) ? state.zones : [];
 
+    // ── Defensive backfill: if a zone has no node_ids[] but matching nodes
+    // have node.zone === zone.name, populate node_ids from the nodes. This
+    // lets hand-rolled state JSONs render correctly even when the producer
+    // forgets to populate node_ids per zone.
+    zones.forEach(function(z) {
+      if (!Array.isArray(z.node_ids) || z.node_ids.length === 0) {
+        z.node_ids = nodes
+          .filter(function(n) { return n.zone === z.name; })
+          .map(function(n) { return n.id; });
+      }
+    });
+
     // ── Enterprise zones layout (topology-driven columns) ──
     if (zones.length) {
       flow.className = 'arch-layout';
