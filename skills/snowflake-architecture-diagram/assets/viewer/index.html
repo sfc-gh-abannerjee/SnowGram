@@ -1022,14 +1022,17 @@
             var commonY = (y1 + y2) / 2;
             d = 'M' + x1 + ',' + commonY + ' L' + x2 + ',' + commonY;
           } else if (rowDiff === 1) {
-            // Adjacent rows — true 1-turn L-shape (H→V).
-            // Long horizontal exit at source-Y, single vertical drop at
-            // target-X. Arrow uses direction-locked marker so it points
-            // horizontally despite the path ending with a V segment.
+            // Adjacent rows — H→V→H with short terminal H stub.
+            // The stub keeps the path's last segment horizontal so the
+            // arrow tangent matches the line direction (line leads into
+            // the arrow, instead of the arrow appearing on the side of a
+            // vertical line endpoint).
+            var stubLen = 12;
+            var stubX = (dx >= 0 ? x2 - stubLen : x2 + stubLen);
             d = 'M' + x1 + ',' + y1 +
-                ' L' + x2 + ',' + y1 +
+                ' L' + stubX + ',' + y1 +
+                ' L' + stubX + ',' + y2 +
                 ' L' + x2 + ',' + y2;
-            useFixedArrow = true;
           } else {
             // 2+ rows apart — channel-track H→V→H (V in middle of gap).
             var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
