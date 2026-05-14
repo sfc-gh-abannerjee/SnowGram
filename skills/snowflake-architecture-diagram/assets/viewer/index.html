@@ -991,41 +991,22 @@
             // Same row — straight horizontal (0 turns)
             d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
           } else {
-            // Determine if source and target are on adjacent rows.
-            // Compute target zone's row height: zoneHeight / nodeCount.
-            // If the V span is at most one row, the L-shape's vertical segment
-            // won't pass alongside any intermediate node — safe to use 1 turn.
-            var tgtNodes = tgtZone.querySelectorAll('.flow-node').length || 1;
-            var srcNodes = srcZone.querySelectorAll('.flow-node').length || 1;
-            var tgtRowH = tgtZoneRect.height / tgtNodes;
-            var srcRowH = srcZoneRect.height / srcNodes;
-            var maxAdjacentSpan = Math.max(tgtRowH, srcRowH) * 1.2;
-
-            if (vDist <= maxAdjacentSpan) {
-              // Adjacent rows — H exit, short V near target, tiny H stub.
-              // Long horizontal exit from source, then short vertical 12px
-              // before target, then small horizontal stub into target.
-              // The terminal H stub keeps the arrow pointing into the target.
-              var stubX = (dx >= 0 ? x2 - 12 : x2 + 12);
-              d = 'M' + x1 + ',' + y1 +
-                  ' L' + stubX + ',' + y1 +
-                  ' L' + stubX + ',' + y2 +
-                  ' L' + x2 + ',' + y2;
-            } else {
-              // 2+ rows apart — use channel-track to keep V in the gap
-              // so it doesn't pass alongside intermediate nodes.
-              var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
-              var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
-              var gapWidth = gapRight - gapLeft;
-              var eKey = gapKey[edgeIdx];
-              var total = eKey ? (gapCounts[eKey] || 1) : 1;
-              var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
-              var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
-              d = 'M' + x1 + ',' + y1 +
-                  ' L' + trackX + ',' + y1 +
-                  ' L' + trackX + ',' + y2 +
-                  ' L' + x2 + ',' + y2;
-            }
+            // Cross-row — channel-track H→V→H routing.
+            // V placed at evenly-distributed track X within the gap so both
+            // the source-Y H exit and target-Y H arrival have substantial
+            // length. Multiple edges sharing the gap get distinct tracks
+            // (sorted by avgY) to minimize crossings.
+            var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
+            var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
+            var gapWidth = gapRight - gapLeft;
+            var eKey = gapKey[edgeIdx];
+            var total = eKey ? (gapCounts[eKey] || 1) : 1;
+            var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
+            var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
+            d = 'M' + x1 + ',' + y1 +
+                ' L' + trackX + ',' + y1 +
+                ' L' + trackX + ',' + y2 +
+                ' L' + x2 + ',' + y2;
           }
         } else {
           // Vertical: exit bottom/top using node centers for X
