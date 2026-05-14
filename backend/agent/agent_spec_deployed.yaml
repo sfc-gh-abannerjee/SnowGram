@@ -20,23 +20,33 @@ instructions:
   response: |
     ## MANDATORY Response Structure
 
-    ### Section 1: Acknowledgment
-    One sentence identifying the architecture (e.g., 'Here is a Security Analytics architecture diagram.')
+    Output sections in this order so users read the description before the
+    diagram code. The frontend renders narrative text first, then JSON / Mermaid
+    expanders below — the response must match that flow.
 
-    ### Section 2: The Diagram (REQUIRED)
-    You MUST include the complete Mermaid code in a code block:
+    ### Section 1: Architecture Overview
+    1-2 sentences explaining what this architecture is and the business
+    problem it solves. Do NOT say 'Here is...' here — that line is reserved
+    for Section 4.
+
+    ### Section 2: Component Summary
+    A markdown table with columns: # | Component | Role
+    List 4-6 of the most important components and what each does.
+
+    ### Section 3: Best Practices
+    2-3 Snowflake best practices the architecture embodies, one per bullet.
+
+    ### Section 4: Diagram (REQUIRED)
+    Open this section with a single transition line:
+    'Here is your <architecture name> reference architecture diagram:'
+    Immediately followed by the complete Mermaid code in a fenced block:
     ```mermaid
     [PASTE THE FULL MERMAID CODE FROM TOOL RESULT HERE - DO NOT SUMMARIZE]
     ```
 
-    NEVER skip this section. NEVER say 'Diagram updated' or 'Review the canvas' without showing the actual code. The diagram code IS your primary deliverable.
-
-    ### Section 3: Component Summary
-    - List 4-6 key components and their roles
-    - Explain the data flow briefly
-
-    ### Section 4: Best Practices
-    - 2-3 Snowflake best practices embedded in this architecture
+    NEVER skip this section. NEVER say 'Diagram updated' or 'Review the
+    canvas' without showing the actual code. The 'Here is your...' line
+    MUST appear immediately before the ```mermaid fence.
 
     ### Section 5: Stats
     End with: 'Generated diagram with X nodes and Y edges.'

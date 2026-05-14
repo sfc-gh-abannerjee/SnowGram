@@ -1054,14 +1054,64 @@
       var arrowDir = 'right';     // 'right' or 'left' for fixed-orientation arrows
 
       if (sameZone) {
-        // Within-zone: straight vertical from node bottom to node top
+        // Within-zone: straight vertical from node bottom to node top —
+        // BUT if there are intermediate nodes between src and tgt in this
+        // zone's row order, the straight line would cut through them. In
+        // that case route via a side channel inside the zone gutter.
         const srcRect = srcEl.getBoundingClientRect();
         const tgtRect = tgtEl.getBoundingClientRect();
         x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
         y1 = srcRect.bottom - cardRect.top;
         x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
         y2 = tgtRect.top - cardRect.top;
-        d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+
+        // Compute row indices of src and tgt within the shared zone.
+        var zoneNodes = srcZone.querySelectorAll('.flow-node');
+        var srcRow = -1, tgtRow = -1;
+        for (var zi = 0; zi < zoneNodes.length; zi++) {
+          if (zoneNodes[zi] === srcEl) srcRow = zi;
+          if (zoneNodes[zi] === tgtEl) tgtRow = zi;
+        }
+        var rowGap = (srcRow >= 0 && tgtRow >= 0) ? Math.abs(tgtRow - srcRow) : 1;
+
+        if (rowGap <= 1) {
+          // Adjacent rows — straight vertical is correct.
+          d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+        } else {
+          // Non-adjacent — route via a side channel in the zone gutter so
+          // the line doesn't cut through intermediate nodes. Route on the
+          // right side of the source/target (zone interior padding gives
+          // ~14-20px gutter). Stagger sideX by edge index to deconflict
+          // multiple skip-edges in the same column.
+          var zoneRect = srcZone.getBoundingClientRect();
+          var srcCxRel = (srcRect.left + srcRect.right) / 2 - cardRect.left;
+          var nodeRightEdge = srcRect.right - cardRect.left;
+          var nodeLeftEdge = srcRect.left - cardRect.left;
+          var zoneRightEdge = zoneRect.right - cardRect.left;
+          var zoneLeftEdge = zoneRect.left - cardRect.left;
+          var rightGutter = zoneRightEdge - nodeRightEdge;
+          var leftGutter = nodeLeftEdge - zoneLeftEdge;
+          // Prefer the wider gutter; default right if equal.
+          var goRight = rightGutter >= leftGutter;
+          var sideX = goRight
+            ? nodeRightEdge + Math.max(8, Math.min(20, rightGutter / 2))
+            : nodeLeftEdge - Math.max(8, Math.min(20, leftGutter / 2));
+          // Add a small per-edge offset so multiple skip-edges in the same
+          // column don't overlap (4px steps).
+          sideX += (goRight ? 1 : -1) * (edgeIdx % 3) * 4;
+
+          // Exit source from BOTTOM, route through gutter, re-enter target at TOP.
+          // Use small step-down before turning to avoid the arrow visually
+          // emerging from the source's edge corner.
+          var srcStepY = y1 + 6;
+          var tgtStepY = y2 - 6;
+          d = 'M' + x1 + ',' + y1 +
+              ' L' + x1 + ',' + srcStepY +
+              ' L' + sideX + ',' + srcStepY +
+              ' L' + sideX + ',' + tgtStepY +
+              ' L' + x2 + ',' + tgtStepY +
+              ' L' + x2 + ',' + y2;
+        }
       } else {
         // Cross-zone: channel-track orthogonal routing
         const srcZoneRect = srcZone.getBoundingClientRect();
