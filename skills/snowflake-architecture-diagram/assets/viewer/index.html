@@ -1003,10 +1003,11 @@
 
             if (vDist <= maxAdjacentSpan) {
               // Adjacent rows — collapse to L-shape (1 turn).
-              // H→V at target X: horizontal at source Y across the gap,
-              // then short vertical at target's left edge to target Y.
+              // V→H: vertical at source's right edge to target Y, then
+              // horizontal across the gap to target. Path ends with a
+              // horizontal segment so the arrow points into the target.
               d = 'M' + x1 + ',' + y1 +
-                  ' L' + x2 + ',' + y1 +
+                  ' L' + x1 + ',' + y2 +
                   ' L' + x2 + ',' + y2;
             } else {
               // 2+ rows apart — use channel-track to keep V in the gap
