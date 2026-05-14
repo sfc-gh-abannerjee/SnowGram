@@ -21,6 +21,9 @@ Implemented a phased migration that introduces a canonical `DiagramSpec` interme
 | `64f3545` | Define DiagramSpec canonical type | Foundation |
 | `7f0bb8c` | unifiedLayout consuming DiagramSpec | Foundation |
 | `b60c72b` | Edge label capture (C9 fix) + parseMermaidToSpec() bridge | Adapter |
+| `652ffb4` | Defer DB-side json_spec migration; document rationale | Docs |
+| `5c1b509` | Feature-flagged DiagramSpec pipeline in App.tsx | Cutover |
+| `26544c3` | Synonym routing for 13 templates + kafka conflict fix (B4/B5) | Routing |
 
 ### Decision: Defer DB-side template migration
 
@@ -193,8 +196,56 @@ git push origin feat/assessment-followups-tier-1-and-2
 ## Task State
 
 ```
-cortex ctx task list  # shows task-d552b9b4 in progress
-cortex ctx step list -t task-d552b9b4  # shows Phase A steps done; sbbb2 still pending
+cortex ctx task list  # shows task-46a5bae9 (Unified DiagramSpec pipeline) — completed 2026-05-14
+cortex ctx task list  # shows task-d552b9b4 (Phase A from prior session) — in progress
 ```
 
-Team `team-workflow-task-d552b9b4` is active. Next session should either resume the task or create a fresh one for Phase B.
+Both tasks have plan files saved under `.cortex/plans/`.
+
+---
+
+## How to Enable & Verify the New Pipeline
+
+### Enable
+
+Set the environment variable before running the frontend:
+
+```bash
+NEXT_PUBLIC_USE_DIAGRAM_SPEC=true npm run dev
+```
+
+When unset (default), the legacy dual-path pipeline runs. When set, all
+diagrams render through `parseMermaidToSpec → unifiedLayout`. If the new
+path throws, the renderer falls back to the legacy pipeline so users
+never see an empty canvas.
+
+### Verify
+
+```bash
+# Type-check
+cd frontend && npx tsc --noEmit
+
+# Unit tests
+npm test -- --run
+
+# Visual verification (load each of 14 templates in dev server)
+# Toggle the flag and compare outputs side-by-side
+
+# 6-pass eval
+python3 backend/tests/visual/eval_passes.py
+```
+
+### Cleanup path (after validation)
+
+Once the new pipeline is validated against all 14 templates and eval ≥ 95%:
+
+1. Remove the `if (useDiagramSpec && mermaidCode)` block in App.tsx and
+   make the new pipeline unconditional.
+2. Remove the legacy `parseMermaidAndCreateDiagram` body (~700 lines):
+   - Spec-vs-mermaid fork
+   - 200-line post-layout badge repositioning
+   - Duplicate boundary manipulation
+3. Delete `layoutWithLanes` (replaced by `unifiedLayout`).
+4. Delete `convertMermaidToFlow`'s downstream consumers; keep only
+   `parseMermaidToSpec`.
+
