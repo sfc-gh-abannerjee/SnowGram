@@ -986,8 +986,11 @@
           var srcOutI = nodeOutIdx[edgeIdx] !== undefined ? nodeOutIdx[edgeIdx] : 0;
           var tgtInTotal = nodeInCount[edge.target] || 1;
           var tgtInI = nodeInIdx[edgeIdx] !== undefined ? nodeInIdx[edgeIdx] : 0;
-          var srcYStagger = srcOutTotal > 1 ? (srcOutI - (srcOutTotal - 1) / 2) * 10 : 0;
-          var tgtYStagger = tgtInTotal > 1 ? (tgtInI - (tgtInTotal - 1) / 2) * 10 : 0;
+          // Y stagger: separate fan-out/fan-in edges so parallel lines
+          // don't visually layer on top of each other. 16px per step
+          // gives clear visual separation between adjacent lanes.
+          var srcYStagger = srcOutTotal > 1 ? (srcOutI - (srcOutTotal - 1) / 2) * 16 : 0;
+          var tgtYStagger = tgtInTotal > 1 ? (tgtInI - (tgtInTotal - 1) / 2) * 16 : 0;
           y1 = srcNodeCy + srcYStagger;
           y2 = tgtNodeCy + tgtYStagger;
 
@@ -1042,6 +1045,15 @@
             var total = eKey ? (gapCounts[eKey] || 1) : 1;
             var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
             var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
+            // Clamp trackX into a safe region between source exit and
+            // target entry so the V never lands inside a zone (which
+            // would cause the line to hug a zone's interior edge or
+            // backtrack across the source node's right boundary).
+            var minTrackX = Math.min(x1, x2) + 12;
+            var maxTrackX = Math.max(x1, x2) - 12;
+            if (minTrackX < maxTrackX) {
+              trackX = Math.max(minTrackX, Math.min(maxTrackX, trackX));
+            }
             d = 'M' + x1 + ',' + y1 +
                 ' L' + trackX + ',' + y1 +
                 ' L' + trackX + ',' + y2 +
