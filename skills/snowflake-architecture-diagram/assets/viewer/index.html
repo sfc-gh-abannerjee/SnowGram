@@ -815,7 +815,12 @@
       var colCount = maxRank + 1;
       flow.style.gridTemplateColumns = 'repeat(' + colCount + ', minmax(0, 1fr))';
 
-      // Helper: build a zone DOM element
+      // Helper: build a zone DOM element. When the zone has intra-zone
+      // fan-out (a node points to multiple siblings in the same zone), we
+      // split the zone body into sub-columns so the source sits in its
+      // own column to the LEFT of its targets — instead of stacking the
+      // source on top of its targets where the connectors have to route
+      // around them awkwardly.
       function buildZoneEl(z) {
         var cat = z.category || 'snow';
         var zoneEl = document.createElement('div');
@@ -827,12 +832,80 @@
           '</div>' +
           '<div class="zone-body"></div>';
         var body = zoneEl.querySelector('.zone-body');
-        (z.node_ids || []).forEach(function(id) {
+
+        // Compute intra-zone topological column for each node.
+        var nodeIds = z.node_ids || [];
+        var nodeSet = {};
+        nodeIds.forEach(function(id) { nodeSet[id] = true; });
+        var intraEdges = (state.edges || []).filter(function(e) {
+          return nodeSet[e.source] && nodeSet[e.target];
+        });
+        // Detect fan-out: a single node with >=2 intra-zone outgoing edges.
+        var outDeg = {};
+        intraEdges.forEach(function(e) {
+          outDeg[e.source] = (outDeg[e.source] || 0) + 1;
+        });
+        var hasFanout = false;
+        Object.keys(outDeg).forEach(function(k) { if (outDeg[k] >= 2) hasFanout = true; });
+
+        // Topological column assignment via repeated relaxation.
+        // col[id] = max(col[predecessor] + 1) over intra-zone predecessors.
+        var col = {};
+        nodeIds.forEach(function(id) { col[id] = 0; });
+        if (hasFanout) {
+          var maxIter = nodeIds.length + 2;
+          var changed = true;
+          while (changed && maxIter-- > 0) {
+            changed = false;
+            intraEdges.forEach(function(e) {
+              var newCol = col[e.source] + 1;
+              if (newCol > col[e.target]) {
+                col[e.target] = newCol;
+                changed = true;
+              }
+            });
+          }
+        }
+        var maxCol = 0;
+        nodeIds.forEach(function(id) { if (col[id] > maxCol) maxCol = col[id]; });
+
+        // Per-column row index (preserves listed order within a column).
+        var rowsPerCol = {};
+        var nodeRow = {};
+        nodeIds.forEach(function(id) {
+          var c = col[id];
+          if (rowsPerCol[c] === undefined) rowsPerCol[c] = 0;
+          nodeRow[id] = rowsPerCol[c]++;
+        });
+
+        // Apply multi-column layout when fan-out is present.
+        if (hasFanout && maxCol >= 1) {
+          // Each sub-column needs a usable minimum width so card labels
+          // and details don't truncate. 140px per column + 24px gaps.
+          body.style.gridTemplateColumns = 'repeat(' + (maxCol + 1) + ', minmax(140px, 1fr))';
+          body.style.columnGap = '24px';
+          // Force the zone (and its parent rank column) to be wide enough
+          // to accommodate all sub-columns without clipping. Padding 20px
+          // each side + (maxCol+1) columns * 140 + maxCol * 24 gaps.
+          var requiredMinWidth = (maxCol + 1) * 140 + maxCol * 24 + 40;
+          body.style.minWidth = requiredMinWidth + 'px';
+          zoneEl.style.minWidth = (requiredMinWidth + 16) + 'px';
+          // Tag the zone-body so connector routing knows to expect
+          // intra-zone cross-column edges.
+          body.setAttribute('data-fanout', '1');
+        }
+
+        nodeIds.forEach(function(id) {
           var node = nodesById[id];
           if (!node) return;
           var div = document.createElement('div');
           div.className = 'flow-node node-' + (node.category || 'snow');
           div.setAttribute('data-node-id', node.id);
+          div.setAttribute('data-zone-col', col[id]);
+          if (hasFanout && maxCol >= 1) {
+            div.style.gridColumn = (col[id] + 1);
+            div.style.gridRow = (nodeRow[id] + 1);
+          }
           var iconSrc = node.icon_data || ('icons/' + escapeHtml(node.icon));
           div.innerHTML = '<div class="icon"><img src="' + iconSrc + '" alt="" onerror="this.style.display=\'none\'"></div>' +
             '<div class="label">' + escapeHtml(node.label) + '</div>' +
@@ -868,7 +941,11 @@
           boundary.innerHTML = '<div class="platform-label">Snowflake Data Cloud</div>';
           var innerGrid = document.createElement('div');
           innerGrid.style.display = 'grid';
-          innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', minmax(0, 1fr))';
+          // Use min-content as the lower bound so a zone that holds an
+          // intra-zone fan-out (and therefore needs extra width to host
+          // multiple sub-columns) can expand its track instead of being
+          // clipped by 1fr's default min:0 sizing.
+          innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', minmax(min-content, 1fr))';
           innerGrid.style.gap = '48px';
           innerGrid.style.alignItems = 'start';
           innerGrid.style.overflow = 'hidden';
@@ -1054,40 +1131,74 @@
       var arrowDir = 'right';     // 'right' or 'left' for fixed-orientation arrows
 
       if (sameZone) {
-        // Within-zone routing. Adjacent rows = straight vertical (clean
-        // top-to-bottom). Non-adjacent rows must skip intermediate node(s);
-        // we route exit DOWN from src.bottom (clear "out of source"), out
-        // to a side channel, descend past the intermediates, then enter
-        // the target from its SIDE — NOT via a top-down stub at column
-        // center, which would visually masquerade as an adjacent edge
-        // between two intermediate boxes.
+        // Within-zone routing.
+        // First check intra-zone column position. When the zone uses
+        // sub-columns (intra-zone fan-out detected), edges between nodes
+        // in DIFFERENT sub-columns must route HORIZONTALLY (not vertically).
+        var srcCol = parseInt(srcEl.getAttribute('data-zone-col') || '0', 10);
+        var tgtCol = parseInt(tgtEl.getAttribute('data-zone-col') || '0', 10);
         const srcRect = srcEl.getBoundingClientRect();
         const tgtRect = tgtEl.getBoundingClientRect();
+
+        if (srcCol !== tgtCol) {
+          // Intra-zone cross-column — horizontal H-V-H routing.
+          // Source exits its right edge at center y; target receives at
+          // its left edge at center y. A vertical bend in the gap between
+          // columns handles row offset.
+          var dirRight = (tgtCol > srcCol);
+          if (dirRight) {
+            x1 = srcRect.right - cardRect.left;
+            x2 = tgtRect.left - cardRect.left;
+          } else {
+            x1 = srcRect.left - cardRect.left;
+            x2 = tgtRect.right - cardRect.left;
+          }
+          y1 = (srcRect.top + srcRect.height / 2) - cardRect.top;
+          y2 = (tgtRect.top + tgtRect.height / 2) - cardRect.top;
+          var midX = (x1 + x2) / 2;
+          // Stagger midX by edge index so multiple fan-out edges to the
+          // same column don't overlay their V segments.
+          midX += ((edgeIdx % 5) - 2) * 4;
+          if (Math.abs(y2 - y1) < 1) {
+            // Same row — straight horizontal.
+            d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+          } else {
+            d = 'M' + x1 + ',' + y1 +
+                ' L' + midX + ',' + y1 +
+                ' L' + midX + ',' + y2 +
+                ' L' + x2 + ',' + y2;
+          }
+          useFixedArrow = true;
+          arrowDir = dirRight ? 'right' : 'left';
+        } else {
+          // Same sub-column — vertical routing logic.
+          // Adjacent rows within a column = clean vertical line. Non-adjacent
+          // = side-channel detour with side entry into target's right edge
+          // (so it cannot be confused with an adjacent vertical edge).
         x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
         y1 = srcRect.bottom - cardRect.top;
         x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
         y2 = tgtRect.top - cardRect.top;
 
         // Compute row indices of src and tgt within the shared zone.
-        var zoneNodes = srcZone.querySelectorAll('.flow-node');
+          // Restrict to nodes in the SAME sub-column for accurate row indexing.
+          var sameColNodes = Array.prototype.filter.call(
+            srcZone.querySelectorAll('.flow-node'),
+            function(el) { return parseInt(el.getAttribute('data-zone-col') || '0', 10) === srcCol; }
+          );
         var srcRow = -1, tgtRow = -1;
-        for (var zi = 0; zi < zoneNodes.length; zi++) {
-          if (zoneNodes[zi] === srcEl) srcRow = zi;
-          if (zoneNodes[zi] === tgtEl) tgtRow = zi;
+          for (var zi = 0; zi < sameColNodes.length; zi++) {
+            if (sameColNodes[zi] === srcEl) srcRow = zi;
+            if (sameColNodes[zi] === tgtEl) tgtRow = zi;
         }
         var rowGap = (srcRow >= 0 && tgtRow >= 0) ? Math.abs(tgtRow - srcRow) : 1;
         var goingDownward = (srcRow >= 0 && tgtRow >= 0) ? (tgtRow > srcRow) : (y2 > y1);
 
         if (rowGap <= 1) {
-          // Adjacent rows — straight vertical is correct.
           d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
         } else {
-          // Non-adjacent — exit DOWN, side-channel, enter target's SIDE.
-          // The exit stub from src.bottom should extend at least to the
-          // midpoint of the inter-card gap below src so it reads clearly
-          // as "out the bottom".
           var nextRow = goingDownward ? srcRow + 1 : srcRow - 1;
-          var nextEl = (nextRow >= 0 && nextRow < zoneNodes.length) ? zoneNodes[nextRow] : null;
+            var nextEl = (nextRow >= 0 && nextRow < sameColNodes.length) ? sameColNodes[nextRow] : null;
           var stubBendY;
           if (nextEl) {
             var nextRect = nextEl.getBoundingClientRect();
@@ -1100,17 +1211,10 @@
             stubBendY = goingDownward ? y1 + 14 : y1 - 14;
           }
 
-          // Side channel just past the card edge (12-22px, NOT all the
-          // way out in the gutter). Stagger by edge index so multiple
-          // skip-edges in the same column don't overlap.
           var nodeRightEdge = srcRect.right - cardRect.left;
           var sideOffset = 14 + (edgeIdx % 3) * 6;
           var sideX = nodeRightEdge + sideOffset;
 
-          // Enter target's RIGHT side at its CENTER y. This makes the
-          // final approach a clear horizontal arrow that cannot be
-          // confused with an adjacent vertical edge between two
-          // intermediate boxes.
           var tgtRightEdge = tgtRect.right - cardRect.left;
           var tgtCenterY = (tgtRect.top + tgtRect.height / 2) - cardRect.top;
 
@@ -1120,10 +1224,9 @@
               ' L' + sideX + ',' + tgtCenterY +
               ' L' + tgtRightEdge + ',' + tgtCenterY;
 
-          // Use a left-pointing arrowhead (line approaches target's right
-          // edge moving leftward).
           useFixedArrow = true;
           arrowDir = 'left';
+          }
         }
       } else {
         // Cross-zone: channel-track orthogonal routing
