@@ -2001,6 +2001,43 @@ const fitCspNodesIntoBoundaries = (nodes: Node[]) => fitAllBoundaries(nodes);
 // The agent is the source of truth for topology. Frontend just renders.
 // This enables "chat with your diagram" - any architecture pattern works.
 // =============================================================================
+
+// =============================================================================
+// flattenToolResultContent
+// =============================================================================
+// The Cortex Agent SSE `tool_result` event delivers payloads of the shape:
+//   { content: [{type:'text', text:'...'} | {type:'json', json:{...}}], name, status, type }
+// Our extraction logic regexes against the result for `flowchart LR`, ```mermaid```,
+// etc., so we need to flatten the content[] array into a usable string. The
+// previous code did `data.result.result || data.result.content || data.result`
+// which returned the array verbatim — JSON.stringify of the array starts with
+// `[` and never matches the mermaid/flowchart anchor patterns, so the bubble's
+// Mermaid Diagram and JSON Specification expanders rendered empty even when
+// the canvas got the diagram.
+//
+// This helper accepts any of:
+//   - A bare string                     → returned as-is
+//   - An object with .text / .json      → extracted & stringified
+//   - An array of content items         → joined by newlines
+//   - { content: [...] }                → recurse on .content
+//   - Something else                    → JSON.stringify
+const flattenToolResultContent = (raw: any): string => {
+  if (raw == null) return '';
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) {
+    return raw.map(flattenToolResultContent).filter(Boolean).join('\n');
+  }
+  if (typeof raw === 'object') {
+    if (typeof raw.text === 'string') return raw.text;
+    if (raw.json !== undefined) {
+      return typeof raw.json === 'string' ? raw.json : JSON.stringify(raw.json, null, 2);
+    }
+    if (Array.isArray(raw.content)) return flattenToolResultContent(raw.content);
+    return JSON.stringify(raw, null, 2);
+  }
+  return String(raw);
+};
+
 const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => {
   // AGENT-FIRST: Trust the agent output completely
   // No forced nodes, no blocked edges, no ID remapping
@@ -2167,9 +2204,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               debugLog('[Chat] Tool result:', data.result);
               const toolName = data.result.name || 'search';
               const rawResult = data.result.result || data.result.content || data.result;
+              // Flatten Cortex Agent content[] payloads into a usable string for
+              // both display (toolResult.result) and downstream regex extraction.
+              const flatResult = flattenToolResultContent(rawResult);
               const toolResult = {
                 name: toolName,
-                result: rawResult,
+                result: flatResult || rawResult,
                 input: data.result.input || data.result.parameters
               };
               
@@ -2178,7 +2218,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               let extractedMermaid: string | undefined;
               
               if (toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' && rawResult) {
-                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2);
+                // Use flattened content string so regexes work whether the
+                // Cortex Agent returned a string, a content[] array, or a
+                // single content object. Falls back to a JSON dump for
+                // unrecognized shapes.
+                const resultStr = flatResult || (typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2));
                 
                 // Check if result is raw Mermaid code (common output format)
                 const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|xychart|sankey|block)/i);
@@ -2209,7 +2253,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               
               // Also extract from other diagram-generating tools
               if ((toolName.includes('COMPOSE') || toolName.includes('DIAGRAM') || toolName.includes('GENERATE')) && rawResult && !extractedMermaid) {
-                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2);
+                const resultStr = flatResult || (typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2));
                 const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|xychart|sankey|block)/i);
                 if (isMermaidCode) {
                   extractedMermaid = resultStr.trim();
@@ -2547,11 +2591,15 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             } else if (data.type === 'tool_result' && data.result) {
               const toolName = data.result.name || 'search';
               const rawResult = data.result.result || data.result.content || data.result;
-              const toolResult = { name: toolName, result: rawResult, input: data.result.input };
+              // Flatten Cortex Agent content[] payloads so the bubble's RESULT
+              // expander shows the actual text/JSON the tool returned, and so
+              // the regex below can detect mermaid in it.
+              const flatResult = flattenToolResultContent(rawResult);
+              const toolResult = { name: toolName, result: flatResult || rawResult, input: data.result.input };
               
               let extractedMermaid: string | undefined;
               if ((toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' || toolName.includes('COMPOSE') || toolName.includes('DIAGRAM')) && rawResult) {
-                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult);
+                const resultStr = flatResult || (typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult));
                 const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram)/i);
                 if (isMermaidCode) extractedMermaid = resultStr.trim();
                 else {
