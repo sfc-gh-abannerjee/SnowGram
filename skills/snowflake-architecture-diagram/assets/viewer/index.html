@@ -1025,13 +1025,23 @@
             var commonY = (y1 + y2) / 2;
             d = 'M' + x1 + ',' + commonY + ' L' + x2 + ',' + commonY;
           } else if (rowDiff === 1) {
-            // Adjacent rows — H→V→H with short terminal H stub.
-            // The stub keeps the path's last segment horizontal so the
-            // arrow tangent matches the line direction (line leads into
-            // the arrow, instead of the arrow appearing on the side of a
-            // vertical line endpoint).
-            var stubLen = 12;
-            var stubX = (dx >= 0 ? x2 - stubLen : x2 + stubLen);
+            // Adjacent rows — H→V→H L-shape.
+            // Position the V in the visible gap BETWEEN zones, 12px before
+            // the target zone's edge so it doesn't hug the zone border.
+            // Falls back to gap midpoint when the zone gap is too narrow.
+            var srcZoneEdge = (dx >= 0 ? srcZoneRect.right : srcZoneRect.left) - cardRect.left;
+            var tgtZoneEdge = (dx >= 0 ? tgtZoneRect.left : tgtZoneRect.right) - cardRect.left;
+            var breathing = 12;
+            var stubX;
+            if (dx >= 0) {
+              var minStub = srcZoneEdge + breathing;
+              var maxStub = tgtZoneEdge - breathing;
+              stubX = (minStub <= maxStub) ? maxStub : (srcZoneEdge + tgtZoneEdge) / 2;
+            } else {
+              var minStubL = tgtZoneEdge + breathing;
+              var maxStubL = srcZoneEdge - breathing;
+              stubX = (minStubL <= maxStubL) ? minStubL : (srcZoneEdge + tgtZoneEdge) / 2;
+            }
             d = 'M' + x1 + ',' + y1 +
                 ' L' + stubX + ',' + y1 +
                 ' L' + stubX + ',' + y2 +
