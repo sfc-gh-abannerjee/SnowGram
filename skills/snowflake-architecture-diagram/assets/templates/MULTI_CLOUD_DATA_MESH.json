@@ -9,5 +9,140 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2025-11-07T09:45:49.262000-08:00",
-  "UPDATED_AT": "2026-02-17T21:54:45.914000-08:00"
+  "UPDATED_AT": "2026-02-17T21:54:45.914000-08:00",
+  "RICH_STATE": {
+    "title": "Multi-Cloud Data Mesh",
+    "subtitle": "Domain accounts (AWS / Azure / GCP) \u2192 Cross-cloud sharing \u2192 Federated views",
+    "nodes": [
+      {
+        "id": "aws",
+        "label": "AWS Domain",
+        "detail": "Customer & sales data",
+        "icon": "Snowflake_ICON_RA_Snowflake_Database.svg",
+        "category": "snow",
+        "zone": "Domain (AWS)",
+        "object_type": "DATABASE",
+        "stage": "raw_storage"
+      },
+      {
+        "id": "azure",
+        "label": "Azure Domain",
+        "detail": "Product & inventory data",
+        "icon": "Snowflake_ICON_RA_Snowflake_Database.svg",
+        "category": "snow",
+        "zone": "Domain (Azure)",
+        "object_type": "DATABASE",
+        "stage": "raw_storage"
+      },
+      {
+        "id": "gcp",
+        "label": "GCP Domain",
+        "detail": "Marketing & web data",
+        "icon": "Snowflake_ICON_RA_Snowflake_Database.svg",
+        "category": "snow",
+        "zone": "Domain (GCP)",
+        "object_type": "DATABASE",
+        "stage": "raw_storage"
+      },
+      {
+        "id": "share",
+        "label": "Cross-Cloud Share",
+        "detail": "Secure Data Sharing",
+        "icon": "Snowflake_ICON_Sharing_Collaboration.svg",
+        "category": "onprem",
+        "zone": "Mesh Layer",
+        "object_type": "DATA_SHARE",
+        "stage": "transformation",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-sharing-intro"
+      },
+      {
+        "id": "fed",
+        "label": "Federated Views",
+        "detail": "Mesh-wide query layer",
+        "icon": "Snowflake_ICON_RA_View.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "VIEW",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-view"
+      },
+      {
+        "id": "consumers",
+        "label": "Domain Consumers",
+        "detail": "Each team queries the mesh",
+        "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "BI_TOOL",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+      }
+    ],
+    "edges": [
+      {
+        "source": "aws",
+        "target": "share"
+      },
+      {
+        "source": "azure",
+        "target": "share"
+      },
+      {
+        "source": "gcp",
+        "target": "share"
+      },
+      {
+        "source": "share",
+        "target": "fed"
+      },
+      {
+        "source": "fed",
+        "target": "consumers"
+      }
+    ],
+    "zones": [
+      {
+        "name": "Domain (AWS)",
+        "category": "snow",
+        "node_ids": [
+          "aws"
+        ]
+      },
+      {
+        "name": "Domain (Azure)",
+        "category": "snow",
+        "node_ids": [
+          "azure"
+        ]
+      },
+      {
+        "name": "Domain (GCP)",
+        "category": "snow",
+        "node_ids": [
+          "gcp"
+        ]
+      },
+      {
+        "name": "Mesh Layer",
+        "category": "onprem",
+        "node_ids": [
+          "share"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "snow",
+        "node_ids": [
+          "fed"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "consumers"
+        ]
+      }
+    ]
+  }
 }

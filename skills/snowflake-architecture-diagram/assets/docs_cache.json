@@ -317,6 +317,140 @@
         }
       ],
       "timestamp": 1778701633.622359
+    },
+    "generic_75bd1eba177d": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Data Source",
+          "detail": "External system",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe",
+          "detail": "Automated ingestion",
+          "zone": "Ingestion"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Landing Table",
+          "detail": "Raw, unprocessed data",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Declarative transformation",
+          "zone": "Transformation"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Consumption-ready output",
+          "zone": "Serving Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "Dashboards & reports",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778785613.1747122
+    },
+    "security_978fcde7f9ee": {
+      "spec": [
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Base Table",
+          "detail": "Source data with PII",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "MASKING_POLICY",
+          "label": "Masking Policy",
+          "detail": "Column-level dynamic masking",
+          "zone": "Security & Governance"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "ROW_ACCESS_POLICY",
+          "label": "Row Access Policy",
+          "detail": "Row-level security",
+          "zone": "Security & Governance"
+        },
+        {
+          "stage": "serving",
+          "object_type": "SECURE_VIEW",
+          "label": "Secure View",
+          "detail": "Policy-enforced access",
+          "zone": "Access Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "Role-scoped dashboards",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778786054.340627
+    },
+    "generic_bf20b8d98173": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Data Source",
+          "detail": "External system",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe",
+          "detail": "Automated ingestion",
+          "zone": "Ingestion"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Landing Table",
+          "detail": "Raw, unprocessed data",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Declarative transformation",
+          "zone": "Transformation"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Consumption-ready output",
+          "zone": "Serving Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "Dashboards & reports",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778787390.017567
     }
   },
   "created_at": 0

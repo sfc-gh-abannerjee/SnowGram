@@ -9,5 +9,143 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2026-02-17T19:38:38.471000-08:00",
-  "UPDATED_AT": "2026-02-20T00:46:41.855000-08:00"
+  "UPDATED_AT": "2026-02-20T00:46:41.855000-08:00",
+  "RICH_STATE": {
+    "title": "Streaming Data Stack",
+    "subtitle": "Kafka \u2192 Snowpipe Streaming \u2192 Dynamic Tables \u2192 Real-time analytics",
+    "nodes": [
+      {
+        "id": "kafka",
+        "label": "Kafka",
+        "detail": "Streaming topic",
+        "icon": "Snowflake_ICON_Kafka_Connectors.svg",
+        "category": "onprem",
+        "zone": "External Sources",
+        "object_type": "KAFKA",
+        "stage": "source",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/kafka-connector"
+      },
+      {
+        "id": "pipe",
+        "label": "Snowpipe Streaming",
+        "detail": "Sub-second row-level ingest",
+        "icon": "Snowflake_ICON_RA_Pipe.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "SNOWPIPE_STREAMING",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
+      },
+      {
+        "id": "raw",
+        "label": "Raw Stream Table",
+        "detail": "Append-only events",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Raw Layer",
+        "object_type": "TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "dt1",
+        "label": "Dynamic Table",
+        "detail": "Real-time aggregation",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Curated Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "transformation",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "dt2",
+        "label": "Serving Dynamic Table",
+        "detail": "Business-ready stream output",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "bi",
+        "label": "Real-time Dashboard",
+        "detail": "Live operational view",
+        "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "BI_TOOL",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+      }
+    ],
+    "edges": [
+      {
+        "source": "kafka",
+        "target": "pipe"
+      },
+      {
+        "source": "pipe",
+        "target": "raw"
+      },
+      {
+        "source": "raw",
+        "target": "dt1"
+      },
+      {
+        "source": "dt1",
+        "target": "dt2"
+      },
+      {
+        "source": "dt2",
+        "target": "bi"
+      }
+    ],
+    "zones": [
+      {
+        "name": "External Sources",
+        "category": "onprem",
+        "node_ids": [
+          "kafka"
+        ]
+      },
+      {
+        "name": "Ingestion",
+        "category": "bridge",
+        "node_ids": [
+          "pipe"
+        ]
+      },
+      {
+        "name": "Raw Layer",
+        "category": "snow",
+        "node_ids": [
+          "raw"
+        ]
+      },
+      {
+        "name": "Curated Layer",
+        "category": "snow",
+        "node_ids": [
+          "dt1"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "snow",
+        "node_ids": [
+          "dt2"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "bi"
+        ]
+      }
+    ]
+  }
 }
