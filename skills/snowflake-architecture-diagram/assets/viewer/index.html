@@ -885,14 +885,16 @@
 
     const cardRect = card.getBoundingClientRect();
 
-    // Pre-pass: count edges per zone-pair to compute lane offsets
-    var gapCounts = {};  // "srcZoneId|tgtZoneId" → count
-    var gapIndex = {};   // edgeIdx → index within its gap group
-    // Also track per-node fan-in/fan-out for Y staggering
-    var nodeOutCount = {};  // nodeId → total outgoing edges
-    var nodeOutIdx = {};    // edgeIdx → index within source node's outgoing set
-    var nodeInCount = {};   // nodeId → total incoming edges
-    var nodeInIdx = {};     // edgeIdx → index within target node's incoming set
+    // Pre-pass: collect edges per zone-pair gap, sort by avgY for track assignment
+    var gapEdges = {};   // "srcZoneName|tgtZoneName" → [{edgeIdx, avgY}]
+    var gapIndex = {};   // edgeIdx → sorted index within its gap group
+    var gapKey = {};     // edgeIdx → gap key string
+    var gapCounts = {};  // gap key → total edges in that gap
+    // Per-node fan-in/fan-out for Y staggering
+    var nodeOutCount = {};
+    var nodeOutIdx = {};
+    var nodeInCount = {};
+    var nodeInIdx = {};
     edges.forEach(function(edge, idx) {
       var s = card.querySelector('[data-node-id="' + edge.source + '"]');
       var t = card.querySelector('[data-node-id="' + edge.target + '"]');
@@ -900,17 +902,28 @@
       var sz = s.closest('.zone'), tz = t.closest('.zone');
       if (!sz || !tz || sz === tz) return;
       var key = (sz.querySelector('.zone-name') || {}).textContent + '|' + (tz.querySelector('.zone-name') || {}).textContent;
-      if (!gapCounts[key]) gapCounts[key] = 0;
-      gapIndex[idx] = gapCounts[key];
-      gapCounts[key]++;
-      // Fan-out tracking (source node)
+      var srcCy = s.getBoundingClientRect().top + s.getBoundingClientRect().height / 2;
+      var tgtCy = t.getBoundingClientRect().top + t.getBoundingClientRect().height / 2;
+      if (!gapEdges[key]) gapEdges[key] = [];
+      gapEdges[key].push({ idx: idx, avgY: (srcCy + tgtCy) / 2 });
+      gapKey[idx] = key;
+      // Fan-out tracking
       if (!nodeOutCount[edge.source]) nodeOutCount[edge.source] = 0;
       nodeOutIdx[idx] = nodeOutCount[edge.source];
       nodeOutCount[edge.source]++;
-      // Fan-in tracking (target node)
+      // Fan-in tracking
       if (!nodeInCount[edge.target]) nodeInCount[edge.target] = 0;
       nodeInIdx[idx] = nodeInCount[edge.target];
       nodeInCount[edge.target]++;
+    });
+    // Sort each gap's edges by avgY (top-to-bottom) and assign track indices
+    Object.keys(gapEdges).forEach(function(key) {
+      var group = gapEdges[key];
+      group.sort(function(a, b) { return a.avgY - b.avgY; });
+      gapCounts[key] = group.length;
+      group.forEach(function(item, sortedIdx) {
+        gapIndex[item.idx] = sortedIdx;
+      });
     });
 
     edges.forEach(function(edge, edgeIdx) {
@@ -921,20 +934,6 @@
       const srcZone = srcEl.closest('.zone');
       const tgtZone = tgtEl.closest('.zone');
       const sameZone = srcZone && tgtZone && srcZone === tgtZone;
-
-      // Lane offset: spread multiple edges sharing the same zone-pair gap
-      // Uses adaptive spacing based on available gap width and edge count
-      var laneOffset = 0;
-      if (gapIndex[edgeIdx] !== undefined) {
-        var key = ((srcZone.querySelector('.zone-name') || {}).textContent || '') + '|' + ((tgtZone.querySelector('.zone-name') || {}).textContent || '');
-        var total = gapCounts[key] || 1;
-        if (total > 1) {
-          // Adaptive spacing: use more px when fewer edges, less when many
-          // Cap at 14px per lane, min 5px, scale down with edge count
-          var laneSpacing = Math.max(5, Math.min(14, 40 / total));
-          laneOffset = (gapIndex[edgeIdx] - (total - 1) / 2) * laneSpacing;
-        }
-      }
 
       var x1, y1, x2, y2, d;
 
@@ -948,33 +947,25 @@
         y2 = tgtRect.top - cardRect.top;
         d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
       } else {
-        // Cross-zone: orthogonal routing with lane offset
+        // Cross-zone: channel-track orthogonal routing
         const srcZoneRect = srcZone.getBoundingClientRect();
         const tgtZoneRect = tgtZone.getBoundingClientRect();
         const srcRect = srcEl.getBoundingClientRect();
         const tgtRect = tgtEl.getBoundingClientRect();
 
-        // Use NODE centers for Y (so connector starts/ends at the actual node)
-        // Use ZONE edges for X exit/entry points
         var srcNodeCy = srcRect.top + srcRect.height / 2 - cardRect.top;
         var tgtNodeCy = tgtRect.top + tgtRect.height / 2 - cardRect.top;
         var srcZoneCx = srcZoneRect.left + srcZoneRect.width / 2 - cardRect.left;
         var tgtZoneCx = tgtZoneRect.left + tgtZoneRect.width / 2 - cardRect.left;
 
-        // Determine routing direction based on zone gap detection
         var horizontalGap = (tgtZoneRect.left > srcZoneRect.right) || (srcZoneRect.left > tgtZoneRect.right);
         var verticalGap = (tgtZoneRect.top > srcZoneRect.bottom) || (srcZoneRect.top > tgtZoneRect.bottom);
         var useHorizontal = horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20);
 
-        // Margin to prevent lines from hugging zone borders
         var edgeMargin = 8;
 
         if (useHorizontal) {
           var dx = tgtZoneCx - srcZoneCx;
-
-          // Always route from/to NODE edges (not zone edges) for clarity.
-          // This naturally spreads connectors vertically since each node
-          // has a different Y position within its zone.
           if (dx >= 0) {
             x1 = srcRect.right - cardRect.left + edgeMargin;
             x2 = tgtRect.left - cardRect.left - edgeMargin;
@@ -982,8 +973,7 @@
             x1 = srcRect.left - cardRect.left - edgeMargin;
             x2 = tgtRect.right - cardRect.left + edgeMargin;
           }
-          // Always use node Y-centers so line connects to/from the actual nodes
-          // Stagger Y when multiple edges exit/enter the same node
+          // Y stagger for fan-in/fan-out at same node
           var srcOutTotal = nodeOutCount[edge.source] || 1;
           var srcOutI = nodeOutIdx[edgeIdx] !== undefined ? nodeOutIdx[edgeIdx] : 0;
           var tgtInTotal = nodeInCount[edge.target] || 1;
@@ -993,22 +983,27 @@
           y1 = srcNodeCy + srcYStagger;
           y2 = tgtNodeCy + tgtYStagger;
 
-          // Ensure connector always moves in the intended direction
           if (dx >= 0 && x2 <= x1) x2 = x1 + 16;
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
           var vDist = Math.abs(y2 - y1);
-          // Orthogonal H→V→H routing with 90-degree turns only.
-          // Turn placed at midpoint of the horizontal gap + lane offset
-          // to separate multiple edges sharing the same zone pair.
           if (vDist < 4) {
-            // Effectively aligned — straight horizontal
+            // Same row — straight horizontal
             d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
           } else {
-            var turnX = x1 + (x2 - x1) * 0.5 + laneOffset;
+            // Channel-track routing: compute trackX from gap geometry.
+            // The gap channel spans from source zone right edge to target zone left edge.
+            // Each edge gets an evenly-spaced track within that channel.
+            var gapLeft = (dx >= 0 ? srcZoneRect.right : tgtZoneRect.right) - cardRect.left;
+            var gapRight = (dx >= 0 ? tgtZoneRect.left : srcZoneRect.left) - cardRect.left;
+            var gapWidth = gapRight - gapLeft;
+            var eKey = gapKey[edgeIdx];
+            var total = eKey ? (gapCounts[eKey] || 1) : 1;
+            var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
+            var trackX = gapLeft + gapWidth * (idx + 1) / (total + 1);
             d = 'M' + x1 + ',' + y1 +
-                ' L' + turnX + ',' + y1 +
-                ' L' + turnX + ',' + y2 +
+                ' L' + trackX + ',' + y1 +
+                ' L' + trackX + ',' + y2 +
                 ' L' + x2 + ',' + y2;
           }
         } else {
@@ -1024,12 +1019,17 @@
           x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
           x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
 
-          // Ensure connector always moves in the intended direction
           if (dy >= 0 && y2 <= y1) y2 = y1 + 16;
           if (dy < 0 && y2 >= y1) y2 = y1 - 16;
 
-          // Orthogonal: V → H → V with turn at midpoint
-          var turnY = y1 + (y2 - y1) * 0.5 + laneOffset;
+          // V→H→V with track from gap geometry
+          var vGapTop = (dy >= 0 ? srcZoneRect.bottom : tgtZoneRect.bottom) - cardRect.top;
+          var vGapBot = (dy >= 0 ? tgtZoneRect.top : srcZoneRect.top) - cardRect.top;
+          var vGapHeight = vGapBot - vGapTop;
+          var eKey = gapKey[edgeIdx];
+          var total = eKey ? (gapCounts[eKey] || 1) : 1;
+          var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
+          var turnY = vGapTop + vGapHeight * (idx + 1) / (total + 1);
           d = 'M' + x1 + ',' + y1 +
               ' L' + x1 + ',' + turnY +
               ' L' + x2 + ',' + turnY +
