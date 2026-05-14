@@ -237,6 +237,27 @@
     stroke-linejoin: round;
     opacity: 0.7;
     animation: connector-flow 1.2s linear infinite;
+    transition: stroke-width 120ms ease, opacity 120ms ease, stroke 120ms ease;
+    pointer-events: stroke;
+    cursor: pointer;
+  }
+  /* Wider invisible hit area paired with each visible connector for
+     easy hover targeting (dashed thin strokes are otherwise hard to hit). */
+  .connector-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 14;
+    pointer-events: stroke;
+    cursor: pointer;
+  }
+  /* Hovering anywhere within the group (hit area or visible path)
+     highlights the visible connector. */
+  .connector-group:hover .connector-path {
+    stroke: var(--accent, #6cb9ff);
+    stroke-width: 2.4;
+    opacity: 1;
+    stroke-dasharray: none;
+    animation: none;
   }
   .connector-dot {
     fill: var(--connector-color);
@@ -884,7 +905,10 @@
     if (!svg || !card) return;
 
     // Clear previous elements (keep <defs>)
-    svg.querySelectorAll('.connector-path, .connector-dot').forEach(function(p) { p.remove(); });
+    svg.querySelectorAll('.connector-group, .connector-path, .connector-dot').forEach(function(p) { p.remove(); });
+
+    // Path data collected during edge routing for crossing detection
+    var collectedPaths = [];
 
     const edges = state.edges || [];
     if (!edges.length) return;
@@ -1100,14 +1124,111 @@
         }
       }
 
-      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      pathEl.setAttribute('d', d);
-      pathEl.setAttribute('class', 'connector-path');
-      var markerId = useFixedArrow
+      const markerId = useFixedArrow
         ? (arrowDir === 'left' ? 'arrowhead-left' : 'arrowhead-right')
         : 'arrowhead';
-      pathEl.setAttribute('marker-end', 'url(#' + markerId + ')');
-      svg.appendChild(pathEl);
+      // Defer rendering: collect path data first so we can detect
+      // V-H crossings between paths and render line jumps (arcs).
+      collectedPaths.push({ d: d, markerId: markerId });
+    });
+
+    // ── Phase 2: detect V-H crossings between paths ──
+    // Parse each "M x,y L x,y L ..." into a points array.
+    function parsePath(d) {
+      var pts = [];
+      d.split(/[ML]\s*/).forEach(function(seg) {
+        seg = seg.trim();
+        if (!seg) return;
+        var parts = seg.split(',');
+        if (parts.length === 2) {
+          pts.push([parseFloat(parts[0]), parseFloat(parts[1])]);
+        }
+      });
+      return pts;
+    }
+    collectedPaths.forEach(function(p) {
+      p.points = parsePath(p.d);
+      p.bumps = [];  // [{ segIdx, y }] for V segments that need to arc over crossings
+    });
+    // For each V segment in path A, find each H segment in path B (B != A)
+    // that crosses it. Mark a bump at the crossing Y on the V.
+    for (var i = 0; i < collectedPaths.length; i++) {
+      var A = collectedPaths[i];
+      for (var sa = 0; sa < A.points.length - 1; sa++) {
+        var a1 = A.points[sa], a2 = A.points[sa + 1];
+        if (Math.abs(a1[0] - a2[0]) > 0.5) continue; // not vertical
+        var vx = a1[0];
+        var vyMin = Math.min(a1[1], a2[1]);
+        var vyMax = Math.max(a1[1], a2[1]);
+        for (var j = 0; j < collectedPaths.length; j++) {
+          if (j === i) continue;
+          var B = collectedPaths[j];
+          for (var sb = 0; sb < B.points.length - 1; sb++) {
+            var b1 = B.points[sb], b2 = B.points[sb + 1];
+            if (Math.abs(b1[1] - b2[1]) > 0.5) continue; // not horizontal
+            var hy = b1[1];
+            var hxMin = Math.min(b1[0], b2[0]);
+            var hxMax = Math.max(b1[0], b2[0]);
+            // Crossing if V's X is strictly inside H's X range AND H's Y
+            // is strictly inside V's Y range. Use small margin to avoid
+            // bumping at shared endpoints (corners).
+            if (vx > hxMin + 1 && vx < hxMax - 1 &&
+                hy > vyMin + 1 && hy < vyMax - 1) {
+              A.bumps.push({ segIdx: sa, y: hy });
+            }
+          }
+        }
+      }
+    }
+
+    // ── Phase 3: build SVG path strings with arcs at bumps ──
+    function buildPathD(points, bumps) {
+      var d = 'M' + points[0][0] + ',' + points[0][1];
+      var r = 5; // arc radius for line jumps
+      for (var s = 0; s < points.length - 1; s++) {
+        var p1 = points[s], p2 = points[s + 1];
+        var segBumps = bumps
+          .filter(function(b) { return b.segIdx === s; })
+          .map(function(b) { return b.y; });
+        // V segment with bumps: insert arcs at each crossing
+        if (Math.abs(p1[0] - p2[0]) < 0.5 && segBumps.length > 0) {
+          var goingDown = p2[1] > p1[1];
+          // Sort bumps in order of travel along the V
+          segBumps.sort(function(a, b) { return goingDown ? a - b : b - a; });
+          var x = p1[0];
+          var sweep = goingDown ? 1 : 0; // bump to the RIGHT of travel direction
+          segBumps.forEach(function(by) {
+            var beforeY = goingDown ? by - r : by + r;
+            var afterY = goingDown ? by + r : by - r;
+            d += ' L' + x + ',' + beforeY;
+            d += ' A' + r + ',' + r + ' 0 0 ' + sweep + ' ' + x + ',' + afterY;
+          });
+          d += ' L' + p2[0] + ',' + p2[1];
+        } else {
+          d += ' L' + p2[0] + ',' + p2[1];
+        }
+      }
+      return d;
+    }
+
+    // ── Phase 4: render each connector as a hit-area + visible path group ──
+    collectedPaths.forEach(function(p) {
+      var finalD = buildPathD(p.points, p.bumps);
+      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'connector-group');
+
+      var hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hit.setAttribute('d', finalD);
+      hit.setAttribute('class', 'connector-hit');
+      g.appendChild(hit);
+
+      var pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathEl.setAttribute('d', finalD);
+      pathEl.setAttribute('class', 'connector-path');
+      pathEl.setAttribute('marker-end', 'url(#' + p.markerId + ')');
+      g.appendChild(pathEl);
+
+      svg.appendChild(g);
     });
   }
 
