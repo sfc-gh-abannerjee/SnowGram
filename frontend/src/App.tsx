@@ -2809,14 +2809,18 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
 
     // ================================================================
     // FEATURE-FLAGGED: DiagramSpec pipeline (new unified path)
-    // Set NEXT_PUBLIC_USE_DIAGRAM_SPEC=true to opt in.
+    // Two ways to enable: NEXT_PUBLIC_USE_DIAGRAM_SPEC=true at build time,
+    // or localStorage.setItem('useDiagramSpec', 'true') at runtime (used
+    // by the review harness for A/B comparison without a rebuild).
     // When enabled, Mermaid is parsed once into a typed DiagramSpec
     // and rendered via unifiedLayout. This bypasses the dual-path
     // fork below (spec vs mermaid) and the 200-line post-layout
     // badge repositioning. Kept feature-flagged for A/B comparison
     // and quick rollback during the migration.
     // ================================================================
-    const useDiagramSpec = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_USE_DIAGRAM_SPEC === 'true');
+    const envFlag = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_USE_DIAGRAM_SPEC === 'true');
+    const lsFlag = (typeof window !== 'undefined' && window.localStorage?.getItem('useDiagramSpec') === 'true');
+    const useDiagramSpec = envFlag || lsFlag;
     if (useDiagramSpec && mermaidCode) {
       try {
         debugLog('[Pipeline:DiagramSpec] Using unified DiagramSpec pipeline');
