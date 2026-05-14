@@ -610,6 +610,13 @@ const App: React.FC = () => {
   const [chatResizing, setChatResizing] = useState<string | null>(null); // 'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'
   const [clearSpin, setClearSpin] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  // Pipeline toggle (debug-panel UI). Initialized from localStorage so the
+  // checkbox reflects the same flag parseMermaidAndCreateDiagram reads each
+  // time it runs. Defaults to false (legacy pipeline).
+  const [useUnifiedPipeline, setUseUnifiedPipeline] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage?.getItem('useDiagramSpec') === 'true';
+  });
   // Grid snapping - enabled by default, hold Shift for free movement
   const [snapEnabled, setSnapEnabled] = useState(true);
   const chatDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -4818,6 +4825,25 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 <div className={styles.debugRow}>
                   <span>Nodes: {nodes.length}</span>
                   <span>Edges: {edges.length}</span>
+                </div>
+                <div className={styles.debugRow}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={useUnifiedPipeline}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setUseUnifiedPipeline(next);
+                        if (typeof window !== 'undefined') {
+                          window.localStorage.setItem('useDiagramSpec', String(next));
+                        }
+                      }}
+                    />
+                    <span>Use unified pipeline (DiagramSpec)</span>
+                  </label>
+                  <span style={{ fontSize: 10, opacity: 0.7 }}>
+                    {useUnifiedPipeline ? 'new path' : 'legacy path'} — re-render to apply
+                  </span>
                 </div>
                 <div className={styles.debugMermaidLabel}>Current Mermaid</div>
                 <pre className={styles.debugMermaid}>{currentMermaid}</pre>
