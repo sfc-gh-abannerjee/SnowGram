@@ -34,6 +34,7 @@ import { generateMermaidFromDiagram } from './lib/mermaidExport';
 import { boundingBox, layoutDAG, fitAllBoundaries, LAYOUT_CONSTANTS } from './lib/layoutUtils';
 import { getFlowStageOrder } from './lib/elkLayoutUtils';
 import { calculateNodeDimensions, NODE_SIZE_CONSTRAINTS } from './lib/textMeasure';
+import remarkGfm from 'remark-gfm';
 // PERF: Lazy load heavy markdown/syntax dependencies (~150KB bundle savings)
 const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
 const SyntaxHighlighter = dynamic(
@@ -2560,9 +2561,47 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             } else if (data.type === 'chunk' && data.text) {
               streamedText += data.text;
               fullText += data.text;
+
+              // Extract code blocks progressively during streaming for dropdown display
+              // (mirrors the logic in handleSendChat — keep both branches in sync).
+              const jsonMatch = streamedText.match(/```json\s*([\s\S]*?)```/);
+              const streamingJsonSpec = jsonMatch ? jsonMatch[1].trim() : undefined;
+              const incompleteJsonMatch = !jsonMatch && streamedText.match(/```json\s*([\s\S]*?)$/);
+              const partialJsonSpec = incompleteJsonMatch ? incompleteJsonMatch[1].trim() : undefined;
+
+              const mermaidMatch = streamedText.match(/```mermaid\s*([\s\S]*?)```/);
+              const streamingMermaidCode = mermaidMatch ? mermaidMatch[1].trim() : undefined;
+              const incompleteMermaidMatch = !mermaidMatch && streamedText.match(/```mermaid\s*([\s\S]*?)$/);
+              const partialMermaidCode = incompleteMermaidMatch ? incompleteMermaidMatch[1].trim() : undefined;
+
+              const currentJsonSpec = streamingJsonSpec || partialJsonSpec;
+              const currentMermaidCode = streamingMermaidCode || partialMermaidCode;
+
+              // Strip code blocks from display text (they're shown in the dropdown instead)
+              let displayText = streamedText
+                .replace(/```json[\s\S]*?```/g, '')
+                .replace(/```mermaid[\s\S]*?```/g, '')
+                .replace(/```json[\s\S]*/g, '')
+                .replace(/```mermaid[\s\S]*/g, '')
+                .replace(/(flowchart|graph)\s+(LR|TD|TB|RL|BT)\b[\s\S]*$/i, '')
+                .replace(/\{\s*"nodes"\s*:\s*\[[\s\S]*$/i, '')
+                .trim();
+
+              if (!displayText && (currentJsonSpec || currentMermaidCode)) {
+                displayText = currentMermaidCode ? 'Generating diagram...' : 'Generating specification...';
+              } else if (displayText.length > 2000) {
+                displayText = displayText.substring(0, 2000) + '...';
+              }
+
               setChatMessages((msgs) => {
                 const updated = [...msgs];
-                updated[updated.length - 1] = { ...updated[updated.length - 1], text: streamedText };
+                const lastMsg = updated[updated.length - 1];
+                updated[updated.length - 1] = {
+                  ...lastMsg,
+                  text: displayText || 'Thinking...',
+                  jsonSpec: currentJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: currentMermaidCode || lastMsg.mermaidCode,
+                };
                 return updated;
               });
             } else if (data.type === 'done') {
@@ -4470,7 +4509,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         </button>
                         {expandedThinking.has(idx) && (
                           <div className={`${styles.thinkingContent} ${closingThinking.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
-                            <ReactMarkdown>{m.thinking}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.thinking}</ReactMarkdown>
                           </div>
                         )}
                       </div>
@@ -4661,7 +4700,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                     )}
                     
                     <div className={styles.chatMarkdown}>
-                      <ReactMarkdown>{m.text}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
                     </div>
                   </div>
                 </div>
