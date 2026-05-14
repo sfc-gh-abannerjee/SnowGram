@@ -252,12 +252,24 @@
   }
   /* Hovering anywhere within the group (hit area or visible path)
      highlights the visible connector. */
-  .connector-group:hover .connector-path {
+  .connector-group:hover .connector-path,
+  .connector-group.is-active .connector-path {
     stroke: var(--accent, #6cb9ff);
     stroke-width: 2.4;
     opacity: 1;
     stroke-dasharray: none;
     animation: none;
+  }
+  /* Highlighted source/target nodes when their connector is hovered
+     (or when the user hovers the node itself). */
+  .flow-node.is-active {
+    box-shadow: 0 0 0 2px var(--accent, #6cb9ff), 0 0 18px rgba(108, 185, 255, 0.45);
+    border-color: var(--accent, #6cb9ff);
+    transition: box-shadow 120ms ease, border-color 120ms ease;
+    cursor: pointer;
+  }
+  .flow-node {
+    transition: box-shadow 120ms ease, border-color 120ms ease;
   }
   .connector-dot {
     fill: var(--connector-color);
@@ -631,15 +643,15 @@
   <div class="diagram-card">
     <svg id="diagram-connectors" class="connector-overlay">
       <defs>
-        <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M1,1 L9,4 L1,7" fill="none" stroke="var(--connector-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </marker>
-        <marker id="arrowhead-right" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="0" markerUnits="userSpaceOnUse">
-          <path d="M1,1 L9,4 L1,7" fill="none" stroke="var(--connector-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </marker>
-        <marker id="arrowhead-left" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="180" markerUnits="userSpaceOnUse">
-          <path d="M1,1 L9,4 L1,7" fill="none" stroke="var(--connector-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </marker>
+    <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrowhead-right" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="0" markerUnits="userSpaceOnUse">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrowhead-left" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="180" markerUnits="userSpaceOnUse">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
       </defs>
     </svg>
     <div class="flow" id="diagram-flow"></div>
@@ -1190,7 +1202,7 @@
         : 'arrowhead';
       // Defer rendering: collect path data first so we can detect
       // V-H crossings between paths and render line jumps (arcs).
-      collectedPaths.push({ d: d, markerId: markerId });
+      collectedPaths.push({ d: d, markerId: markerId, source: edge.source, target: edge.target });
     });
 
     // ── Phase 2: detect V-H crossings between paths ──
@@ -1277,6 +1289,10 @@
       var finalD = buildPathD(p.points, p.bumps);
       var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.setAttribute('class', 'connector-group');
+      // Stamp source/target IDs so node hover can find related connectors
+      // and connector hover can highlight the right endpoint nodes.
+      if (p.source) g.setAttribute('data-source-id', p.source);
+      if (p.target) g.setAttribute('data-target-id', p.target);
 
       var hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       hit.setAttribute('d', finalD);
@@ -1290,6 +1306,68 @@
       g.appendChild(pathEl);
 
       svg.appendChild(g);
+    });
+
+    // ── Connectivity hover wireup ──
+    // Hovering any connector or any node highlights the line, its
+    // arrow (via context-stroke on the marker), the source node, and
+    // the target node together.
+    function activateConnector(group) {
+      group.classList.add('is-active');
+      var srcId = group.getAttribute('data-source-id');
+      var tgtId = group.getAttribute('data-target-id');
+      if (srcId) {
+        var srcEl = card.querySelector('[data-node-id="' + srcId + '"]');
+        if (srcEl) srcEl.classList.add('is-active');
+      }
+      if (tgtId) {
+        var tgtEl = card.querySelector('[data-node-id="' + tgtId + '"]');
+        if (tgtEl) tgtEl.classList.add('is-active');
+      }
+    }
+    function deactivateConnector(group) {
+      group.classList.remove('is-active');
+      var srcId = group.getAttribute('data-source-id');
+      var tgtId = group.getAttribute('data-target-id');
+      if (srcId) {
+        var srcEl = card.querySelector('[data-node-id="' + srcId + '"]');
+        if (srcEl) srcEl.classList.remove('is-active');
+      }
+      if (tgtId) {
+        var tgtEl = card.querySelector('[data-node-id="' + tgtId + '"]');
+        if (tgtEl) tgtEl.classList.remove('is-active');
+      }
+    }
+    svg.querySelectorAll('.connector-group').forEach(function(group) {
+      group.addEventListener('mouseenter', function() { activateConnector(group); });
+      group.addEventListener('mouseleave', function() { deactivateConnector(group); });
+    });
+    // Hovering a node activates every connector incident to it (and
+    // therefore the connector's other endpoint too).
+    card.querySelectorAll('.flow-node[data-node-id]').forEach(function(nodeEl) {
+      var nodeId = nodeEl.getAttribute('data-node-id');
+      if (!nodeId) return;
+      // Remove any previous listeners by cloning the node — actually
+      // simpler: rely on a single attached handler per render. Since
+      // renderConnectors is called on resize, we attach fresh each
+      // time but the previous listeners stay attached on the same
+      // element. Use a flag to avoid double-binding.
+      if (nodeEl.__connHover) return;
+      nodeEl.__connHover = true;
+      nodeEl.addEventListener('mouseenter', function() {
+        var groups = svg.querySelectorAll(
+          '.connector-group[data-source-id="' + nodeId + '"], ' +
+          '.connector-group[data-target-id="' + nodeId + '"]'
+        );
+        groups.forEach(activateConnector);
+      });
+      nodeEl.addEventListener('mouseleave', function() {
+        var groups = svg.querySelectorAll(
+          '.connector-group[data-source-id="' + nodeId + '"], ' +
+          '.connector-group[data-target-id="' + nodeId + '"]'
+        );
+        groups.forEach(deactivateConnector);
+      });
     });
   }
 
