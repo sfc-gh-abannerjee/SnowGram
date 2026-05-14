@@ -1,14 +1,49 @@
 # Handoff: SnowGram Diagram Quality Improvement
 
-**Date**: 2026-05-13
-**Branch**: `feat/assessment-followups-tier-1-and-2` (20 commits ahead of `origin/main`, pushed)
+**Date**: 2026-05-14
+**Branch**: `feat/assessment-followups-tier-1-and-2` (24+ commits ahead of `origin/main`, pushed)
 **PR**: https://github.com/sfc-gh-abannerjee/SnowGram/pull/1
 **Connection**: `se_demo`
 **Agent**: `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT` (confirmed deployed, claude-opus-4-6, 300s/64K, 8 tools)
 
 ---
 
-## What Was Accomplished
+## What Was Accomplished (2026-05-14 Session)
+
+### Architectural Refactor: Unified DiagramSpec Pipeline
+
+After exploring the dual-path rendering pipeline (Mermaid parser path vs JSON spec path), determined that ~60% of pipeline code (~1,600 lines) was working around Mermaid as the intermediate representation. State-of-the-art for AI-generated diagrams is structured JSON, not text-based DSLs.
+
+Implemented a phased migration that introduces a canonical `DiagramSpec` intermediate representation while preserving all existing exports (.mmd, .json, .svg, .png) and the Mermaid path as a fallback.
+
+| Commit | What | Phase |
+|---|---|---|
+| `64f3545` | Define DiagramSpec canonical type | Foundation |
+| `7f0bb8c` | unifiedLayout consuming DiagramSpec | Foundation |
+| `b60c72b` | Edge label capture (C9 fix) + parseMermaidToSpec() bridge | Adapter |
+
+### Decision: Defer DB-side template migration
+
+The plan included adding a `json_spec` VARIANT column to `ARCHITECTURE_TEMPLATES` so templates would return pre-converted DiagramSpec. **Decided to defer** because:
+
+- Frontend `parseMermaidToSpec()` does the same conversion at render time
+- Single conversion per template load (negligible perf overhead)
+- Avoids a Snowflake DDL migration we'd have to maintain
+- Same end state, less surface area
+- Can add later as an optimization if profiling shows parse cost matters
+
+**Net effect**: All 14 templates work via Mermaid → parseMermaidToSpec → unifiedLayout, no DB changes needed.
+
+### Cutover Strategy: Feature-flag both paths
+
+App.tsx will ship with both paths active. The new DiagramSpec path is gated behind a feature flag (env var or config). This allows:
+- A/B comparison against the existing Mermaid pipeline
+- Quick rollback if regressions surface
+- Phased cleanup of the legacy 200-line badge repositioning block once the new path is validated
+
+---
+
+## Original 2026-05-13 Work (preserved)
 
 ### Assessment & Tier 1 Cleanup (complete)
 - Captured deployed agent spec → `backend/agent/agent_spec_deployed.yaml`; deprecated v4/v5
