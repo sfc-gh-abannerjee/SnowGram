@@ -100,23 +100,35 @@ You have 14 pre-built architecture templates. ALWAYS check if the user's request
 
 ## MANDATORY RESPONSE STRUCTURE
 
-### Section 1: Acknowledgment
-One sentence identifying the architecture (e.g., 'Here is a Security Analytics architecture diagram.')
+The response MUST be in this exact order so users read the description before
+the diagram code blocks. The frontend renders the narrative text first and
+the JSON/Mermaid expanders below it — your text response must match that flow.
 
-### Section 2: The Diagram (REQUIRED)
-You MUST include the complete Mermaid code in a code block:
+### Section 1: Architecture Overview
+A 1-2 sentence paragraph explaining what this architecture is and the
+business problem it solves. Do NOT say "Here is..." here — that line is
+reserved for Section 4.
+
+### Section 2: Component Summary
+A markdown table with columns: # | Component | Role
+List 4-6 of the most important components and what each one does.
+
+### Section 3: Best Practices
+- Practice 1 (1 sentence)
+- Practice 2 (1 sentence)
+- Practice 3 (1 sentence) — 2-3 Snowflake best practices the architecture embodies.
+
+### Section 4: Diagram (REQUIRED)
+Start this section with a single transition line that introduces the diagram,
+e.g. "Here is your Streaming Data Stack reference architecture diagram:"
+Immediately followed by the complete Mermaid code in a fenced block:
 \`\`\`mermaid
 [PASTE THE FULL MERMAID CODE FROM TOOL RESULT HERE - DO NOT SUMMARIZE]
 \`\`\`
 
-NEVER skip this section. NEVER say 'Diagram updated' or 'Review the canvas' without showing the actual code.
-
-### Section 3: Component Summary
-- List 4-6 key components and their roles
-- Explain the data flow briefly
-
-### Section 4: Best Practices
-- 2-3 Snowflake best practices embedded in this architecture
+NEVER skip this section. NEVER say 'Diagram updated' or 'Review the canvas'
+without showing the actual code. The "Here is your..." line MUST appear
+immediately before the \`\`\`mermaid fence.
 
 ### Section 5: Stats
 End with: 'Generated diagram with X nodes and Y edges.'
@@ -301,15 +313,22 @@ CRITICAL: Do NOT generate custom diagrams for common patterns - use the template
 
     if (usesDeployedFormat) {
       // --- Deployed spec format: ### Section 1-5 ---
+      // New order (post-redeploy):
+      //   1: Architecture Overview, 2: Component Summary, 3: Best Practices,
+      //   4: Diagram, 5: Stats
+      // Backwards-compat:
+      //   1: Acknowledgment (old), 3: Component Summary (old), 4: Best Practices (old)
       const section1Match = rawResponse.match(
-        /###\s*Section\s*1[:\s]*Acknowledgment\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i
+        /###\s*Section\s*1[:\s]*(?:Architecture\s*Overview|Acknowledgment)\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i
       );
       overview = section1Match ? section1Match[1].trim() : '';
 
-      const section3Match = rawResponse.match(
-        /###\s*Section\s*3[:\s]*Component\s*Summary\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i
-      );
-      componentSummary = section3Match ? section3Match[1].trim() : '';
+      // Component Summary moved from Section 3 → Section 2 in new format.
+      // Match either spot for backwards-compat.
+      const componentMatch =
+        rawResponse.match(/###\s*Section\s*2[:\s]*Component\s*Summary\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i)
+        || rawResponse.match(/###\s*Section\s*3[:\s]*Component\s*Summary\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i);
+      componentSummary = componentMatch ? componentMatch[1].trim() : '';
 
       // Parse component summary bullets into ComponentInfo array
       if (componentSummary) {
@@ -324,10 +343,11 @@ CRITICAL: Do NOT generate custom diagrams for common patterns - use the template
         });
       }
 
-      const section4Match = rawResponse.match(
-        /###\s*Section\s*4[:\s]*Best\s*Practices\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i
-      );
-      bestPractices = this.extractListItems(section4Match ? section4Match[1] : '');
+      // Best Practices moved from Section 4 → Section 3 in new format.
+      const bestPracticesMatch =
+        rawResponse.match(/###\s*Section\s*3[:\s]*Best\s*Practices\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i)
+        || rawResponse.match(/###\s*Section\s*4[:\s]*Best\s*Practices\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i);
+      bestPractices = this.extractListItems(bestPracticesMatch ? bestPracticesMatch[1] : '');
 
       const section5Match = rawResponse.match(
         /###\s*Section\s*5[:\s]*Stats\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i
