@@ -2018,6 +2018,9 @@ const fitCspNodesIntoBoundaries = (nodes: Node[]) => fitAllBoundaries(nodes);
 // This helper accepts any of:
 //   - A bare string                     → returned as-is
 //   - An object with .text / .json      → extracted & stringified
+//   - An object with .result            → unwrap (Snowflake SQL-function
+//                                         envelope: {execution_type, query_id,
+//                                         result, truncated})
 //   - An array of content items         → joined by newlines
 //   - { content: [...] }                → recurse on .content
 //   - Something else                    → JSON.stringify
@@ -2031,6 +2034,14 @@ const flattenToolResultContent = (raw: any): string => {
     if (typeof raw.text === 'string') return raw.text;
     if (raw.json !== undefined) {
       return typeof raw.json === 'string' ? raw.json : JSON.stringify(raw.json, null, 2);
+    }
+    // Snowflake SQL-function envelope: tools backed by a UDF/UDTF return
+    // { execution_type:'function', query_id:'...', result:'<actual output>',
+    //   truncated:false }. The actual mermaid/JSON we care about lives in
+    //  `.result`, so unwrap it before stringifying.
+    if (typeof raw.result === 'string') return raw.result;
+    if (raw.result !== undefined && typeof raw.result === 'object') {
+      return flattenToolResultContent(raw.result);
     }
     if (Array.isArray(raw.content)) return flattenToolResultContent(raw.content);
     return JSON.stringify(raw, null, 2);
