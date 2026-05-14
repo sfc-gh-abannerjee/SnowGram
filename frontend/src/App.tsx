@@ -24,8 +24,9 @@ import TextBoxNode from './components/TextBoxNode';
 import ShapeNode from './components/ShapeNode';
 import StickyNoteNode from './components/StickyNoteNode';
 // SnowgramAgentClient removed - PAT must never be exposed in client-side bundle
-import { convertMermaidToFlow, LAYER_COLORS, getStageColor } from './lib/mermaidToReactFlow';
+import { convertMermaidToFlow, LAYER_COLORS, getStageColor, parseMermaidToSpec } from './lib/mermaidToReactFlow';
 import { layoutWithELK, enrichNodesWithFlowOrder, layoutWithLanes } from './lib/elkLayout';
+import { unifiedLayout } from './lib/unifiedLayout';
 import { resolveIcon } from './lib/iconResolver';
 import { canonicalizeComponentType, keyForNode, normalizeBoundaryType, normalizeGraph } from './lib/graphNormalize';
 import { hexToRgb as hexToRgbUtil, getLabelColor } from './lib/colorUtils';
@@ -2757,7 +2758,58 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       existingPositions.set(node.id, { x: node.position.x, y: node.position.y });
     });
     debugLog(`[Layout Preservation] Captured ${existingPositions.size} existing positions`);
-    
+
+    // ================================================================
+    // FEATURE-FLAGGED: DiagramSpec pipeline (new unified path)
+    // Set NEXT_PUBLIC_USE_DIAGRAM_SPEC=true to opt in.
+    // When enabled, Mermaid is parsed once into a typed DiagramSpec
+    // and rendered via unifiedLayout. This bypasses the dual-path
+    // fork below (spec vs mermaid) and the 200-line post-layout
+    // badge repositioning. Kept feature-flagged for A/B comparison
+    // and quick rollback during the migration.
+    // ================================================================
+    const useDiagramSpec = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_USE_DIAGRAM_SPEC === 'true');
+    if (useDiagramSpec && mermaidCode) {
+      try {
+        debugLog('[Pipeline:DiagramSpec] Using unified DiagramSpec pipeline');
+        const diagramSpec = parseMermaidToSpec(mermaidCode, COMPONENT_CATEGORIES, isDarkMode);
+        debugLog(`[Pipeline:DiagramSpec] Parsed: ${diagramSpec.nodes.length} nodes, ${diagramSpec.edges.length} edges, ${diagramSpec.groups.length} groups, ${diagramSpec.badges.length} badges`);
+
+        const { nodes: dsNodes, edges: dsEdges } = unifiedLayout(diagramSpec, { isDarkMode });
+
+        // Apply layout preservation: existing user positions take priority
+        const preservedNodes = dsNodes.map(n => {
+          const existing = existingPositions.get(n.id);
+          return existing ? { ...n, position: existing } : n;
+        });
+
+        // Wire up node interaction callbacks (rename/delete/copy)
+        const wiredNodes = preservedNodes.map(n => ({
+          ...n,
+          data: {
+            ...(n.data as any),
+            onRename: renameNode,
+            onDelete: deleteNode,
+            onCopy: copyNode,
+          },
+        }));
+
+        if (isAborted()) {
+          debugLog('[Pipeline:DiagramSpec] Aborted before render');
+          return;
+        }
+
+        debugLog(`[Pipeline:DiagramSpec] Final render: ${wiredNodes.length} nodes, ${dsEdges.length} edges`);
+        setNodes(wiredNodes);
+        setEdges(dsEdges);
+        return;
+      } catch (err) {
+        // Defensive fallback: if the new pipeline throws, log and fall through
+        // to the legacy pipeline so users see a working diagram either way.
+        debugWarn('[Pipeline:DiagramSpec] Failed, falling back to legacy pipeline:', err);
+      }
+    }
+
     // ================================================================
     // TEMPLATE DETECTION: Force mermaid path for templates with badges
     // Templates (like STREAMING_DATA_STACK) define badges using :::laneBadge
