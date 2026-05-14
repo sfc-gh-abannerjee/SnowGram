@@ -962,7 +962,12 @@
         : 0;
       if (rowDiff >= 1) {
         if (!vGapEdges[key]) vGapEdges[key] = [];
-        vGapEdges[key].push({ idx: idx, avgY: (srcCy + tgtCy) / 2 });
+        vGapEdges[key].push({
+          idx: idx,
+          avgY: (srcCy + tgtCy) / 2,
+          srcY: srcCy,
+          tgtY: tgtCy
+        });
         vGapKey[idx] = key;
       }
       // Fan-out tracking
@@ -985,7 +990,27 @@
     });
     Object.keys(vGapEdges).forEach(function(key) {
       var group = vGapEdges[key];
-      group.sort(function(a, b) { return a.avgY - b.avgY; });
+      // Sort with corner-proximity awareness so we avoid the visual
+      // "stairstep" pattern where one connector's terminal H ends near
+      // another connector's source H. Each L-shape has two corners:
+      //   - source corner: H points LEFT (toward x1)  ─── "Left H"
+      //   - terminal corner: H points RIGHT (toward x2) ─── "Right H"
+      // When a Right-H corner of A is close in Y to a Left-H corner of
+      // B, the two H stubs would overlap in X range, looking like a
+      // single zigzag path. To prevent overlap we want A's stubX > B's
+      // stubX (Right-H connector turns AFTER Left-H connector), so
+      // their H stubs land in disjoint X ranges.
+      // Falls back to avgY ascending when no close-corner pair exists.
+      var Y_THRESHOLD = 30;
+      group.sort(function(a, b) {
+        // a's terminal corner (Right-H) close to b's source corner (Left-H)
+        // → a should turn AFTER b (a.stubX > b.stubX → larger idx)
+        if (Math.abs(a.tgtY - b.srcY) < Y_THRESHOLD) return 1;
+        // a's source corner (Left-H) close to b's terminal corner (Right-H)
+        // → a should turn BEFORE b (a.stubX < b.stubX → smaller idx)
+        if (Math.abs(a.srcY - b.tgtY) < Y_THRESHOLD) return -1;
+        return a.avgY - b.avgY;
+      });
       vGapCounts[key] = group.length;
       group.forEach(function(item, sortedIdx) {
         vGapIndex[item.idx] = sortedIdx;
