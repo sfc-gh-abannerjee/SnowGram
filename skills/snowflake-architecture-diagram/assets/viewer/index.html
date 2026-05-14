@@ -1002,12 +1002,14 @@
             var maxAdjacentSpan = Math.max(tgtRowH, srcRowH) * 1.2;
 
             if (vDist <= maxAdjacentSpan) {
-              // Adjacent rows — collapse to L-shape (1 turn).
-              // V→H: vertical at source's right edge to target Y, then
-              // horizontal across the gap to target. Path ends with a
-              // horizontal segment so the arrow points into the target.
+              // Adjacent rows — H exit, short V near target, tiny H stub.
+              // Long horizontal exit from source, then short vertical 12px
+              // before target, then small horizontal stub into target.
+              // The terminal H stub keeps the arrow pointing into the target.
+              var stubX = (dx >= 0 ? x2 - 12 : x2 + 12);
               d = 'M' + x1 + ',' + y1 +
-                  ' L' + x1 + ',' + y2 +
+                  ' L' + stubX + ',' + y1 +
+                  ' L' + stubX + ',' + y2 +
                   ' L' + x2 + ',' + y2;
             } else {
               // 2+ rows apart — use channel-track to keep V in the gap
