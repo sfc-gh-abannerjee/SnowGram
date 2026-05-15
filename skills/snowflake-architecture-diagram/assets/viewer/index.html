@@ -865,7 +865,21 @@
       // Without this clamp a cycle (which the back-edge filter above prevents
       // for declared-order, but defense in depth) blows up the column count.
       if (maxRank > zoneNames.length - 1) maxRank = zoneNames.length - 1;
-      var columns = []; // columns[i] = [zone, zone, ...]
+
+      // De-collide same-rank zones into unique columns.
+      // Two zones at the same DAG depth (e.g. Alerting + Consumption both
+      // fed from Monitoring) would otherwise stack vertically inside the
+      // same innerCol, leaving adjacent columns short and creating an
+      // L-shaped boundary visual. Sort by (rank, declared-order) and
+      // re-assign rank by sorted position so every zone has a unique column.
+      var sortedZones = zoneNames.slice().sort(function(a, b) {
+        if (rank[a] !== rank[b]) return rank[a] - rank[b];
+        return zoneOrder[a] - zoneOrder[b];
+      });
+      sortedZones.forEach(function(n, idx) { rank[n] = idx; });
+      maxRank = sortedZones.length - 1;
+
+      var columns = []; // columns[i] = [zone] (always single-zone after de-collision)
       for (var r = 0; r <= maxRank; r++) columns.push([]);
       zones.forEach(function(z) { columns[rank[z.name]].push(z); });
 
@@ -1150,6 +1164,277 @@
     if (!edges.length) return;
 
     const cardRect = card.getBoundingClientRect();
+
+    // ── Cache zone + card geometry for gap-snap and obstacle detection ──
+    // Cross-zone H-V-H paths place a V-column at trackX. If trackX falls
+    // inside an intermediate zone, the V slices through that zone's cards.
+    // Cache zone rects (sorted by left edge) and compute inter-zone "gap"
+    // rects so we can snap trackX to a clear gap. Cache flow-node rects
+    // for obstacle detection on H segments that cross intermediate cards
+    // at the same y as the source/target row.
+    var zoneRects = Array.prototype.map.call(card.querySelectorAll('.zone'), function(zEl) {
+      var r = zEl.getBoundingClientRect();
+      return {
+        el: zEl,
+        left: r.left - cardRect.left,
+        right: r.right - cardRect.left,
+        top: r.top - cardRect.top,
+        bottom: r.bottom - cardRect.top
+      };
+    }).sort(function(a, b) { return a.left - b.left; });
+    var nodeRects = Array.prototype.map.call(card.querySelectorAll('.flow-node'), function(nEl) {
+      var r = nEl.getBoundingClientRect();
+      return {
+        id: nEl.getAttribute('data-node-id'),
+        left: r.left - cardRect.left,
+        right: r.right - cardRect.left,
+        top: r.top - cardRect.top,
+        bottom: r.bottom - cardRect.top
+      };
+    });
+    // Compute inter-zone gap rects (clear vertical channels between zones).
+    var zoneGaps = [];
+    for (var zi = 0; zi < zoneRects.length - 1; zi++) {
+      var lz = zoneRects[zi], rz = zoneRects[zi + 1];
+      if (rz.left > lz.right) {
+        zoneGaps.push({ left: lz.right, right: rz.left, center: (lz.right + rz.left) / 2 });
+      }
+    }
+
+    // Returns trackX snapped to the nearest clear inter-zone gap when the
+    // computed trackX would land inside any zone's x-range. Returns the
+    // input unchanged when it's already in a gap or outside all zones.
+    function snapToGap(trackX, x1, x2) {
+      var inside = false;
+      for (var i = 0; i < zoneRects.length; i++) {
+        if (trackX > zoneRects[i].left + 2 && trackX < zoneRects[i].right - 2) {
+          inside = true; break;
+        }
+      }
+      if (!inside) return trackX;
+      // Find candidate gaps along the source→target span.
+      var loX = Math.min(x1, x2), hiX = Math.max(x1, x2);
+      var candidates = zoneGaps.filter(function(g) {
+        return g.center >= loX - 4 && g.center <= hiX + 4;
+      });
+      if (!candidates.length) return trackX;
+      // Pick the gap whose center is closest to the original trackX.
+      var best = candidates[0], bestDist = Math.abs(candidates[0].center - trackX);
+      for (var k = 1; k < candidates.length; k++) {
+        var dist = Math.abs(candidates[k].center - trackX);
+        if (dist < bestDist) { best = candidates[k]; bestDist = dist; }
+      }
+      return best.center;
+    }
+
+    // Returns an array of node-rect obstacles that an H segment from
+    // (xa, y) to (xb, y) crosses, excluding the endpoints' own cards.
+    // The H is "blocked" when y is strictly inside a card's vertical
+    // extent and the card's x-range overlaps the H's x-range.
+    function obstaclesOnH(xa, xb, y, srcId, tgtId) {
+      var loX = Math.min(xa, xb), hiX = Math.max(xa, xb);
+      var hits = [];
+      for (var i = 0; i < nodeRects.length; i++) {
+        var nr = nodeRects[i];
+        if (nr.id === srcId || nr.id === tgtId) continue;
+        if (y <= nr.top + 2 || y >= nr.bottom - 2) continue;
+        // Card horizontally inside the H's x-range (with small margin).
+        if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
+        hits.push(nr);
+      }
+      hits.sort(function(a, b) { return a.left - b.left; });
+      return hits;
+    }
+
+    // Build a poly-line that detours an H segment around obstacle cards.
+    // Returns an array of points [[x,y], [x,y], ...] starting from
+    // (xa, y) and ending at (xb, y).
+    //
+    // Routing philosophy: real architects don't zigzag through tight
+    // gaps next to every obstacle. They sweep cleanly around all
+    // obstacles in a single detour, with maximum clearance from
+    // unrelated components and the minimum number of corners. So when
+    // ANY obstacle exists on the path, we use ONE rectangular detour:
+    //   H out a stub → V to a clear channel → H across in the channel
+    //   → V back to the original y → H into the destination
+    // The channel y is positioned ~36px clear of the FURTHEST obstacle
+    // on the path (top or bottom, whichever side has more breathing
+    // room), rather than tight-jogging individual cards.
+    function detourH(xa, xb, y, srcId, tgtId) {
+      var hits = obstaclesOnH(xa, xb, y, srcId, tgtId);
+      if (!hits.length) {
+        return [[xa, y], [xb, y]];
+      }
+      var goingRight = (xb > xa);
+      var clearance = 36; // ample space — no tight jogs
+
+      // Find the farthest top edge and farthest bottom edge among
+      // obstacles to compute candidate detour y's on each side.
+      var minTop = hits[0].top, maxBottom = hits[0].bottom;
+      for (var i = 1; i < hits.length; i++) {
+        if (hits[i].top    < minTop)    minTop    = hits[i].top;
+        if (hits[i].bottom > maxBottom) maxBottom = hits[i].bottom;
+      }
+      var aboveY = minTop - clearance;
+      var belowY = maxBottom + clearance;
+
+      // Verify each candidate is itself clear of OTHER cards (no card
+      // sitting in the detour rail). Re-using obstaclesOnH at the
+      // candidate y across the same x-span checks this in one call.
+      function railClear(railY) {
+        var conflicts = obstaclesOnH(xa, xb, railY, srcId, tgtId);
+        return conflicts.length === 0;
+      }
+      var detourY;
+      var belowOK = belowY > 0 && railClear(belowY);
+      var aboveOK = aboveY > 0 && railClear(aboveY);
+      if (belowOK && aboveOK) {
+        // Both clear — pick whichever is closer to y (less detour).
+        detourY = (Math.abs(belowY - y) <= Math.abs(aboveY - y)) ? belowY : aboveY;
+      } else if (belowOK) {
+        detourY = belowY;
+      } else if (aboveOK) {
+        detourY = aboveY;
+      } else {
+        // Both rails have conflicts. Push further until clear (search
+        // outward in the chosen direction). Bias DOWN — diagrams flow
+        // top-to-bottom in this layout style.
+        detourY = belowY;
+        for (var step = 1; step <= 6 && !railClear(detourY); step++) {
+          detourY = maxBottom + clearance + step * 28;
+        }
+      }
+
+      // Stub length: horizontal distance from source/target before the
+      // V turn. Larger stub = arrow exit/entry feels deliberate, not
+      // crowded against the card edge.
+      var stub = Math.min(28, Math.abs(xb - xa) / 4);
+      var enterX = goingRight ? xa + stub : xa - stub;
+      var exitX  = goingRight ? xb - stub : xb + stub;
+      // Guard: if the source/target are very close horizontally, the
+      // stubs could overlap — clamp so enterX < exitX (going right) or
+      // enterX > exitX (going left).
+      if (goingRight && enterX > exitX) { enterX = xa; exitX = xb; }
+      if (!goingRight && enterX < exitX) { enterX = xa; exitX = xb; }
+
+      return [
+        [xa,     y],
+        [enterX, y],
+        [enterX, detourY],
+        [exitX,  detourY],
+        [exitX,  y],
+        [xb,     y]
+      ];
+    }
+
+    // Encode an array of points as an SVG path "d" string.
+    function pointsToD(pts) {
+      if (!pts.length) return '';
+      var s = 'M' + pts[0][0] + ',' + pts[0][1];
+      for (var i = 1; i < pts.length; i++) {
+        s += ' L' + pts[i][0] + ',' + pts[i][1];
+      }
+      return s;
+    }
+
+    // Build a clean cross-zone path from (x1, y1) to (x2, y2) given a
+    // preferred V-trunk X (trackX). Three cases:
+    //
+    //   1. No obstacles on either H segment → standard H-V-H with the
+    //      caller's trackX. Two corners. Cleanest possible path.
+    //
+    //   2. Obstacles on one or both H segments → single big U-shaped
+    //      detour through a clear horizontal channel that clears ALL
+    //      obstacles in the bounding rectangle (x1..x2, y1..y2).
+    //      Five corners total: stub out, V to channel, H across in
+    //      channel, V to dest row, stub in. No zigzags around individual
+    //      cards — one decisive sweep, ample clearance.
+    //
+    //   3. Same row (y1 ≈ y2), obstacles → channel detour collapses to
+    //      a U-shape that re-enters at the same y. Five corners.
+    function routeOrthogonal(x1, y1, x2, y2, trackX, srcId, tgtId) {
+      // Test obstacles on the natural H-V-H legs.
+      var hits1 = obstaclesOnH(x1, trackX, y1, srcId, tgtId);
+      var hits2 = obstaclesOnH(trackX, x2, y2, srcId, tgtId);
+      if (!hits1.length && !hits2.length) {
+        return [
+          [x1, y1],
+          [trackX, y1],
+          [trackX, y2],
+          [x2, y2]
+        ];
+      }
+      // Obstacles present — sweep around them via a single channel.
+      // Channel must clear EVERY obstacle whose bounding rect overlaps
+      // the path's x-range.
+      var goingRight = (x2 > x1);
+      var loX = Math.min(x1, x2), hiX = Math.max(x1, x2);
+      var allHits = [];
+      for (var i = 0; i < nodeRects.length; i++) {
+        var nr = nodeRects[i];
+        if (nr.id === srcId || nr.id === tgtId) continue;
+        if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
+        // Only consider cards whose vertical range intersects the bounding
+        // path band [min(y1,y2)-1, max(y1,y2)+1] — these are the ones a
+        // straight-or-L path would actually cross.
+        var pathTop = Math.min(y1, y2) - 1;
+        var pathBot = Math.max(y1, y2) + 1;
+        if (nr.bottom <= pathTop || nr.top >= pathBot) {
+          // Not in path band; only blocks H1 or H2 if its y-range covers
+          // y1 or y2. Re-check explicitly.
+          var blocksY1 = (nr.top < y1 && nr.bottom > y1);
+          var blocksY2 = (nr.top < y2 && nr.bottom > y2);
+          if (!blocksY1 && !blocksY2) continue;
+        }
+        allHits.push(nr);
+      }
+      var clearance = 36;
+      var minTop = allHits[0].top, maxBottom = allHits[0].bottom;
+      for (var j = 1; j < allHits.length; j++) {
+        if (allHits[j].top    < minTop)    minTop    = allHits[j].top;
+        if (allHits[j].bottom > maxBottom) maxBottom = allHits[j].bottom;
+      }
+      var aboveY = minTop - clearance;
+      var belowY = maxBottom + clearance;
+
+      function railClear(railY) {
+        var conflicts = obstaclesOnH(loX, hiX, railY, srcId, tgtId);
+        return conflicts.length === 0;
+      }
+      var detourY;
+      var belowOK = belowY > 0 && railClear(belowY);
+      var aboveOK = aboveY > 0 && railClear(aboveY);
+      var refY = (y1 + y2) / 2;
+      if (belowOK && aboveOK) {
+        detourY = (Math.abs(belowY - refY) <= Math.abs(aboveY - refY)) ? belowY : aboveY;
+      } else if (belowOK) {
+        detourY = belowY;
+      } else if (aboveOK) {
+        detourY = aboveY;
+      } else {
+        detourY = belowY;
+        for (var step = 1; step <= 6 && !railClear(detourY); step++) {
+          detourY = maxBottom + clearance + step * 28;
+        }
+      }
+
+      // Stubs: gentle exit/entry into the channel, ample distance from
+      // source/target card edges.
+      var stub = Math.min(28, Math.abs(x2 - x1) / 4);
+      var enterX = goingRight ? x1 + stub : x1 - stub;
+      var exitX  = goingRight ? x2 - stub : x2 + stub;
+      if (goingRight && enterX > exitX) { enterX = x1; exitX = x2; }
+      if (!goingRight && enterX < exitX) { enterX = x1; exitX = x2; }
+
+      return [
+        [x1,     y1],
+        [enterX, y1],
+        [enterX, detourY],
+        [exitX,  detourY],
+        [exitX,  y2],
+        [x2,     y2]
+      ];
+    }
 
     // Pre-pass: collect edges per zone-pair gap, sort by avgY for track assignment
     var gapEdges = {};   // "srcZoneName|tgtZoneName" → [{edgeIdx, avgY}]
@@ -1471,31 +1756,23 @@
           var fanInStubX = (dx >= 0) ? (x2 - 24) : (x2 + 24);
 
           if (rowDiff === 0 && Math.abs(y1 - y2) < 1) {
-            // Same row AND same exact y — true straight horizontal.
-            d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+            // Same row AND same exact y. For adjacent zones a clean
+            // straight horizontal; for skip-edges, routeOrthogonal sweeps
+            // around obstacles via a single clear channel.
+            // Pass trackX = mid of source-target so the no-obstacle path
+            // collapses to the straight horizontal (same y, same trackX).
+            d = pointsToD(routeOrthogonal(x1, y1, x2, y2, (x1 + x2) / 2,
+                                           edge.source, edge.target));
           } else if (rowDiff === 0) {
-            // Same row index but card center y's differ slightly because
-            // the cards have different heights (e.g., a long-text Masking
-            // Policy vs a short-text Secure View). Cardinal-port
-            // constraint: we MUST enter the target at exactly its center
-            // y (the LEFT port), not at a snapped midpoint. Do H-V-H
-            // through a mid-channel so the entry is on-port.
+            // Same row index, slightly different y — H-V-H through a
+            // mid-channel that's cardinal-port aligned.
             var sameRowStubX = (tgtFanIn > 1) ? fanInStubX : (x1 + x2) / 2;
-            d = 'M' + x1 + ',' + y1 +
-                ' L' + sameRowStubX + ',' + y1 +
-                ' L' + sameRowStubX + ',' + y2 +
-                ' L' + x2 + ',' + y2;
+            if (tgtFanIn <= 1) sameRowStubX = snapToGap(sameRowStubX, x1, x2);
+            d = pointsToD(routeOrthogonal(x1, y1, x2, y2, sameRowStubX,
+                                           edge.source, edge.target));
           } else if (rowDiff === 1) {
-            // Adjacent rows — H→V→H L-shape, with V column distributed
-            // across the gap based on the V-needing edge index. This
-            // prevents two V columns in the same gap from landing at
-            // the same X. Channel-track uses the same pool so L-shapes
-            // and 2+row tracks coordinate.
-            // Use (idx+1)/(N+1) formula which keeps Vs in the central
-            // portion of the gap — this avoids the extreme positions
-            // (one V hugging the source zone edge, one hugging the
-            // target zone edge) that come with the edge-anchored
-            // idx/(N-1) variant.
+            // Adjacent rows — H→V→H L-shape, V column distributed
+            // across the gap based on V-needing edge index.
             var vKey = vGapKey[edgeIdx];
             var vTotal = vKey ? (vGapCounts[vKey] || 1) : 1;
             var vIdx = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
@@ -1503,21 +1780,18 @@
             var stubMaxX = Math.max(x1, x2) - 4;
             var stubX;
             if (tgtFanIn > 1) {
-              // Fan-in: share the L-turn so all incoming edges merge
-              // onto a single V trunk before entering the target.
               stubX = fanInStubX;
             } else if (stubMaxX > stubMinX) {
               stubX = stubMinX + (stubMaxX - stubMinX) * (vIdx + 1) / (vTotal + 1);
+              stubX = snapToGap(stubX, x1, x2);
             } else {
               stubX = (x1 + x2) / 2;
             }
-            d = 'M' + x1 + ',' + y1 +
-                ' L' + stubX + ',' + y1 +
-                ' L' + stubX + ',' + y2 +
-                ' L' + x2 + ',' + y2;
+            d = pointsToD(routeOrthogonal(x1, y1, x2, y2, stubX,
+                                           edge.source, edge.target));
           } else {
-            // 2+ rows apart — channel-track H→V→H.
-            // Shares the V-needing stagger pool with L-shape.
+            // 2+ rows apart — channel-track H→V→H, sharing the V-needing
+            // stagger pool with L-shape so their V columns coordinate.
             var vKey2 = vGapKey[edgeIdx];
             var vTotal2 = vKey2 ? (vGapCounts[vKey2] || 1) : 1;
             var vIdx2 = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
@@ -1525,17 +1799,15 @@
             var trackMaxX = Math.max(x1, x2) - 4;
             var trackX;
             if (tgtFanIn > 1) {
-              // Fan-in convergence (see comment above).
               trackX = fanInStubX;
             } else if (trackMaxX > trackMinX) {
               trackX = trackMinX + (trackMaxX - trackMinX) * (vIdx2 + 1) / (vTotal2 + 1);
+              trackX = snapToGap(trackX, x1, x2);
             } else {
               trackX = (x1 + x2) / 2;
             }
-            d = 'M' + x1 + ',' + y1 +
-                ' L' + trackX + ',' + y1 +
-                ' L' + trackX + ',' + y2 +
-                ' L' + x2 + ',' + y2;
+            d = pointsToD(routeOrthogonal(x1, y1, x2, y2, trackX,
+                                           edge.source, edge.target));
           }
         } else {
           // Vertical: exit source's BOTTOM (or TOP) cardinal port using
