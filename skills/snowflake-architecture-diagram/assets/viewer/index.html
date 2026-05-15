@@ -268,6 +268,20 @@
     transition: box-shadow 120ms ease, border-color 120ms ease;
     cursor: pointer;
   }
+  /* The card the cursor is directly over. Distinct from .is-active so
+     the user can tell at a glance which card is the focus and which
+     ones are merely connected to it. is-primary wins over is-active
+     because it's listed after and uses higher specificity via the
+     compound selector. */
+  .flow-node.is-primary,
+  .flow-node.is-active.is-primary {
+    box-shadow:
+      0 0 0 2px var(--primary-hover, #ffb454),
+      0 0 22px rgba(255, 180, 84, 0.55);
+    border-color: var(--primary-hover, #ffb454);
+    transition: box-shadow 120ms ease, border-color 120ms ease;
+    cursor: pointer;
+  }
   .flow-node {
     transition: box-shadow 120ms ease, border-color 120ms ease;
   }
@@ -1672,6 +1686,9 @@
       if (nodeEl.__connHover) return;
       nodeEl.__connHover = true;
       nodeEl.addEventListener('mouseenter', function() {
+        // Mark THIS card as the primary focus (distinct color from its
+        // connected neighbors).
+        nodeEl.classList.add('is-primary');
         var groups = svg.querySelectorAll(
           '.connector-group[data-source-id="' + nodeId + '"], ' +
           '.connector-group[data-target-id="' + nodeId + '"]'
@@ -1679,6 +1696,7 @@
         groups.forEach(activateConnector);
       });
       nodeEl.addEventListener('mouseleave', function() {
+        nodeEl.classList.remove('is-primary');
         var groups = svg.querySelectorAll(
           '.connector-group[data-source-id="' + nodeId + '"], ' +
           '.connector-group[data-target-id="' + nodeId + '"]'
