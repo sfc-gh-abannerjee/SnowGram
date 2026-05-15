@@ -357,6 +357,22 @@
     border-bottom: 1px solid var(--border-subtle);
     background: var(--zone-header-bg, transparent);
     position: relative;
+    /* Reserve enough vertical space for a 2-line title + 1-line tag.
+       This ensures zone bodies start at the same y across all zones
+       regardless of whether their title wraps — which is the difference
+       between, e.g., "SNOWFLAKE — TRANSFORMATION (DYNAMIC TABLES)"
+       (2 lines) and "SNOWFLAKE — CATALOG & INGESTION" (1 line). Without
+       a uniform header, row 0 of one zone sits at a different y than
+       row 0 of its neighbor, producing extraneous L-bends in connectors
+       between aligned siblings (e.g., Iceberg AWS → Dynamic Table Bronze).
+       Title is 11px @ line-height 1.2 = 13.2px/line × 2 = 26.4px;
+       tag is 10px + 3px margin = 13px; padding 12+10 = 22px → ~62px.
+       Round up to 68px for a small safety margin. */
+    min-height: 68px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
   }
   .zone-name {
     font-size: 11px;
