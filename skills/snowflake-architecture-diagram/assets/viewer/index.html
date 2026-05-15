@@ -1324,11 +1324,21 @@
             ? Math.abs(srcRowIdx - tgtRowIdx)
             : 999;
 
-          if (rowDiff === 0) {
-            // Same row — snap to common Y for true horizontal line.
-            // Avoids tiny V kinks when zones have slight Y misalignment.
-            var commonY = (y1 + y2) / 2;
-            d = 'M' + x1 + ',' + commonY + ' L' + x2 + ',' + commonY;
+          if (rowDiff === 0 && Math.abs(y1 - y2) < 1) {
+            // Same row AND same exact y — true straight horizontal.
+            d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+          } else if (rowDiff === 0) {
+            // Same row index but card center y's differ slightly because
+            // the cards have different heights (e.g., a long-text Masking
+            // Policy vs a short-text Secure View). Cardinal-port
+            // constraint: we MUST enter the target at exactly its center
+            // y (the LEFT port), not at a snapped midpoint. Do H-V-H
+            // through a mid-channel so the entry is on-port.
+            var sameRowStubX = (x1 + x2) / 2;
+            d = 'M' + x1 + ',' + y1 +
+                ' L' + sameRowStubX + ',' + y1 +
+                ' L' + sameRowStubX + ',' + y2 +
+                ' L' + x2 + ',' + y2;
           } else if (rowDiff === 1) {
             // Adjacent rows — H→V→H L-shape, with V column distributed
             // across the gap based on the V-needing edge index. This
