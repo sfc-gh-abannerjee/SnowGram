@@ -993,6 +993,27 @@ const App: React.FC = () => {
     return () => cancelAnimationFrame(id);
   }, [chatMessages, chatSending]);
 
+  // Auto-scroll the inner code-block scroll regions (Mermaid Diagram + JSON
+  // Specification expanders) while content streams in. SyntaxHighlighter
+  // renders to a <pre> with overflow:auto; new lines append to the bottom,
+  // so we snap each visible code block's scrollTop to its scrollHeight on
+  // every chunk update. Only fires while chatSending is true, so finished
+  // messages can be scrolled normally without us fighting the user.
+  useEffect(() => {
+    if (!chatSending) return;
+    const id = requestAnimationFrame(() => {
+      const blocks = chatMessagesRef.current?.querySelectorAll(
+        `.${styles.codeArtifactContent} pre`
+      );
+      if (!blocks) return;
+      blocks.forEach((el) => {
+        const node = el as HTMLElement;
+        node.scrollTop = node.scrollHeight;
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [chatMessages, chatSending]);
+
   // Save chat position separately (not per-session)
   useEffect(() => {
     try {
