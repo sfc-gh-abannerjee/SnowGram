@@ -417,6 +417,23 @@
   }
   .zone-body.cols-2 { grid-template-columns: repeat(2, 1fr); min-width: 280px; }
 
+  /* Sub-group label (consolidated zones with AWS/Azure/etc. sub-columns) */
+  .sub-group-label {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    text-align: center;
+    margin-bottom: 2px;
+  }
+  [data-theme="dark"] .sub-group-label {
+    background: rgba(255,255,255,0.04);
+  }
+
   /* Compact node variant when inside a zone */
   .zone .flow-node {
     min-width: 0;
@@ -791,7 +808,7 @@
     }
 
     const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
-    const zones = Array.isArray(state.zones) ? state.zones : [];
+    var zones = Array.isArray(state.zones) ? state.zones : [];
 
     // ── Defensive backfill: if a zone has no node_ids[] but matching nodes
     // have node.zone === zone.name, populate node_ids from the nodes. This
@@ -804,6 +821,119 @@
           .map(function(n) { return n.id; });
       }
     });
+
+    // ── Zone consolidation pre-processor ─────────────────────────────
+    // Detect consecutive sibling zones with a shared name prefix and a
+    // known qualifier suffix (e.g. "Ingestion AWS" + "Ingestion Azure" →
+    // single "Ingestion" zone with AWS / Azure sub-columns). This avoids
+    // wasting horizontal space on near-duplicate zones and keeps related
+    // CSP-specific resources visually adjacent. Conservative heuristic:
+    //
+    //   • Adjacent in declared order
+    //   • Same category
+    //   • Each zone has ≤ 4 nodes
+    //   • First name token is identical
+    //   • All extra tokens are in the qualifier whitelist
+    //   • Opt-out: state.consolidate === false disables the pass
+    if (state.consolidate !== false && zones.length > 1) {
+      var QUALIFIERS = {
+        'aws': 1, 'azure': 1, 'gcp': 1, 'oci': 1,
+        'east': 1, 'west': 1, 'us': 1, 'eu': 1, 'apac': 1,
+        'primary': 1, 'secondary': 1, 'dr': 1
+      };
+      function tokenize(name) {
+        return String(name || '').trim().split(/[\s\-_/]+/).filter(Boolean);
+      }
+      function isQualifier(tok) {
+        return QUALIFIERS[tok.toLowerCase()] === 1;
+      }
+      function mergeable(a, b) {
+        if (a.category !== b.category) return false;
+        if ((a.node_ids || []).length > 4) return false;
+        if ((b.node_ids || []).length > 4) return false;
+        var ta = tokenize(a.name), tb = tokenize(b.name);
+        if (!ta.length || !tb.length) return false;
+        if (ta[0].toLowerCase() !== tb[0].toLowerCase()) return false;
+        // Find common prefix length (case-insensitive)
+        var k = 0;
+        while (k < ta.length && k < tb.length &&
+               ta[k].toLowerCase() === tb[k].toLowerCase()) k++;
+        if (k === 0) return false;
+        // Remaining tokens after the common prefix must all be qualifiers.
+        for (var i = k; i < ta.length; i++) if (!isQualifier(ta[i])) return false;
+        for (var j = k; j < tb.length; j++) if (!isQualifier(tb[j])) return false;
+        // At least one zone must have an actual qualifier suffix —
+        // otherwise we'd merge two zones with the same exact name (already
+        // a different bug class).
+        if (ta.length === k && tb.length === k) return false;
+        return true;
+      }
+
+      var consolidated = [];
+      var i = 0;
+      while (i < zones.length) {
+        var group = [zones[i]];
+        var j = i + 1;
+        while (j < zones.length && mergeable(group[group.length - 1], zones[j])) {
+          group.push(zones[j]);
+          j++;
+        }
+        if (group.length === 1) {
+          consolidated.push(zones[i]);
+        } else {
+          // Compute the longest shared prefix across all in the group.
+          var groupTokens = group.map(function(g) { return tokenize(g.name); });
+          var prefixLen = groupTokens[0].length;
+          for (var p = 1; p < groupTokens.length; p++) {
+            var k2 = 0;
+            while (k2 < prefixLen && k2 < groupTokens[p].length &&
+                   groupTokens[0][k2].toLowerCase() ===
+                   groupTokens[p][k2].toLowerCase()) k2++;
+            prefixLen = Math.min(prefixLen, k2);
+          }
+          var prefixName = groupTokens[0].slice(0, prefixLen).join(' ');
+          var subGroups = group.map(function(g, gi) {
+            var toks = groupTokens[gi].slice(prefixLen);
+            // Sub-label is the qualifier(s) joined and uppercased; if empty
+            // (the "no-qualifier" zone in the group), label it "Default".
+            var label = toks.length
+              ? toks.join(' ').toUpperCase()
+              : (g.name || 'DEFAULT');
+            return {
+              label: label,
+              node_ids: (g.node_ids || []).slice(),
+              original_name: g.name
+            };
+          });
+          var allNodeIds = [];
+          subGroups.forEach(function(sg) {
+            sg.node_ids.forEach(function(id) { allNodeIds.push(id); });
+          });
+          consolidated.push({
+            name: prefixName,
+            category: group[0].category,
+            description: group.map(function(g) { return g.description || ''; })
+                              .filter(Boolean).join(' / '),
+            node_ids: allNodeIds,
+            sub_groups: subGroups
+          });
+          // Update nodeToZone-style mapping later — for now just have node.zone
+          // reflect the consolidated name so backfill logic stays consistent.
+          group.forEach(function(g) {
+            (g.node_ids || []).forEach(function(id) {
+              if (nodesById[id]) nodesById[id].zone = prefixName;
+            });
+          });
+        }
+        i = j;
+      }
+      // Replace zones array (mutate state.zones since downstream code reads it).
+      if (consolidated.length !== zones.length) {
+        state.zones = consolidated;
+        zones = consolidated;
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────
 
     // ── Enterprise zones layout (topology-driven columns) ──
     if (zones.length) {
@@ -854,6 +984,63 @@
         });
       }
 
+      // Pull in "orphan source" zones — zones with NO forward predecessors
+      // but WITH outgoing cross-zone edges. These are policy/governance zones
+      // that attach to mid-stream consumers (e.g. Horizon Governance applies
+      // masking/RLS to Curated). Without this pass they'd land at rank 0
+      // (no preds in the back-edge-filtered DAG) and get placed at column 1
+      // right after External Sources, forcing every connection from
+      // External Sources to anything past column 1 to cross through them.
+      // Place each such zone at min(out-edge.target.rank) - 1 so it sits
+      // adjacent to its first downstream consumer.
+      //
+      // We use the RAW edge list (not zoneSuccessors) because the back-edge
+      // filter drops "downstream-but-declared-late" edges — exactly the
+      // case for governance zones that wire INTO upstream snow zones.
+      // Skip onprem/bridge/outcome — those legitimately belong outside
+      // the snow pipeline.
+      var zoneCategory = {};
+      zones.forEach(function(z) { zoneCategory[z.name] = z.category; });
+      var hasPred = {};
+      zoneNames.forEach(function(n) { hasPred[n] = false; });
+      zoneNames.forEach(function(src) {
+        zoneSuccessors[src].forEach(function(tgt) { hasPred[tgt] = true; });
+      });
+      zoneNames.forEach(function(n) {
+        if (hasPred[n]) return;
+        if (rank[n] !== 0) return;
+        if (zoneCategory[n] !== 'snow') return; // only re-rank snow-category orphans
+        // Look at every outgoing edge from any node in this zone, regardless
+        // of whether it survived back-edge filtering.
+        var minTgtRank = Infinity;
+        edges.forEach(function(e) {
+          var sz = nodeToZone[e.source], tz = nodeToZone[e.target];
+          if (sz !== n) return;
+          if (!tz || tz === n) return;
+          if (rank[tz] !== undefined && rank[tz] < minTgtRank) {
+            minTgtRank = rank[tz];
+          }
+        });
+        if (minTgtRank === Infinity) return;
+        var pulled = minTgtRank - 1;
+        if (pulled > 0) rank[n] = pulled;
+      });
+      // One more relaxation pass in case pulling in an orphan now violates
+      // a successor's rank (e.g. orphan pulled to rank 5, a successor that
+      // was at rank 5 must move to 6+).
+      changed = true; safety = 0;
+      while (changed && safety < 10) {
+        changed = false; safety++;
+        zoneNames.forEach(function(src) {
+          zoneSuccessors[src].forEach(function(tgt) {
+            if (rank[tgt] < rank[src] + 1) {
+              rank[tgt] = rank[src] + 1;
+              changed = true;
+            }
+          });
+        });
+      }
+
       // Group zones by rank
       var maxRank = 0;
       zoneNames.forEach(function(n) {
@@ -888,7 +1075,11 @@
       // Use a floor of ~220px per column so cards don't collapse to single-letter
       // wrapping when there are many zones (8+). When zones exceed viewport width,
       // the diagram-card scrolls horizontally instead of squeezing content.
-      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', minmax(220px, 1fr))';
+      // Use minmax(min-content, 1fr) so a column with a wide intrinsic
+      // (fan-out) zone — e.g. External Sources with 3+ sub-columns from
+      // intra-zone fan-out — gets enough width to render without
+      // clipping its content INTO the next column / boundary edge.
+      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', minmax(min-content, 1fr))';
 
       // Helper: build a zone DOM element. When the zone has intra-zone
       // fan-out (a node points to multiple siblings in the same zone), we
@@ -907,6 +1098,54 @@
           '</div>' +
           '<div class="zone-body"></div>';
         var body = zoneEl.querySelector('.zone-body');
+
+        // ── Consolidated zone with sub-groups ────────────────────────
+        // When the zone was produced by the consolidation pre-processor,
+        // z.sub_groups holds [{label, node_ids}, ...]. Render each as its
+        // own labeled sub-column inside the zone-body. Skip the regular
+        // intra-zone fan-out path since sub-groups dictate the layout.
+        if (Array.isArray(z.sub_groups) && z.sub_groups.length > 1) {
+          var nGroups = z.sub_groups.length;
+          body.style.display = 'grid';
+          body.style.gridTemplateColumns = 'repeat(' + nGroups + ', minmax(150px, 1fr))';
+          body.style.columnGap = '20px';
+          body.style.alignItems = 'start';
+          var sgMinWidth = nGroups * 150 + (nGroups - 1) * 20 + 40;
+          body.style.minWidth = sgMinWidth + 'px';
+          zoneEl.style.minWidth = (sgMinWidth + 16) + 'px';
+          body.setAttribute('data-sub-groups', String(nGroups));
+
+          z.sub_groups.forEach(function(sg, sgIdx) {
+            var sgCol = document.createElement('div');
+            sgCol.className = 'sub-group-col';
+            sgCol.style.display = 'flex';
+            sgCol.style.flexDirection = 'column';
+            sgCol.style.gap = '14px';
+            sgCol.style.minWidth = '0';
+            sgCol.style.gridColumn = (sgIdx + 1);
+            // Sub-group label (e.g. "AWS", "AZURE").
+            var lbl = document.createElement('div');
+            lbl.className = 'sub-group-label';
+            lbl.textContent = sg.label || '';
+            sgCol.appendChild(lbl);
+            (sg.node_ids || []).forEach(function(id) {
+              var node = nodesById[id];
+              if (!node) return;
+              var div = document.createElement('div');
+              div.className = 'flow-node node-' + (node.category || 'snow');
+              div.setAttribute('data-node-id', node.id);
+              div.setAttribute('data-zone-col', sgIdx);
+              div.setAttribute('data-sub-group', sg.label || '');
+              var iconSrc = node.icon_data || ('icons/' + escapeHtml(node.icon));
+              div.innerHTML = '<div class="icon"><img src="' + iconSrc + '" alt="" onerror="this.style.display=\'none\'"></div>' +
+                '<div class="label">' + escapeHtml(node.label) + '</div>' +
+                '<div class="detail">' + escapeHtml(node.detail || '') + '</div>';
+              sgCol.appendChild(div);
+            });
+            body.appendChild(sgCol);
+          });
+          return zoneEl;
+        }
 
         // Compute intra-zone topological column for each node.
         var nodeIds = z.node_ids || [];
@@ -1174,8 +1413,10 @@
     // at the same y as the source/target row.
     var zoneRects = Array.prototype.map.call(card.querySelectorAll('.zone'), function(zEl) {
       var r = zEl.getBoundingClientRect();
+      var nameEl = zEl.querySelector('.zone-name');
       return {
         el: zEl,
+        name: nameEl ? nameEl.textContent.trim() : '',
         left: r.left - cardRect.left,
         right: r.right - cardRect.left,
         top: r.top - cardRect.top,
@@ -1184,14 +1425,20 @@
     }).sort(function(a, b) { return a.left - b.left; });
     var nodeRects = Array.prototype.map.call(card.querySelectorAll('.flow-node'), function(nEl) {
       var r = nEl.getBoundingClientRect();
+      var zEl = nEl.closest('.zone');
+      var zNameEl = zEl ? zEl.querySelector('.zone-name') : null;
       return {
         id: nEl.getAttribute('data-node-id'),
+        zoneName: zNameEl ? zNameEl.textContent.trim() : '',
         left: r.left - cardRect.left,
         right: r.right - cardRect.left,
         top: r.top - cardRect.top,
         bottom: r.bottom - cardRect.top
       };
     });
+    // Quick lookup: node id → zone name
+    var nodeIdToZoneName = {};
+    nodeRects.forEach(function(nr) { nodeIdToZoneName[nr.id] = nr.zoneName; });
     // Compute inter-zone gap rects (clear vertical channels between zones).
     var zoneGaps = [];
     for (var zi = 0; zi < zoneRects.length - 1; zi++) {
@@ -1353,10 +1600,36 @@
     //   3. Same row (y1 ≈ y2), obstacles → channel detour collapses to
     //      a U-shape that re-enters at the same y. Five corners.
     function routeOrthogonal(x1, y1, x2, y2, trackX, srcId, tgtId) {
-      // Test obstacles on the natural H-V-H legs.
-      var hits1 = obstaclesOnH(x1, trackX, y1, srcId, tgtId);
-      var hits2 = obstaclesOnH(trackX, x2, y2, srcId, tgtId);
-      if (!hits1.length && !hits2.length) {
+      // Look up source and target zone names so we can exclude them when
+      // checking for crossing obstacles. The path is allowed to traverse
+      // its own endpoint zones (briefly, near the cardinal port).
+      var srcZoneName = nodeIdToZoneName[srcId] || '';
+      var tgtZoneName = nodeIdToZoneName[tgtId] || '';
+
+      // Returns zones whose bounding rect is crossed by an H segment from
+      // (xa, y) to (xb, y), excluding the source/target zones themselves.
+      function zonesOnH(xa, xb, y) {
+        var loX = Math.min(xa, xb), hiX = Math.max(xa, xb);
+        var hits = [];
+        for (var i = 0; i < zoneRects.length; i++) {
+          var zr = zoneRects[i];
+          if (zr.name === srcZoneName || zr.name === tgtZoneName) continue;
+          if (y <= zr.top + 2 || y >= zr.bottom - 2) continue;
+          if (zr.right < loX + 2 || zr.left > hiX - 2) continue;
+          hits.push(zr);
+        }
+        return hits;
+      }
+
+      // Test for ZONE-level obstacles on the natural H-V-H legs. A line
+      // is "blocked" if it crosses through any non-endpoint zone's body.
+      // This is stricter than card-level checking — even if no card is
+      // hit, crossing a zone's bounding box is forbidden because it
+      // visually overlays unrelated componentry.
+      var zHits1 = zonesOnH(x1, trackX, y1);
+      var zHits2 = zonesOnH(trackX, x2, y2);
+      if (!zHits1.length && !zHits2.length) {
+        // Clean H-V-H. Two corners. Adjacent zones, no zones between.
         return [
           [x1, y1],
           [trackX, y1],
@@ -1364,65 +1637,84 @@
           [x2, y2]
         ];
       }
-      // Obstacles present — sweep around them via a single channel.
-      // Channel must clear EVERY obstacle whose bounding rect overlaps
-      // the path's x-range.
+
+      // Obstacles present — sweep around all crossed zones via a single
+      // U-shape detour through a horizontal channel positioned ABOVE or
+      // BELOW the union of zone bounding boxes in the path. This is the
+      // architect-style "route around layers" rule: connections must
+      // never pass through unrelated zones.
       var goingRight = (x2 > x1);
       var loX = Math.min(x1, x2), hiX = Math.max(x1, x2);
-      var allHits = [];
-      for (var i = 0; i < nodeRects.length; i++) {
-        var nr = nodeRects[i];
-        if (nr.id === srcId || nr.id === tgtId) continue;
-        if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
-        // Only consider cards whose vertical range intersects the bounding
-        // path band [min(y1,y2)-1, max(y1,y2)+1] — these are the ones a
-        // straight-or-L path would actually cross.
-        var pathTop = Math.min(y1, y2) - 1;
-        var pathBot = Math.max(y1, y2) + 1;
-        if (nr.bottom <= pathTop || nr.top >= pathBot) {
-          // Not in path band; only blocks H1 or H2 if its y-range covers
-          // y1 or y2. Re-check explicitly.
-          var blocksY1 = (nr.top < y1 && nr.bottom > y1);
-          var blocksY2 = (nr.top < y2 && nr.bottom > y2);
-          if (!blocksY1 && !blocksY2) continue;
-        }
-        allHits.push(nr);
+      var allZoneHits = [];
+      for (var zi = 0; zi < zoneRects.length; zi++) {
+        var zr2 = zoneRects[zi];
+        if (zr2.name === srcZoneName || zr2.name === tgtZoneName) continue;
+        if (zr2.right < loX + 2 || zr2.left > hiX - 2) continue;
+        // Only zones whose vertical range overlaps the bounding band of
+        // the path. A path between two y's only encounters zones whose
+        // y-range intersects [min(y1,y2), max(y1,y2)] OR encloses one.
+        var pathTop = Math.min(y1, y2);
+        var pathBot = Math.max(y1, y2);
+        var overlaps = !(zr2.bottom < pathTop || zr2.top > pathBot);
+        var enclosesY1 = zr2.top < y1 && zr2.bottom > y1;
+        var enclosesY2 = zr2.top < y2 && zr2.bottom > y2;
+        if (!overlaps && !enclosesY1 && !enclosesY2) continue;
+        allZoneHits.push(zr2);
       }
-      var clearance = 36;
-      var minTop = allHits[0].top, maxBottom = allHits[0].bottom;
-      for (var j = 1; j < allHits.length; j++) {
-        if (allHits[j].top    < minTop)    minTop    = allHits[j].top;
-        if (allHits[j].bottom > maxBottom) maxBottom = allHits[j].bottom;
+      // If after path-band filtering there are no zone hits but we got
+      // here from zHits1/zHits2 (at exact y1/y2), use those instead.
+      if (!allZoneHits.length) {
+        zHits1.forEach(function(z) { allZoneHits.push(z); });
+        zHits2.forEach(function(z) {
+          if (allZoneHits.indexOf(z) < 0) allZoneHits.push(z);
+        });
+      }
+
+      var clearance = 24;
+      var minTop = allZoneHits[0].top, maxBottom = allZoneHits[0].bottom;
+      for (var j = 1; j < allZoneHits.length; j++) {
+        if (allZoneHits[j].top    < minTop)    minTop    = allZoneHits[j].top;
+        if (allZoneHits[j].bottom > maxBottom) maxBottom = allZoneHits[j].bottom;
       }
       var aboveY = minTop - clearance;
       var belowY = maxBottom + clearance;
 
-      function railClear(railY) {
-        var conflicts = obstaclesOnH(loX, hiX, railY, srcId, tgtId);
-        return conflicts.length === 0;
+      function railClearOfZones(railY) {
+        return zonesOnH(loX, hiX, railY).length === 0;
       }
       var detourY;
-      var belowOK = belowY > 0 && railClear(belowY);
-      var aboveOK = aboveY > 0 && railClear(aboveY);
+      var belowOK = belowY > 0 && railClearOfZones(belowY);
+      var aboveOK = aboveY > 0 && railClearOfZones(aboveY);
       var refY = (y1 + y2) / 2;
       if (belowOK && aboveOK) {
+        // Both rails are clear of zones — pick the one closer to the
+        // path's natural y to minimize the V-segment lengths.
         detourY = (Math.abs(belowY - refY) <= Math.abs(aboveY - refY)) ? belowY : aboveY;
       } else if (belowOK) {
         detourY = belowY;
       } else if (aboveOK) {
         detourY = aboveY;
       } else {
+        // Neither rail is immediately clear — push outward (preferring
+        // below since these layouts flow top-to-bottom).
         detourY = belowY;
-        for (var step = 1; step <= 6 && !railClear(detourY); step++) {
+        for (var step = 1; step <= 8 && !railClearOfZones(detourY); step++) {
           detourY = maxBottom + clearance + step * 28;
         }
       }
 
-      // Stubs: gentle exit/entry into the channel, ample distance from
-      // source/target card edges.
+      // Stubs: deliberate exit/entry from cardinal ports before turning.
+      // Then snap each V-segment x to the nearest inter-zone gap CENTER so
+      // the V doesn't run on top of (or 1-2px from) a zone border. Without
+      // this snap, a stub of 28px from x1 lands inside the source's
+      // immediate gap which often visually merges with the boundary line.
       var stub = Math.min(28, Math.abs(x2 - x1) / 4);
       var enterX = goingRight ? x1 + stub : x1 - stub;
       var exitX  = goingRight ? x2 - stub : x2 + stub;
+      // Push enter/exit V-segments into clear inter-zone gaps when they'd
+      // otherwise land on or near a zone border.
+      enterX = snapToGap(enterX, x1, x2);
+      exitX  = snapToGap(exitX,  x1, x2);
       if (goingRight && enterX > exitX) { enterX = x1; exitX = x2; }
       if (!goingRight && enterX < exitX) { enterX = x1; exitX = x2; }
 
