@@ -530,6 +530,14 @@ const App: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [showExportModal, setShowExportModal] = useState(false);
+  // Import flow state — modal toggle, error banner, in-flight indicator,
+  // and where the imported diagram should land.
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importDestination, setImportDestination] = useState<'replace' | 'newTab'>('replace');
+  const [importPasteText, setImportPasteText] = useState('');
+  const [importDragActive, setImportDragActive] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -1981,10 +1989,21 @@ const App: React.FC = () => {
   };
 
   // Export as JSON
+  // schemaVersion is the contract that lets future imports tell SnowGram-format
+  // JSON apart from arbitrary JSON. Bump it whenever the node/edge shape
+  // changes in an incompatible way; imports check this and refuse anything
+  // unrecognized rather than silently mis-rendering.
   const exportJSON = () => {
+    const activeTab = getActiveTab();
     const diagramData = {
+      schemaVersion: 1,
+      appVersion: 'snowgram-1',
+      exportedAt: new Date().toISOString(),
+      tabName: activeTab?.name ?? 'Untitled',
+      viewport: reactFlowInstance?.getViewport() ?? { x: 0, y: 0, zoom: 1 },
       nodes,
       edges,
+      // legacy field for older importers; remove in schemaVersion 2
       timestamp: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(diagramData, null, 2)], {
@@ -1996,6 +2015,143 @@ const App: React.FC = () => {
     a.download = `snowgram_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // ============================================================================
+  // IMPORT
+  // ----------------------------------------------------------------------------
+  // Belt-and-suspenders importer: accepts a SnowGram-format JSON export
+  // (lossless round-trip with positions + viewport) OR raw Mermaid source
+  // (any third-party mermaid is OK — re-runs layout, may lack SnowGram styling).
+  // ============================================================================
+
+  // Restore JSON state into the active tab or a new tab. Pushes an undo
+  // snapshot so Ctrl+Z reverts. Resets the conversation thread because an
+  // imported diagram has no agent chat context.
+  const applyJsonImport = ({
+    nodes: importedNodes,
+    edges: importedEdges,
+    viewport,
+    suggestedName,
+  }: {
+    nodes: Node[];
+    edges: Edge[];
+    viewport?: { x: number; y: number; zoom: number };
+    suggestedName?: string;
+  }) => {
+    // Push current canvas to history for Ctrl+Z recovery.
+    if (historyRef.current) {
+      historyRef.current.push({ nodes: [...nodes], edges: [...edges] });
+      // Trim if the history is at its limit; mirrors the existing pattern.
+      if (historyRef.current.length > historyLimit) {
+        historyRef.current.shift();
+      }
+      historyIndexRef.current = historyRef.current.length - 1;
+    }
+
+    let targetTabId = activeTabId;
+    if (importDestination === 'newTab') {
+      targetTabId = createTab(suggestedName ?? 'Imported');
+      switchTab(targetTabId);
+    }
+
+    setNodes(importedNodes);
+    setEdges(importedEdges);
+    if (targetTabId) {
+      // Persist immediately rather than waiting for the 300ms debounce.
+      updateTabContent(targetTabId, importedNodes, importedEdges);
+      if (viewport && reactFlowInstance) {
+        reactFlowInstance.setViewport(viewport);
+        updateTabViewport(targetTabId, viewport);
+      }
+      // Imported diagrams have no chat history of their own.
+      updateTabChat(targetTabId, null, null);
+    }
+    setConversationThreadId(null);
+    setLastMessageId(null);
+  };
+
+  const importFromText = async (text: string, filename?: string) => {
+    setImportError(null);
+    setImporting(true);
+    try {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        throw new Error('No content to import.');
+      }
+      if (trimmed.length > 1_000_000) {
+        throw new Error('Input too large (>1MB). Mermaid diagrams should be < 1MB.');
+      }
+
+      // ── JSON path ─────────────────────────────────────────────────────────
+      const looksJson = trimmed.startsWith('{') || filename?.toLowerCase().endsWith('.json');
+      if (looksJson) {
+        let data: any;
+        try {
+          data = JSON.parse(trimmed);
+        } catch (e) {
+          throw new Error(`Invalid JSON: ${(e as Error).message}`);
+        }
+        if (typeof data.schemaVersion !== 'number') {
+          throw new Error(
+            'Missing schemaVersion. Only files exported from SnowGram (schemaVersion ≥ 1) can be imported as JSON.'
+          );
+        }
+        if (data.schemaVersion > 1) {
+          throw new Error(
+            `Unsupported schemaVersion ${data.schemaVersion}. Update SnowGram or re-export from a compatible version.`
+          );
+        }
+        if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+          throw new Error('JSON missing nodes or edges arrays.');
+        }
+        applyJsonImport({
+          nodes: data.nodes,
+          edges: data.edges,
+          viewport: data.viewport,
+          suggestedName: data.tabName,
+        });
+        setShowImportModal(false);
+        return;
+      }
+
+      // ── Mermaid path ──────────────────────────────────────────────────────
+      const looksMermaid = /^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram)\b/i
+        .test(trimmed);
+      if (!looksMermaid) {
+        throw new Error(
+          'Could not detect format. Expected JSON (with schemaVersion) or Mermaid (starting with flowchart/graph/etc).'
+        );
+      }
+      // Mermaid imports re-run layout. Switch tabs first if the user picked
+      // newTab — parseMermaidAndCreateDiagram writes to the active tab.
+      if (importDestination === 'newTab') {
+        const newId = createTab(filename?.replace(/\.[^.]+$/, '') ?? 'Imported');
+        switchTab(newId);
+        // Let the tab switch settle before we render into it.
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      // Reset chat thread before render so the imported diagram doesn't
+      // inherit the previous tab's agent context.
+      setConversationThreadId(null);
+      setLastMessageId(null);
+      await parseMermaidAndCreateDiagram(trimmed);
+      setShowImportModal(false);
+    } catch (err) {
+      setImportError((err as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      await importFromText(text, file.name);
+    } catch (e) {
+      setImportError(`Could not read file: ${(e as Error).message}`);
+    }
   };
 
   const callAgent = async (query: string, threadId?: number): Promise<AgentResult> => {
@@ -4134,6 +4290,10 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               <img src="/icons/Snowflake_ICON_No.svg" alt="Clear" className={styles.btnIcon} />
               Clear
             </button>
+            <button className={`${styles.actionButton} ${styles.actionButtonImport}`} onClick={() => { setImportError(null); setImportPasteText(''); setShowImportModal(true); }}>
+              <img src="/icons/download.svg" alt="Import" className={`${styles.btnIcon} ${styles.btnIconFlipped}`} />
+              Import
+            </button>
             <button className={`${styles.actionButton} ${styles.actionButtonExport}`} onClick={() => setShowExportModal(true)}>
               <img src="/icons/download.svg" alt="Export" className={styles.btnIcon} />
               Export
@@ -5121,6 +5281,108 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 onClick={() => setShowExportModal(false)}
               >
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal — accepts .mmd / .mermaid / .json or pasted text. */}
+      {showImportModal && (
+        <div className={styles.modalOverlay} onClick={() => !importing && setShowImportModal(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <img
+                src="/icons/Snowflake_ICON_Copy.svg"
+                alt="Import"
+                className={styles.modalIcon}
+              />
+              <h3 className={styles.modalTitle}>Import Diagram</h3>
+            </div>
+
+            <div className={styles.importDestination}>
+              <label>
+                <input
+                  type="radio"
+                  name="importDestination"
+                  value="replace"
+                  checked={importDestination === 'replace'}
+                  onChange={() => setImportDestination('replace')}
+                />
+                <span>Replace current tab</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="importDestination"
+                  value="newTab"
+                  checked={importDestination === 'newTab'}
+                  onChange={() => setImportDestination('newTab')}
+                />
+                <span>Open as new tab</span>
+              </label>
+            </div>
+
+            <label
+              className={`${styles.importDropzone} ${importDragActive ? styles.importDropzoneActive : ''}`}
+              onDragOver={(e) => { e.preventDefault(); setImportDragActive(true); }}
+              onDragLeave={() => setImportDragActive(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setImportDragActive(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) handleImportFile(file);
+              }}
+            >
+              <input
+                type="file"
+                accept=".mmd,.mermaid,.json,text/plain,application/json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImportFile(file);
+                  // Reset so the same file can be re-picked.
+                  e.target.value = '';
+                }}
+              />
+              <span className={styles.importDropzoneText}>
+                {importDragActive ? 'Drop to import' : 'Drop a .mmd or .json file here, or click to browse'}
+              </span>
+            </label>
+
+            <div className={styles.importDivider}>or paste below</div>
+
+            <textarea
+              className={styles.importTextarea}
+              value={importPasteText}
+              onChange={(e) => setImportPasteText(e.target.value)}
+              placeholder={`flowchart LR\n  s3[(S3)] --> snowpipe[Snowpipe] --> bronze[Bronze]\n\n— or paste a SnowGram JSON export —`}
+              spellCheck={false}
+              autoFocus
+            />
+
+            <div className={styles.importHint}>
+              Mermaid imported from outside SnowGram may render without lane / section badges or custom styling.
+            </div>
+
+            {importError && (
+              <div className={styles.importError}>{importError}</div>
+            )}
+
+            <div className={styles.modalActions}>
+              <button
+                className={styles.modalButtonSecondary}
+                onClick={() => setShowImportModal(false)}
+                disabled={importing}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.modalButtonPrimary}
+                onClick={() => importFromText(importPasteText)}
+                disabled={importing || !importPasteText.trim()}
+              >
+                {importing ? 'Importing…' : 'Import'}
               </button>
             </div>
           </div>

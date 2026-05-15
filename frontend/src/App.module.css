@@ -848,6 +848,31 @@
     drop-shadow(0 0 6px rgba(16, 185, 129, 0.95));
 }
 
+/* Import button: blue icon + glow on hover (mirrors Export styling). */
+.actionButtonImport .btnIcon {
+  transition: filter 0.15s ease;
+}
+
+.actionButtonImport:hover .btnIcon,
+.actionButtonImport:focus-visible .btnIcon,
+.actionButtonImport:active .btnIcon {
+  filter: brightness(0) saturate(100%) invert(54%) sepia(82%) saturate(2476%) hue-rotate(184deg) brightness(96%) contrast(98%)
+    drop-shadow(0 0 6px rgba(56, 189, 248, 0.85));
+}
+
+.darkMode .actionButtonImport:hover .btnIcon,
+.darkMode .actionButtonImport:focus-visible .btnIcon,
+.darkMode .actionButtonImport:active .btnIcon {
+  filter: brightness(0) saturate(100%) invert(54%) sepia(82%) saturate(2476%) hue-rotate(184deg) brightness(96%) contrast(98%)
+    drop-shadow(0 0 6px rgba(56, 189, 248, 0.95));
+}
+
+/* Reuse the download icon for Import by mirroring it horizontally so it
+   reads as "incoming" rather than "outgoing". */
+.btnIconFlipped {
+  transform: rotate(180deg);
+}
+
 /* Clear Confirmation Overlay (centered, diegetic) */
 .clearConfirmOverlay {
   position: absolute;
@@ -3265,4 +3290,107 @@
 }
 .logLevel_log .logPanelLevel {
   color: #94a3b8;
+}
+
+/* =========================================================================
+   Import modal styling — radio destination, dropzone, textarea, error banner
+   ========================================================================= */
+.importDestination {
+  display: flex;
+  gap: 16px;
+  padding: 8px 4px 12px;
+  font-size: 13px;
+}
+.importDestination label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.importDestination input[type='radio'] {
+  margin: 0;
+  cursor: pointer;
+}
+.importDropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 76px;
+  padding: 16px;
+  margin: 0 0 8px;
+  border: 2px dashed rgba(148, 163, 184, 0.4);
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.04);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.importDropzone:hover {
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.06);
+}
+.importDropzoneActive {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+.importDropzoneText {
+  font-size: 13px;
+  color: #64748b;
+  text-align: center;
+  pointer-events: none;
+}
+.darkMode .importDropzoneText {
+  color: #94a3b8;
+}
+.importDivider {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 8px 0;
+}
+.importTextarea {
+  width: 100%;
+  min-height: 140px;
+  max-height: 240px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 6px;
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: rgba(15, 23, 42, 0.04);
+  color: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.darkMode .importTextarea {
+  background: rgba(15, 23, 42, 0.5);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+.importTextarea:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+}
+.importHint {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 6px 4px 0;
+}
+.importError {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.darkMode .importError {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
 }
