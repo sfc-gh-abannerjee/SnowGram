@@ -1280,24 +1280,24 @@
         if (useHorizontal) {
           var dx = tgtZoneCx - srcZoneCx;
           if (dx >= 0) {
+            // Exit source RIGHT port (cardinal: right edge, center y).
             x1 = srcRect.right - cardRect.left + edgeMargin;
+            // Enter target LEFT port (cardinal: left edge, center y).
             x2 = tgtRect.left - cardRect.left - edgeMargin;
           } else {
+            // Exit source LEFT port; enter target RIGHT port.
             x1 = srcRect.left - cardRect.left - edgeMargin;
             x2 = tgtRect.right - cardRect.left + edgeMargin;
           }
-          // Y stagger for fan-in/fan-out at same node
-          var srcOutTotal = nodeOutCount[edge.source] || 1;
-          var srcOutI = nodeOutIdx[edgeIdx] !== undefined ? nodeOutIdx[edgeIdx] : 0;
-          var tgtInTotal = nodeInCount[edge.target] || 1;
-          var tgtInI = nodeInIdx[edgeIdx] !== undefined ? nodeInIdx[edgeIdx] : 0;
-          // Y stagger: separate fan-out/fan-in edges so parallel lines
-          // don't visually layer on top of each other. 16px per step
-          // gives clear visual separation between adjacent lanes.
-          var srcYStagger = srcOutTotal > 1 ? (srcOutI - (srcOutTotal - 1) / 2) * 16 : 0;
-          var tgtYStagger = tgtInTotal > 1 ? (tgtInI - (tgtInTotal - 1) / 2) * 16 : 0;
-          y1 = srcNodeCy + srcYStagger;
-          y2 = tgtNodeCy + tgtYStagger;
+          // Cardinal-port constraint: connectors must exit / enter only
+          // at the midpoint of the chosen edge (top, right, bottom, or
+          // left). DO NOT stagger y at the port for fan-in / fan-out;
+          // that would push the entry/exit point off-center along the
+          // card edge. Instead, parallel edges from the same source (or
+          // into the same target) share the cardinal port and only
+          // diverge at the V-channel inside the inter-zone gap.
+          y1 = srcNodeCy;
+          y2 = tgtNodeCy;
 
           if (dx >= 0 && x2 <= x1) x2 = x1 + 16;
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
@@ -1375,15 +1375,21 @@
                 ' L' + x2 + ',' + y2;
           }
         } else {
-          // Vertical: exit bottom/top using node centers for X
+          // Vertical: exit source's BOTTOM (or TOP) cardinal port using
+          // the source/target NODE rect — not the zone rect — so the
+          // line is rooted on the card edge itself, not at the bottom
+          // of the whole zone (which would put the visible exit point
+          // beyond the source's lower edge when the source isn't the
+          // bottom-most node).
           var dy = tgtNodeCy - srcNodeCy;
           if (dy >= 0) {
-            y1 = srcZoneRect.bottom - cardRect.top + edgeMargin;
-            y2 = tgtZoneRect.top - cardRect.top - edgeMargin;
+            y1 = srcRect.bottom - cardRect.top + edgeMargin;
+            y2 = tgtRect.top - cardRect.top - edgeMargin;
           } else {
-            y1 = srcZoneRect.top - cardRect.top - edgeMargin;
-            y2 = tgtZoneRect.bottom - cardRect.top + edgeMargin;
+            y1 = srcRect.top - cardRect.top - edgeMargin;
+            y2 = tgtRect.bottom - cardRect.top + edgeMargin;
           }
+          // Cardinal port: x is the node CENTER (top/bottom port).
           x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
           x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
 
