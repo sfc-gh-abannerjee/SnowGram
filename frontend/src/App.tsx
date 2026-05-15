@@ -3098,9 +3098,9 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
 
               if (!displayText && (currentJsonSpec || currentMermaidCode)) {
                 displayText = currentMermaidCode ? 'Generating diagram...' : 'Generating specification...';
-              } else if (displayText.length > 2000) {
-                displayText = displayText.substring(0, 2000) + '...';
               }
+              // (Truncation removed — full streaming text renders fine
+              // and clipping to 2KB cut narratives mid-sentence.)
 
               setChatMessages((msgs) => {
                 const updated = [...msgs];
@@ -5165,64 +5165,10 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                       <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
                     </div>
 
-                    {/* JSON Specification - expandable with copy button */}
-                    {m.jsonSpec && (() => {
-                      // Show a streaming indicator while this message is being
-                      // generated (only on the last message and only while
-                      // chatSending is true).
-                      const isStreaming = chatSending && idx === chatMessages.length - 1;
-                      return (
-                      <div className={styles.codeArtifactSection}>
-                        <div className={styles.codeArtifactHeader}>
-                          <button 
-                            className={styles.codeArtifactToggle}
-                            onClick={() => {
-                              if (expandedJsonSpec.has(idx)) {
-                                setClosingJsonSpec(p => new Set(p).add(idx));
-                                setTimeout(() => {
-                                  setExpandedJsonSpec(p => { const n = new Set(p); n.delete(idx); return n; });
-                                  setClosingJsonSpec(p => { const n = new Set(p); n.delete(idx); return n; });
-                                }, 150);
-                              } else {
-                                setExpandedJsonSpec(prev => new Set(prev).add(idx));
-                              }
-                            }}
-                          >
-                            <DataObjectIcon className={styles.codeArtifactIcon} />
-                            <span>JSON Specification</span>
-                            {isStreaming && (
-                              <span className={styles.streamingIndicator} aria-label="generating">
-                                <span className={styles.streamingDot} />
-                                generating
-                              </span>
-                            )}
-                            <ExpandMoreIcon className={`${styles.codeArtifactChevron} ${expandedJsonSpec.has(idx) ? styles.expanded : ''}`} />
-                          </button>
-                          <button 
-                            className={styles.copyButton}
-                            onClick={() => copyToClipboard(m.jsonSpec!, `json-${idx}`)}
-                            title="Copy JSON"
-                          >
-                            {copiedKey === `json-${idx}` ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
-                          </button>
-                        </div>
-                        {expandedJsonSpec.has(idx) && (
-                          <div className={`${styles.codeArtifactContent} ${closingJsonSpec.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
-                            <SyntaxHighlighter 
-                              language="json" 
-                              style={oneDark}
-                              customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', fontSize: '12px', maxHeight: '400px' }}
-                              showLineNumbers
-                            >
-                              {m.jsonSpec}
-                            </SyntaxHighlighter>
-                          </div>
-                        )}
-                      </div>
-                      );
-                    })()}
-                    
-                    {/* Mermaid Diagram - expandable with copy button */}
+                    {/* Mermaid Diagram - expandable with copy button.
+                        Rendered FIRST (above JSON Specification) because the
+                        agent emits the mermaid block before the JSON block in
+                        Section 4 — visual order should match streaming order. */}
                     {m.mermaidCode && (() => {
                       const isStreaming = chatSending && idx === chatMessages.length - 1;
                       return (
@@ -5269,6 +5215,60 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                               showLineNumbers
                             >
                               {m.mermaidCode}
+                            </SyntaxHighlighter>
+                          </div>
+                        )}
+                      </div>
+                      );
+                    })()}
+
+                    {/* JSON Specification - expandable with copy button. */}
+                    {m.jsonSpec && (() => {
+                      const isStreaming = chatSending && idx === chatMessages.length - 1;
+                      return (
+                      <div className={styles.codeArtifactSection}>
+                        <div className={styles.codeArtifactHeader}>
+                          <button 
+                            className={styles.codeArtifactToggle}
+                            onClick={() => {
+                              if (expandedJsonSpec.has(idx)) {
+                                setClosingJsonSpec(p => new Set(p).add(idx));
+                                setTimeout(() => {
+                                  setExpandedJsonSpec(p => { const n = new Set(p); n.delete(idx); return n; });
+                                  setClosingJsonSpec(p => { const n = new Set(p); n.delete(idx); return n; });
+                                }, 150);
+                              } else {
+                                setExpandedJsonSpec(prev => new Set(prev).add(idx));
+                              }
+                            }}
+                          >
+                            <DataObjectIcon className={styles.codeArtifactIcon} />
+                            <span>JSON Specification</span>
+                            {isStreaming && (
+                              <span className={styles.streamingIndicator} aria-label="generating">
+                                <span className={styles.streamingDot} />
+                                generating
+                              </span>
+                            )}
+                            <ExpandMoreIcon className={`${styles.codeArtifactChevron} ${expandedJsonSpec.has(idx) ? styles.expanded : ''}`} />
+                          </button>
+                          <button 
+                            className={styles.copyButton}
+                            onClick={() => copyToClipboard(m.jsonSpec!, `json-${idx}`)}
+                            title="Copy JSON"
+                          >
+                            {copiedKey === `json-${idx}` ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
+                          </button>
+                        </div>
+                        {expandedJsonSpec.has(idx) && (
+                          <div className={`${styles.codeArtifactContent} ${closingJsonSpec.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
+                            <SyntaxHighlighter 
+                              language="json" 
+                              style={oneDark}
+                              customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', fontSize: '12px', maxHeight: '400px' }}
+                              showLineNumbers
+                            >
+                              {m.jsonSpec}
                             </SyntaxHighlighter>
                           </div>
                         )}
