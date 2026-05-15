@@ -991,8 +991,17 @@
         flow.appendChild(colEl);
       });
 
-      // Draw connectors after layout settles
-      setTimeout(function() { renderConnectors(state); }, 100);
+      // Draw connectors after layout settles. We first equalize the
+      // height of cards at the SAME row index across every zone so that
+      // a card at "row N" in zone A has its center y at the same height
+      // as a card at "row N" in zone B. This eliminates the unnecessary
+      // L-shaped turns on cross-zone connectors that would otherwise
+      // be forced by content-driven height differences (e.g., a long
+      // policy description vs a short BI tool label).
+      setTimeout(function() {
+        alignRowsAcrossZones();
+        renderConnectors(state);
+      }, 100);
       return;
     }
 
@@ -1016,6 +1025,72 @@
         flow.appendChild(arrow);
       }
     });
+  }
+
+  // ────────────────────────────────────────────────────────
+  // Row alignment across zones
+  // ────────────────────────────────────────────────────────
+  // For every card that lives in some zone, determine its row index
+  // (the visual row it occupies inside its zone-body grid). Cards at
+  // the same row index across DIFFERENT zones may have different
+  // heights because their text content differs — a long policy
+  // description vs a short tool label. Without intervention, "row 1"
+  // of zone A starts at a different y than "row 1" of zone B, and a
+  // cross-zone edge between two same-row cards is forced into an
+  // unnecessary L-shape just to land on the cardinal port.
+  //
+  // To prevent that we equalize the per-row card height across every
+  // zone: for each row index N, we find the tallest card at row N
+  // anywhere in the diagram, and apply that as a min-height to every
+  // card at row N. After this pass the "row N" track is the same
+  // height in every zone (assuming uniform zone-header height, which
+  // is enforced via CSS), so the center y of "row N" cards is equal
+  // across zones — and a same-row cross-zone edge becomes a true
+  // straight horizontal between cardinal ports.
+  function alignRowsAcrossZones() {
+    var cards = document.querySelectorAll('.zone .zone-body .flow-node');
+    if (!cards.length) return;
+
+    // First pass — determine each card's row index and measure its
+    // current height.
+    function rowIndexOf(card) {
+      // Fan-out zones set explicit grid-row on the card.
+      var gr = card.style && card.style.gridRow;
+      if (gr) {
+        var n = parseInt(gr, 10);
+        if (!isNaN(n) && n > 0) return n - 1;
+      }
+      // Otherwise the card's row is its DOM order within its zone.
+      var body = card.parentNode;
+      if (!body) return 0;
+      var siblings = body.querySelectorAll('.flow-node');
+      for (var i = 0; i < siblings.length; i++) {
+        if (siblings[i] === card) return i;
+      }
+      return 0;
+    }
+
+    var maxByRow = {};
+    var rowOf = [];
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      // Reset any prior min-height we set so the natural height is
+      // measured (idempotent re-layout).
+      card.style.minHeight = '';
+      var ri = rowIndexOf(card);
+      rowOf.push(ri);
+      var h = card.getBoundingClientRect().height;
+      if (!(ri in maxByRow) || h > maxByRow[ri]) maxByRow[ri] = h;
+    }
+
+    // Second pass — apply uniform min-height. We round up by 1px to
+    // avoid sub-pixel rounding leaving a 0.x px gap that breaks the
+    // straight-horizontal cardinal-port test in renderConnectors.
+    for (var j = 0; j < cards.length; j++) {
+      var rj = rowOf[j];
+      var target = Math.ceil(maxByRow[rj]);
+      cards[j].style.minHeight = target + 'px';
+    }
   }
 
   // ────────────────────────────────────────────────────────
