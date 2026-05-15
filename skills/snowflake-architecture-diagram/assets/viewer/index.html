@@ -1324,6 +1324,17 @@
             ? Math.abs(srcRowIdx - tgtRowIdx)
             : 999;
 
+          // Fan-in convergence: when the target has multiple incoming
+          // edges, every connector that lands on this target's cardinal
+          // LEFT (or RIGHT) port should share the SAME final L-turn
+          // stub-X. That makes the multiple connectors visually merge
+          // onto a single V trunk just before the target instead of
+          // each one taking its own L-turn at a different X. The stub
+          // X is anchored a fixed offset from the target, so any edge
+          // pointing at the same target produces the same value.
+          var tgtFanIn = nodeInCount[edge.target] || 1;
+          var fanInStubX = (dx >= 0) ? (x2 - 24) : (x2 + 24);
+
           if (rowDiff === 0 && Math.abs(y1 - y2) < 1) {
             // Same row AND same exact y — true straight horizontal.
             d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
@@ -1334,7 +1345,7 @@
             // constraint: we MUST enter the target at exactly its center
             // y (the LEFT port), not at a snapped midpoint. Do H-V-H
             // through a mid-channel so the entry is on-port.
-            var sameRowStubX = (x1 + x2) / 2;
+            var sameRowStubX = (tgtFanIn > 1) ? fanInStubX : (x1 + x2) / 2;
             d = 'M' + x1 + ',' + y1 +
                 ' L' + sameRowStubX + ',' + y1 +
                 ' L' + sameRowStubX + ',' + y2 +
@@ -1356,7 +1367,11 @@
             var stubMinX = Math.min(x1, x2) + 4;
             var stubMaxX = Math.max(x1, x2) - 4;
             var stubX;
-            if (stubMaxX > stubMinX) {
+            if (tgtFanIn > 1) {
+              // Fan-in: share the L-turn so all incoming edges merge
+              // onto a single V trunk before entering the target.
+              stubX = fanInStubX;
+            } else if (stubMaxX > stubMinX) {
               stubX = stubMinX + (stubMaxX - stubMinX) * (vIdx + 1) / (vTotal + 1);
             } else {
               stubX = (x1 + x2) / 2;
@@ -1374,7 +1389,10 @@
             var trackMinX = Math.min(x1, x2) + 4;
             var trackMaxX = Math.max(x1, x2) - 4;
             var trackX;
-            if (trackMaxX > trackMinX) {
+            if (tgtFanIn > 1) {
+              // Fan-in convergence (see comment above).
+              trackX = fanInStubX;
+            } else if (trackMaxX > trackMinX) {
               trackX = trackMinX + (trackMaxX - trackMinX) * (vIdx2 + 1) / (vTotal2 + 1);
             } else {
               trackX = (x1 + x2) / 2;
