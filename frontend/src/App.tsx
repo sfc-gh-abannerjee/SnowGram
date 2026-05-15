@@ -604,10 +604,10 @@ const App: React.FC = () => {
   const [expandedJsonSpec, setExpandedJsonSpec] = useState<Set<number>>(new Set());
   // Track which Mermaid sections are expanded (key: msgIdx)
   const [expandedMermaid, setExpandedMermaid] = useState<Set<number>>(new Set());
-  // One-shot guard: messages whose code expanders have already been
-  // auto-expanded once. Prevents the auto-expand effect from re-opening a
-  // dropdown the user has manually collapsed.
-  const autoExpandedMsgRef = useRef<Set<number>>(new Set());
+  // One-shot guard: keys "<msgIdx>:<kind>" already auto-expanded. Prevents
+  // the auto-expand effect from re-opening a dropdown the user manually
+  // closed. kind ∈ {thinking, json, mermaid}.
+  const autoExpandedMsgRef = useRef<Set<string>>(new Set());
   // Auto-scroll while the agent is streaming. The ref tracks whether the
   // user is currently anchored at the bottom of the chat scroll region.
   // We flip it false when the user manually scrolls up (so we stop fighting
@@ -944,32 +944,36 @@ const App: React.FC = () => {
     }
   }, [chatMessages, conversationThreadId, lastMessageId, currentSessionId, saveSession]);
 
-  // Auto-expand the JSON Specification and Mermaid Diagram dropdowns the
-  // first time a message accumulates that content. The user can still
+  // Auto-expand the Thinking, JSON Specification, and Mermaid Diagram
+  // dropdowns the first time each accumulates content. The user can still
   // collapse — the autoExpandedMsgRef one-shot guard prevents re-opening
-  // a dropdown the user manually closed.
+  // a dropdown the user manually closed. Keyed per-(msgIdx, kind) so the
+  // arrival of one section doesn't lock out the others (thinking often
+  // streams first, mermaid arrives several seconds later).
   useEffect(() => {
+    const markAndExpand = (
+      key: string,
+      idx: number,
+      setExpanded: React.Dispatch<React.SetStateAction<Set<number>>>,
+    ) => {
+      if (autoExpandedMsgRef.current.has(key)) return;
+      autoExpandedMsgRef.current.add(key);
+      setExpanded((prev) => {
+        if (prev.has(idx)) return prev;
+        const next = new Set(prev);
+        next.add(idx);
+        return next;
+      });
+    };
     chatMessages.forEach((m, idx) => {
-      if (autoExpandedMsgRef.current.has(idx)) return;
-      const hasJson = !!m.jsonSpec;
-      const hasMermaid = !!m.mermaidCode;
-      if (!hasJson && !hasMermaid) return;
-      autoExpandedMsgRef.current.add(idx);
-      if (hasJson) {
-        setExpandedJsonSpec((prev) => {
-          if (prev.has(idx)) return prev;
-          const next = new Set(prev);
-          next.add(idx);
-          return next;
-        });
+      if (m.thinking && m.thinking.trim()) {
+        markAndExpand(`${idx}:thinking`, idx, setExpandedThinking);
       }
-      if (hasMermaid) {
-        setExpandedMermaid((prev) => {
-          if (prev.has(idx)) return prev;
-          const next = new Set(prev);
-          next.add(idx);
-          return next;
-        });
+      if (m.jsonSpec) {
+        markAndExpand(`${idx}:json`, idx, setExpandedJsonSpec);
+      }
+      if (m.mermaidCode) {
+        markAndExpand(`${idx}:mermaid`, idx, setExpandedMermaid);
       }
     });
   }, [chatMessages]);
@@ -993,20 +997,27 @@ const App: React.FC = () => {
     return () => cancelAnimationFrame(id);
   }, [chatMessages, chatSending]);
 
-  // Auto-scroll the inner code-block scroll regions (Mermaid Diagram + JSON
-  // Specification expanders) while content streams in. SyntaxHighlighter
-  // renders to a <pre> with overflow:auto; new lines append to the bottom,
-  // so we snap each visible code block's scrollTop to its scrollHeight on
-  // every chunk update. Only fires while chatSending is true, so finished
-  // messages can be scrolled normally without us fighting the user.
+  // Auto-scroll the inner streaming containers (Mermaid Diagram + JSON
+  // Specification code blocks AND the Thinking expander) while content
+  // streams in. SyntaxHighlighter renders to a <pre> with overflow:auto;
+  // .thinkingContent is itself the scrollable region. New lines append at
+  // the bottom in both cases, so we snap their scrollTop on every chunk
+  // update. Only fires while chatSending is true, so finished messages
+  // can be scrolled normally without us fighting the user.
   useEffect(() => {
     if (!chatSending) return;
     const id = requestAnimationFrame(() => {
-      const blocks = chatMessagesRef.current?.querySelectorAll(
-        `.${styles.codeArtifactContent} pre`
-      );
-      if (!blocks) return;
-      blocks.forEach((el) => {
+      const root = chatMessagesRef.current;
+      if (!root) return;
+      // Code blocks: scroll the inner <pre> (SyntaxHighlighter's container).
+      root
+        .querySelectorAll(`.${styles.codeArtifactContent} pre`)
+        .forEach((el) => {
+          const node = el as HTMLElement;
+          node.scrollTop = node.scrollHeight;
+        });
+      // Thinking expander: the .thinkingContent div has overflow:auto itself.
+      root.querySelectorAll(`.${styles.thinkingContent}`).forEach((el) => {
         const node = el as HTMLElement;
         node.scrollTop = node.scrollHeight;
       });
