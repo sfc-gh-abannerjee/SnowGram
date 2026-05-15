@@ -3399,18 +3399,22 @@
    Typing indicator (3 bouncing dots) shown in the assistant chat bubble
    while the message is empty and chatSending is true. Replaces the old
    "..." text placeholder so empty bubbles never appear.
+
+   Sits inline with the "SnowGram:" header label. Sized to align with the
+   header's text baseline and spaced out so it doesn't crowd the colon.
    ========================================================================= */
 .typingIndicator {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 0 4px;
-  margin-top: 4px;
-  height: 16px;
+  margin-left: 10px;
+  vertical-align: baseline;
+  position: relative;
+  top: -1px; /* nudge up so dots optically center on the cap height */
 }
 .typingIndicator > span {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: currentColor;
   opacity: 0.55;
@@ -3421,6 +3425,6 @@
 .typingIndicator > span:nth-child(2) { animation-delay: 0.18s; }
 .typingIndicator > span:nth-child(3) { animation-delay: 0.36s; }
 @keyframes typingDot {
-  0%, 60%, 100% { transform: scale(0.85); opacity: 0.4; }
-  30%           { transform: scale(1.15); opacity: 1; }
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-4px); opacity: 1; }
 }
