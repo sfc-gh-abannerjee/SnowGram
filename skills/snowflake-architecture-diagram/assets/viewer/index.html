@@ -177,7 +177,11 @@
 
   /* ────────────────────────── Page ────────────────────────── */
   .page {
-    max-width: 1920px;
+    /* Wider cap so high-complexity diagrams (8+ zone-DAG ranks) don't cause
+       horizontal scrolling at typical desktop widths. The grid still uses
+       minmax(220px, 1fr) so cards stay readable; this just ensures the page
+       has enough room to lay them all out side-by-side. */
+    max-width: 2800px;
     margin: 0 auto;
     padding: 28px 24px;
   }
@@ -812,14 +816,24 @@
         (z.node_ids || []).forEach(function(id) { nodeToZone[id] = z.name; });
       });
 
-      // Build zone-level DAG
+      // Build zone-level DAG. Bidirectional cross-zone edges (e.g. an agent
+      // calling back into a tool zone) create cycles which would otherwise
+      // explode the longest-path computation. Break cycles by keeping only
+      // forward edges based on first-occurrence order.
       var zoneNames = zones.map(function(z) { return z.name; });
+      var zoneOrder = {};
+      zoneNames.forEach(function(n, i) { zoneOrder[n] = i; });
       var zoneSuccessors = {};
       zoneNames.forEach(function(n) { zoneSuccessors[n] = []; });
       var edges = state.edges || [];
       edges.forEach(function(e) {
         var sz = nodeToZone[e.source], tz = nodeToZone[e.target];
-        if (sz && tz && sz !== tz && zoneSuccessors[sz].indexOf(tz) === -1) {
+        if (!sz || !tz || sz === tz) return;
+        // Skip back-edges: only count edges in declared-zone-order direction.
+        // Without this, a bidirectional pair (sz↔tz) puts both names in each
+        // other's successor lists and the relaxation never converges.
+        if (zoneOrder[tz] <= zoneOrder[sz]) return;
+        if (zoneSuccessors[sz].indexOf(tz) === -1) {
           zoneSuccessors[sz].push(tz);
         }
       });
@@ -842,14 +856,25 @@
 
       // Group zones by rank
       var maxRank = 0;
-      zoneNames.forEach(function(n) { if (rank[n] > maxRank) maxRank = rank[n]; });
+      zoneNames.forEach(function(n) {
+        // Defense in depth: clamp any individual rank to N-1 too.
+        if (rank[n] > zoneNames.length - 1) rank[n] = zoneNames.length - 1;
+        if (rank[n] > maxRank) maxRank = rank[n];
+      });
+      // Safety clamp: a DAG with N zones has longest path at most N-1.
+      // Without this clamp a cycle (which the back-edge filter above prevents
+      // for declared-order, but defense in depth) blows up the column count.
+      if (maxRank > zoneNames.length - 1) maxRank = zoneNames.length - 1;
       var columns = []; // columns[i] = [zone, zone, ...]
       for (var r = 0; r <= maxRank; r++) columns.push([]);
       zones.forEach(function(z) { columns[rank[z.name]].push(z); });
 
       // Set grid columns
       var colCount = maxRank + 1;
-      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', minmax(0, 1fr))';
+      // Use a floor of ~220px per column so cards don't collapse to single-letter
+      // wrapping when there are many zones (8+). When zones exceed viewport width,
+      // the diagram-card scrolls horizontally instead of squeezing content.
+      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', minmax(220px, 1fr))';
 
       // Helper: build a zone DOM element. When the zone has intra-zone
       // fan-out (a node points to multiple siblings in the same zone), we
