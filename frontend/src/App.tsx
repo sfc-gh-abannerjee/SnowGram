@@ -24,14 +24,17 @@ import TextBoxNode from './components/TextBoxNode';
 import ShapeNode from './components/ShapeNode';
 import StickyNoteNode from './components/StickyNoteNode';
 // SnowgramAgentClient removed - PAT must never be exposed in client-side bundle
-import { convertMermaidToFlow, LAYER_COLORS, getStageColor } from './lib/mermaidToReactFlow';
+import { convertMermaidToFlow, LAYER_COLORS, getStageColor, parseMermaidToSpec } from './lib/mermaidToReactFlow';
 import { layoutWithELK, enrichNodesWithFlowOrder, layoutWithLanes } from './lib/elkLayout';
+import { unifiedLayout } from './lib/unifiedLayout';
 import { resolveIcon } from './lib/iconResolver';
 import { canonicalizeComponentType, keyForNode, normalizeBoundaryType, normalizeGraph } from './lib/graphNormalize';
 import { hexToRgb as hexToRgbUtil, getLabelColor } from './lib/colorUtils';
 import { generateMermaidFromDiagram } from './lib/mermaidExport';
 import { boundingBox, layoutDAG, fitAllBoundaries, LAYOUT_CONSTANTS } from './lib/layoutUtils';
 import { getFlowStageOrder } from './lib/elkLayoutUtils';
+import { calculateNodeDimensions, NODE_SIZE_CONSTRAINTS } from './lib/textMeasure';
+import remarkGfm from 'remark-gfm';
 // PERF: Lazy load heavy markdown/syntax dependencies (~150KB bundle savings)
 const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
 const SyntaxHighlighter = dynamic(
@@ -99,6 +102,8 @@ type AgentResult = {
   bestPractices?: string[];
   antiPatterns?: string[];
   components?: Array<{ name: string; purpose: string; configuration: string; bestPractice: string; source?: string }>;
+  componentSummary?: string;
+  stats?: string;
   rawResponse?: string;
   // Conversation persistence - enables multi-turn dialogue
   threadId?: number;
@@ -525,6 +530,14 @@ const App: React.FC = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [showExportModal, setShowExportModal] = useState(false);
+  // Import flow state — modal toggle, error banner, in-flight indicator,
+  // and where the imported diagram should land.
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importDestination, setImportDestination] = useState<'replace' | 'newTab'>('replace');
+  const [importPasteText, setImportPasteText] = useState('');
+  const [importDragActive, setImportDragActive] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
@@ -605,6 +618,25 @@ const App: React.FC = () => {
   const [chatResizing, setChatResizing] = useState<string | null>(null); // 'n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'
   const [clearSpin, setClearSpin] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  // ============================================================================
+  // In-app console panel (bottom of viewport, collapsed by default)
+  // Captures console.log/warn/error/info/debug + window error events so users
+  // can copy/paste log output without opening DevTools.
+  // ============================================================================
+  type LogLevel = 'log' | 'warn' | 'error' | 'info' | 'debug';
+  interface LogEntry { ts: number; level: LogLevel; message: string }
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [logPanelOpen, setLogPanelOpen] = useState(false);
+  const [logPanelHeight, setLogPanelHeight] = useState(220);
+  const [logPanelResizing, setLogPanelResizing] = useState(false);
+  const [logCopied, setLogCopied] = useState(false);
+  // Pipeline toggle (debug-panel UI). Initialized from localStorage so the
+  // checkbox reflects the same flag parseMermaidAndCreateDiagram reads each
+  // time it runs. Defaults to false (legacy pipeline).
+  const [useUnifiedPipeline, setUseUnifiedPipeline] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage?.getItem('useDiagramSpec') === 'true';
+  });
   // Grid snapping - enabled by default, hold Shift for free movement
   const [snapEnabled, setSnapEnabled] = useState(true);
   const chatDragOffset = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -648,6 +680,84 @@ const App: React.FC = () => {
     setIsHydrated(true);
   }, []);
 
+  // Patch the global console so log output also lands in the in-app panel.
+  // Each entry is normalized to a single line (whitespace collapsed) so users
+  // can copy/paste the panel contents without ragged formatting.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const original = {
+      log: console.log,
+      warn: console.warn,
+      error: console.error,
+      info: console.info,
+      debug: console.debug,
+    };
+    const formatArgs = (args: any[]) => args.map(a => {
+      if (a == null) return String(a);
+      if (typeof a === 'string') return a;
+      if (a instanceof Error) return `${a.name}: ${a.message}${a.stack ? ' | ' + a.stack : ''}`;
+      try { return JSON.stringify(a); } catch { return String(a); }
+    }).join(' ').replace(/\s+/g, ' ').trim();
+
+    const wrap = (level: LogLevel) => (...args: any[]) => {
+      try { (original[level] as any)(...args); } catch {}
+      const msg = formatArgs(args);
+      if (!msg) return;
+      setLogEntries(prev => {
+        const next = [...prev, { ts: Date.now(), level, message: msg }];
+        return next.length > 1000 ? next.slice(-1000) : next;
+      });
+    };
+
+    console.log = wrap('log');
+    console.warn = wrap('warn');
+    console.error = wrap('error');
+    console.info = wrap('info');
+    console.debug = wrap('debug');
+
+    const onError = (e: ErrorEvent) => {
+      setLogEntries(prev => [...prev, {
+        ts: Date.now(),
+        level: 'error',
+        message: `[window.error] ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`,
+      }]);
+    };
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const reason = e.reason instanceof Error
+        ? `${e.reason.name}: ${e.reason.message}`
+        : (typeof e.reason === 'string' ? e.reason : JSON.stringify(e.reason));
+      setLogEntries(prev => [...prev, {
+        ts: Date.now(),
+        level: 'error',
+        message: `[unhandledrejection] ${reason}`,
+      }]);
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+
+    return () => {
+      Object.assign(console, original);
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
+
+  // Resize handler for the log panel — drag the top edge to set height
+  useEffect(() => {
+    if (!logPanelResizing) return;
+    const onMove = (e: MouseEvent) => {
+      const newHeight = Math.max(80, Math.min(window.innerHeight - 100, window.innerHeight - e.clientY));
+      setLogPanelHeight(newHeight);
+    };
+    const onUp = () => setLogPanelResizing(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [logPanelResizing]);
+
   // TEST HOOK: Expose parseMermaidAndCreateDiagram for visual testing
   // This enables automated visual quality testing via Playwright
   useEffect(() => {
@@ -659,6 +769,15 @@ const App: React.FC = () => {
         } catch (e) {
           console.error('[Test Hook] generateDiagram error:', e);
           return false;
+        }
+      };
+      // Expose the parsed DiagramSpec for harness/checklist inspection.
+      (window as any).inspectDiagramSpec = (mermaidCode: string) => {
+        try {
+          return parseMermaidToSpec(mermaidCode, COMPONENT_CATEGORIES, isDarkMode);
+        } catch (e) {
+          console.error('[Test Hook] inspectDiagramSpec error:', e);
+          return null;
         }
       };
       debugLog('[Test Hook] window.generateDiagram registered');
@@ -1870,10 +1989,21 @@ const App: React.FC = () => {
   };
 
   // Export as JSON
+  // schemaVersion is the contract that lets future imports tell SnowGram-format
+  // JSON apart from arbitrary JSON. Bump it whenever the node/edge shape
+  // changes in an incompatible way; imports check this and refuse anything
+  // unrecognized rather than silently mis-rendering.
   const exportJSON = () => {
+    const activeTab = getActiveTab();
     const diagramData = {
+      schemaVersion: 1,
+      appVersion: 'snowgram-1',
+      exportedAt: new Date().toISOString(),
+      tabName: activeTab?.name ?? 'Untitled',
+      viewport: reactFlowInstance?.getViewport() ?? { x: 0, y: 0, zoom: 1 },
       nodes,
       edges,
+      // legacy field for older importers; remove in schemaVersion 2
       timestamp: new Date().toISOString(),
     };
     const blob = new Blob([JSON.stringify(diagramData, null, 2)], {
@@ -1885,6 +2015,143 @@ const App: React.FC = () => {
     a.download = `snowgram_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // ============================================================================
+  // IMPORT
+  // ----------------------------------------------------------------------------
+  // Belt-and-suspenders importer: accepts a SnowGram-format JSON export
+  // (lossless round-trip with positions + viewport) OR raw Mermaid source
+  // (any third-party mermaid is OK — re-runs layout, may lack SnowGram styling).
+  // ============================================================================
+
+  // Restore JSON state into the active tab or a new tab. Pushes an undo
+  // snapshot so Ctrl+Z reverts. Resets the conversation thread because an
+  // imported diagram has no agent chat context.
+  const applyJsonImport = ({
+    nodes: importedNodes,
+    edges: importedEdges,
+    viewport,
+    suggestedName,
+  }: {
+    nodes: Node[];
+    edges: Edge[];
+    viewport?: { x: number; y: number; zoom: number };
+    suggestedName?: string;
+  }) => {
+    // Push current canvas to history for Ctrl+Z recovery.
+    if (historyRef.current) {
+      historyRef.current.push({ nodes: [...nodes], edges: [...edges] });
+      // Trim if the history is at its limit; mirrors the existing pattern.
+      if (historyRef.current.length > historyLimit) {
+        historyRef.current.shift();
+      }
+      historyIndexRef.current = historyRef.current.length - 1;
+    }
+
+    let targetTabId = activeTabId;
+    if (importDestination === 'newTab') {
+      targetTabId = createTab(suggestedName ?? 'Imported');
+      switchTab(targetTabId);
+    }
+
+    setNodes(importedNodes);
+    setEdges(importedEdges);
+    if (targetTabId) {
+      // Persist immediately rather than waiting for the 300ms debounce.
+      updateTabContent(targetTabId, importedNodes, importedEdges);
+      if (viewport && reactFlowInstance) {
+        reactFlowInstance.setViewport(viewport);
+        updateTabViewport(targetTabId, viewport);
+      }
+      // Imported diagrams have no chat history of their own.
+      updateTabChat(targetTabId, null, null);
+    }
+    setConversationThreadId(null);
+    setLastMessageId(null);
+  };
+
+  const importFromText = async (text: string, filename?: string) => {
+    setImportError(null);
+    setImporting(true);
+    try {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        throw new Error('No content to import.');
+      }
+      if (trimmed.length > 1_000_000) {
+        throw new Error('Input too large (>1MB). Mermaid diagrams should be < 1MB.');
+      }
+
+      // ── JSON path ─────────────────────────────────────────────────────────
+      const looksJson = trimmed.startsWith('{') || filename?.toLowerCase().endsWith('.json');
+      if (looksJson) {
+        let data: any;
+        try {
+          data = JSON.parse(trimmed);
+        } catch (e) {
+          throw new Error(`Invalid JSON: ${(e as Error).message}`);
+        }
+        if (typeof data.schemaVersion !== 'number') {
+          throw new Error(
+            'Missing schemaVersion. Only files exported from SnowGram (schemaVersion ≥ 1) can be imported as JSON.'
+          );
+        }
+        if (data.schemaVersion > 1) {
+          throw new Error(
+            `Unsupported schemaVersion ${data.schemaVersion}. Update SnowGram or re-export from a compatible version.`
+          );
+        }
+        if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+          throw new Error('JSON missing nodes or edges arrays.');
+        }
+        applyJsonImport({
+          nodes: data.nodes,
+          edges: data.edges,
+          viewport: data.viewport,
+          suggestedName: data.tabName,
+        });
+        setShowImportModal(false);
+        return;
+      }
+
+      // ── Mermaid path ──────────────────────────────────────────────────────
+      const looksMermaid = /^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram|erDiagram)\b/i
+        .test(trimmed);
+      if (!looksMermaid) {
+        throw new Error(
+          'Could not detect format. Expected JSON (with schemaVersion) or Mermaid (starting with flowchart/graph/etc).'
+        );
+      }
+      // Mermaid imports re-run layout. Switch tabs first if the user picked
+      // newTab — parseMermaidAndCreateDiagram writes to the active tab.
+      if (importDestination === 'newTab') {
+        const newId = createTab(filename?.replace(/\.[^.]+$/, '') ?? 'Imported');
+        switchTab(newId);
+        // Let the tab switch settle before we render into it.
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      // Reset chat thread before render so the imported diagram doesn't
+      // inherit the previous tab's agent context.
+      setConversationThreadId(null);
+      setLastMessageId(null);
+      await parseMermaidAndCreateDiagram(trimmed);
+      setShowImportModal(false);
+    } catch (err) {
+      setImportError((err as Error).message);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportFile = async (file: File) => {
+    if (!file) return;
+    try {
+      const text = await file.text();
+      await importFromText(text, file.name);
+    } catch (e) {
+      setImportError(`Could not read file: ${(e as Error).message}`);
+    }
   };
 
   const callAgent = async (query: string, threadId?: number): Promise<AgentResult> => {
@@ -1980,6 +2247,57 @@ const fitCspNodesIntoBoundaries = (nodes: Node[]) => fitAllBoundaries(nodes);
 // The agent is the source of truth for topology. Frontend just renders.
 // This enables "chat with your diagram" - any architecture pattern works.
 // =============================================================================
+
+// =============================================================================
+// flattenToolResultContent
+// =============================================================================
+// The Cortex Agent SSE `tool_result` event delivers payloads of the shape:
+//   { content: [{type:'text', text:'...'} | {type:'json', json:{...}}], name, status, type }
+// Our extraction logic regexes against the result for `flowchart LR`, ```mermaid```,
+// etc., so we need to flatten the content[] array into a usable string. The
+// previous code did `data.result.result || data.result.content || data.result`
+// which returned the array verbatim — JSON.stringify of the array starts with
+// `[` and never matches the mermaid/flowchart anchor patterns, so the bubble's
+// Mermaid Diagram and JSON Specification expanders rendered empty even when
+// the canvas got the diagram.
+//
+// This helper accepts any of:
+//   - A bare string                     → returned as-is
+//   - An object with .text / .json      → extracted & stringified
+//   - An object with .result            → unwrap (Snowflake SQL-function
+//                                         envelope: {execution_type, query_id,
+//                                         result, truncated})
+//   - An array of content items         → joined by newlines
+//   - { content: [...] }                → recurse on .content
+//   - Something else                    → JSON.stringify
+const flattenToolResultContent = (raw: any): string => {
+  if (raw == null) return '';
+  if (typeof raw === 'string') return raw;
+  if (Array.isArray(raw)) {
+    return raw.map(flattenToolResultContent).filter(Boolean).join('\n');
+  }
+  if (typeof raw === 'object') {
+    if (typeof raw.text === 'string') return raw.text;
+    if (raw.json !== undefined) {
+      // The .json may itself be a SQL-function envelope or another nested
+      // structure — recurse so we keep unwrapping until we hit a string.
+      if (typeof raw.json === 'string') return raw.json;
+      return flattenToolResultContent(raw.json);
+    }
+    // Snowflake SQL-function envelope: tools backed by a UDF/UDTF return
+    // { execution_type:'function', query_id:'...', result:'<actual output>',
+    //   truncated:false }. The actual mermaid/JSON we care about lives in
+    //  `.result`, so unwrap it before stringifying.
+    if (typeof raw.result === 'string') return raw.result;
+    if (raw.result !== undefined && typeof raw.result === 'object') {
+      return flattenToolResultContent(raw.result);
+    }
+    if (Array.isArray(raw.content)) return flattenToolResultContent(raw.content);
+    return JSON.stringify(raw, null, 2);
+  }
+  return String(raw);
+};
+
 const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => {
   // AGENT-FIRST: Trust the agent output completely
   // No forced nodes, no blocked edges, no ID remapping
@@ -2093,6 +2411,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       let streamedThinking = '';
       let fullText = '';
       let toolExtractedMermaid = '';  // Track Mermaid extracted from tool results
+      let toolExtractedJsonSpec = '';  // Track JSON spec extracted from tool results
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -2146,9 +2465,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               debugLog('[Chat] Tool result:', data.result);
               const toolName = data.result.name || 'search';
               const rawResult = data.result.result || data.result.content || data.result;
+              // Flatten Cortex Agent content[] payloads into a usable string for
+              // both display (toolResult.result) and downstream regex extraction.
+              const flatResult = flattenToolResultContent(rawResult);
               const toolResult = {
                 name: toolName,
-                result: rawResult,
+                result: flatResult || rawResult,
                 input: data.result.input || data.result.parameters
               };
               
@@ -2157,7 +2479,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               let extractedMermaid: string | undefined;
               
               if (toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' && rawResult) {
-                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2);
+                // Use flattened content string so regexes work whether the
+                // Cortex Agent returned a string, a content[] array, or a
+                // single content object. Falls back to a JSON dump for
+                // unrecognized shapes.
+                const resultStr = flatResult || (typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2));
                 
                 // Check if result is raw Mermaid code (common output format)
                 const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|xychart|sankey|block)/i);
@@ -2188,7 +2514,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               
               // Also extract from other diagram-generating tools
               if ((toolName.includes('COMPOSE') || toolName.includes('DIAGRAM') || toolName.includes('GENERATE')) && rawResult && !extractedMermaid) {
-                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2);
+                const resultStr = flatResult || (typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult, null, 2));
                 const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram|gantt|pie|gitGraph|mindmap|timeline|quadrantChart|xychart|sankey|block)/i);
                 if (isMermaidCode) {
                   extractedMermaid = resultStr.trim();
@@ -2200,6 +2526,10 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               if (extractedMermaid) {
                 toolExtractedMermaid = extractedMermaid;
                 debugLog('[Chat] Extracted Mermaid from tool result:', extractedMermaid.slice(0, 100) + '...');
+              }
+              if (extractedJsonSpec) {
+                toolExtractedJsonSpec = extractedJsonSpec;
+                debugLog('[Chat] Extracted JSON spec from tool result');
               }
               
               // Update the tool call status and store the result
@@ -2214,9 +2544,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                     ...lastMsg,
                     completedTools: [...completedTools, toolName],
                     toolResults: [...toolResults, toolResult],
-                    // Store extracted artifacts if found
-                    jsonSpec: extractedJsonSpec || lastMsg.jsonSpec,
-                    mermaidCode: extractedMermaid || lastMsg.mermaidCode
+                    // NOTE: do not set jsonSpec/mermaidCode here. The bubble
+                    // expanders are meant to mirror what the agent says in
+                    // its text response (same timing as the JSON dropdown).
+                    // toolExtractedMermaid is still captured separately for
+                    // canvas rendering.
                   };
                 }
                 return updated;
@@ -2287,14 +2619,23 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               setChatMessages((msgs) => {
                 const updated = [...msgs];
                 const lastMsg = updated[updated.length - 1];
+                // Precedence (highest wins):
+                //   1. Complete fenced extraction from agent text — authoritative
+                //   2. Latest partial from agent text — grows char-by-char as
+                //      chunks stream in, gives users live feedback
+                //   3. Prior lastMsg value — preserve if nothing new
+                // The dropdown intentionally mirrors what the agent has actually
+                // emitted in its text response so it lines up timing-wise with
+                // the JSON Specification dropdown. Tool-extracted mermaid is
+                // captured separately into toolExtractedMermaid (used only for
+                // canvas rendering) and never feeds the bubble's m.mermaidCode.
                 updated[updated.length - 1] = { 
                   ...lastMsg,
                   role: 'assistant', 
                   text: displayText || 'Thinking...',
                   timestamp: lastMsg.timestamp || new Date().toISOString(),
-                  // Update code artifacts progressively for dropdown display
-                  jsonSpec: currentJsonSpec || lastMsg.jsonSpec,
-                  mermaidCode: currentMermaidCode || lastMsg.mermaidCode
+                  jsonSpec: streamingJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: streamingMermaidCode || partialMermaidCode || lastMsg.mermaidCode,
                 };
                 return updated;
               });
@@ -2349,9 +2690,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           await parseMermaidAndCreateDiagram(mermaidCode, spec);
         }
 
-        // Extract overview for final message - look for Architecture Overview section
-        const overviewMatch = fullText.match(/##\s*Architecture Overview\s*\n([\s\S]*?)(?=\n##\s|```|$)/i);
-        const overview = overviewMatch ? overviewMatch[1].trim() : '';
+        // Extract overview for final message - supports both deployed spec (Section 1)
+        // and legacy format (## Architecture Overview)
+        const section1Match = fullText.match(/###\s*Section\s*1[:\s]*Acknowledgment\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|```|$)/i);
+        const legacyOverviewMatch = fullText.match(/##\s*Architecture Overview\s*\n([\s\S]*?)(?=\n##\s|```|$)/i);
+        const overview = (section1Match ? section1Match[1].trim() : '') 
+          || (legacyOverviewMatch ? legacyOverviewMatch[1].trim() : '');
         
         // Final message - preserve markdown formatting for ReactMarkdown to render
         // Strip code blocks and artifact section headers (shown in dropdowns instead)
@@ -2480,6 +2824,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       let streamedThinking = '';
       let fullText = '';
       let toolExtractedMermaid = '';  // Track Mermaid extracted from tool results
+      let toolExtractedJsonSpec = '';  // Track JSON spec extracted from tool results
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -2519,22 +2864,32 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             } else if (data.type === 'tool_result' && data.result) {
               const toolName = data.result.name || 'search';
               const rawResult = data.result.result || data.result.content || data.result;
-              const toolResult = { name: toolName, result: rawResult, input: data.result.input };
+              // Flatten Cortex Agent content[] payloads so the bubble's RESULT
+              // expander shows the actual text/JSON the tool returned, and so
+              // the regex below can detect mermaid in it.
+              const flatResult = flattenToolResultContent(rawResult);
+              const toolResult = { name: toolName, result: flatResult || rawResult, input: data.result.input };
               
               let extractedMermaid: string | undefined;
+              let extractedJsonSpec: string | undefined;
               if ((toolName === 'COMPOSE_DIAGRAM_FROM_TEMPLATE' || toolName.includes('COMPOSE') || toolName.includes('DIAGRAM')) && rawResult) {
-                const resultStr = typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult);
+                const resultStr = flatResult || (typeof rawResult === 'string' ? rawResult : JSON.stringify(rawResult));
                 const isMermaidCode = resultStr.trim().match(/^(graph|flowchart|sequenceDiagram|classDiagram|stateDiagram|erDiagram)/i);
                 if (isMermaidCode) extractedMermaid = resultStr.trim();
                 else {
                   const mermaidMatch = resultStr.match(/```mermaid\s*([\s\S]*?)```/);
                   if (mermaidMatch) extractedMermaid = mermaidMatch[1].trim();
                 }
+                const jsonMatch = resultStr.match(/```json\s*([\s\S]*?)```/);
+                if (jsonMatch) extractedJsonSpec = jsonMatch[1].trim();
               }
               
               // CRITICAL: Store extracted Mermaid for use in final diagram processing
               if (extractedMermaid) {
                 toolExtractedMermaid = extractedMermaid;
+              }
+              if (extractedJsonSpec) {
+                toolExtractedJsonSpec = extractedJsonSpec;
               }
               
               setChatMessages((msgs) => {
@@ -2545,7 +2900,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 if (!completedTools.includes(toolName)) {
                   updated[updated.length - 1] = { 
                     ...lastMsg, completedTools: [...completedTools, toolName], toolResults: [...toolResults, toolResult],
-                    mermaidCode: extractedMermaid || lastMsg.mermaidCode
+                    // Bubble's mermaidCode dropdown mirrors agent text only.
+                    // toolExtractedMermaid is captured separately for canvas.
                   };
                 }
                 return updated;
@@ -2553,9 +2909,52 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             } else if (data.type === 'chunk' && data.text) {
               streamedText += data.text;
               fullText += data.text;
+
+              // Extract code blocks progressively during streaming for dropdown display
+              // (mirrors the logic in handleSendChat — keep both branches in sync).
+              const jsonMatch = streamedText.match(/```json\s*([\s\S]*?)```/);
+              const streamingJsonSpec = jsonMatch ? jsonMatch[1].trim() : undefined;
+              const incompleteJsonMatch = !jsonMatch && streamedText.match(/```json\s*([\s\S]*?)$/);
+              const partialJsonSpec = incompleteJsonMatch ? incompleteJsonMatch[1].trim() : undefined;
+
+              const mermaidMatch = streamedText.match(/```mermaid\s*([\s\S]*?)```/);
+              const streamingMermaidCode = mermaidMatch ? mermaidMatch[1].trim() : undefined;
+              const incompleteMermaidMatch = !mermaidMatch && streamedText.match(/```mermaid\s*([\s\S]*?)$/);
+              const partialMermaidCode = incompleteMermaidMatch ? incompleteMermaidMatch[1].trim() : undefined;
+
+              const currentJsonSpec = streamingJsonSpec || partialJsonSpec;
+              const currentMermaidCode = streamingMermaidCode || partialMermaidCode;
+
+              // Strip code blocks from display text (they're shown in the dropdown instead)
+              let displayText = streamedText
+                .replace(/```json[\s\S]*?```/g, '')
+                .replace(/```mermaid[\s\S]*?```/g, '')
+                .replace(/```json[\s\S]*/g, '')
+                .replace(/```mermaid[\s\S]*/g, '')
+                .replace(/(flowchart|graph)\s+(LR|TD|TB|RL|BT)\b[\s\S]*$/i, '')
+                .replace(/\{\s*"nodes"\s*:\s*\[[\s\S]*$/i, '')
+                .trim();
+
+              if (!displayText && (currentJsonSpec || currentMermaidCode)) {
+                displayText = currentMermaidCode ? 'Generating diagram...' : 'Generating specification...';
+              } else if (displayText.length > 2000) {
+                displayText = displayText.substring(0, 2000) + '...';
+              }
+
               setChatMessages((msgs) => {
                 const updated = [...msgs];
-                updated[updated.length - 1] = { ...updated[updated.length - 1], text: streamedText };
+                const lastMsg = updated[updated.length - 1];
+                // Precedence (highest wins):
+                //   1. Complete fenced extraction from agent text (authoritative)
+                //   2. tool_result-extracted value (full payload, instant)
+                //   3. Latest partial — grows char-by-char as chunks stream
+                //   4. Prior lastMsg value
+                updated[updated.length - 1] = {
+                  ...lastMsg,
+                  text: displayText || 'Thinking...',
+                  jsonSpec: streamingJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: streamingMermaidCode || partialMermaidCode || lastMsg.mermaidCode,
+                };
                 return updated;
               });
             } else if (data.type === 'done') {
@@ -2592,7 +2991,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         updated[updated.length - 1] = { 
           ...lastMsg, text: finalMessage,
           jsonSpec: specMatch ? specMatch[1].trim() : lastMsg.jsonSpec,
-          mermaidCode: mermaidMatch ? mermaidMatch[1].trim() : (toolExtractedMermaid || lastMsg.mermaidCode)
+          mermaidCode: mermaidMatch ? mermaidMatch[1].trim() : lastMsg.mermaidCode
         };
         return updated;
       });
@@ -2751,6 +3150,78 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
       existingPositions.set(node.id, { x: node.position.x, y: node.position.y });
     });
     debugLog(`[Layout Preservation] Captured ${existingPositions.size} existing positions`);
+
+    // ================================================================
+    // FEATURE-FLAGGED: DiagramSpec pipeline (new unified path)
+    // Two ways to enable: NEXT_PUBLIC_USE_DIAGRAM_SPEC=true at build time,
+    // or localStorage.setItem('useDiagramSpec', 'true') at runtime (used
+    // by the review harness for A/B comparison without a rebuild).
+    // When enabled, Mermaid is parsed once into a typed DiagramSpec
+    // and rendered via unifiedLayout. This bypasses the dual-path
+    // fork below (spec vs mermaid) and the 200-line post-layout
+    // badge repositioning. Kept feature-flagged for A/B comparison
+    // and quick rollback during the migration.
+    // ================================================================
+    const envFlag = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_USE_DIAGRAM_SPEC === 'true');
+    const lsFlag = (typeof window !== 'undefined' && window.localStorage?.getItem('useDiagramSpec') === 'true');
+    const useDiagramSpec = envFlag || lsFlag;
+    if (useDiagramSpec && mermaidCode) {
+      try {
+        debugLog('[Pipeline:DiagramSpec] Using unified DiagramSpec pipeline');
+        const diagramSpec = parseMermaidToSpec(mermaidCode, COMPONENT_CATEGORIES, isDarkMode);
+        debugLog(`[Pipeline:DiagramSpec] Parsed: ${diagramSpec.nodes.length} nodes, ${diagramSpec.edges.length} edges, ${diagramSpec.groups.length} groups, ${diagramSpec.badges.length} badges`);
+
+        const { nodes: dsNodes, edges: dsEdges } = unifiedLayout(diagramSpec, { isDarkMode });
+
+        // Apply layout preservation: existing user positions take priority
+        const preservedNodes = dsNodes.map(n => {
+          const existing = existingPositions.get(n.id);
+          return existing ? { ...n, position: existing } : n;
+        });
+
+        // Wire up node interaction callbacks (rename/delete/copy)
+        const wiredNodes = preservedNodes.map(n => ({
+          ...n,
+          data: {
+            ...(n.data as any),
+            onRename: renameNode,
+            onDelete: deleteNode,
+            onCopy: copyNode,
+          },
+        }));
+
+        if (isAborted()) {
+          debugLog('[Pipeline:DiagramSpec] Aborted before render');
+          return;
+        }
+
+        debugLog(`[Pipeline:DiagramSpec] Final render: ${wiredNodes.length} nodes, ${dsEdges.length} edges`);
+        setNodes(wiredNodes);
+        setEdges(dsEdges);
+        return;
+      } catch (err) {
+        // Defensive fallback: if the new pipeline throws, log and fall through
+        // to the legacy pipeline so users see a working diagram either way.
+        debugWarn('[Pipeline:DiagramSpec] Failed, falling back to legacy pipeline:', err);
+      }
+    }
+
+    // ================================================================
+    // TEMPLATE DETECTION: Force mermaid path for templates with badges
+    // Templates (like STREAMING_DATA_STACK) define badges using :::laneBadge
+    // and :::sectionBadge classDef styles. The mermaid path correctly parses
+    // these into laneLabelNode components with proper positioning.
+    // The spec path (below) doesn't parse badges from mermaid, causing them
+    // to be missing when the agent returns both JSON spec AND mermaid.
+    // ================================================================
+    const hasTemplateBadges = mermaidCode && (
+      mermaidCode.includes(':::laneBadge') || 
+      mermaidCode.includes(':::sectionBadge')
+    );
+    if (hasTemplateBadges) {
+      debugLog('[Pipeline] Template with badges detected - forcing mermaid path for correct badge rendering');
+      spec = undefined; // Force mermaid-only path
+    }
     
     if (spec?.nodes?.length) {
       // ================================================================
@@ -2989,14 +3460,21 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         debugWarn(`[Pipeline] Edge loss in enforceAccountBoundaries: ${normalizedFinal.edges.length} → ${enforcedBoundaries.edges.length}`);
       }
       
-      // CRITICAL: Enforce consistent node sizes for handle alignment
-      // All non-boundary nodes must have identical dimensions
-      const STANDARD_NODE_WIDTH = 150;
-      const STANDARD_NODE_HEIGHT = 130;
+      // CRITICAL: Apply dynamic node sizes based on label text length
+      // This ensures nodes resize to fit their content while maintaining consistency
+      const BASE_NODE_HEIGHT = 130;
       
       const normalizedNodesWithSize = enforcedBoundaries.nodes.map(n => {
         const isBoundary = ((n.data as any)?.componentType || '').toLowerCase().startsWith('account_boundary');
         if (isBoundary) return n; // Keep boundary sizes as-is
+        
+        // Calculate dynamic width based on label text
+        const label = (n.data as any)?.label || '';
+        const hasIcon = !!(n.data as any)?.icon;
+        const { width: dynamicWidth, height: dynamicHeight, shouldWrap } = 
+          typeof window !== 'undefined' 
+            ? calculateNodeDimensions(label, { hasIcon, baseHeight: BASE_NODE_HEIGHT })
+            : { width: NODE_SIZE_CONSTRAINTS.MIN_WIDTH, height: BASE_NODE_HEIGHT, shouldWrap: false };
         
         // Phase 5: Apply flowStageOrder-based coloring
         const flowStage = (n.data as any)?.flowStageOrder;
@@ -3004,10 +3482,14 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         
         return {
           ...n,
+          data: {
+            ...(n.data as any),
+            shouldWrap,  // Pass to node component for text wrapping
+          },
           style: {
             ...(n.style || {}),
-            width: STANDARD_NODE_WIDTH,
-            height: STANDARD_NODE_HEIGHT,
+            width: dynamicWidth,
+            height: dynamicHeight,
             // Apply stage-based colors (overrides previous styling)
             border: `2px solid ${stageColor.border}`,
             background: stageColor.background,
@@ -3808,6 +4290,10 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               <img src="/icons/Snowflake_ICON_No.svg" alt="Clear" className={styles.btnIcon} />
               Clear
             </button>
+            <button className={`${styles.actionButton} ${styles.actionButtonImport}`} onClick={() => { setImportError(null); setImportPasteText(''); setShowImportModal(true); }}>
+              <img src="/icons/download.svg" alt="Import" className={`${styles.btnIcon} ${styles.btnIconFlipped}`} />
+              Import
+            </button>
             <button className={`${styles.actionButton} ${styles.actionButtonExport}`} onClick={() => setShowExportModal(true)}>
               <img src="/icons/download.svg" alt="Export" className={styles.btnIcon} />
               Export
@@ -4384,7 +4870,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         </button>
                         {expandedThinking.has(idx) && (
                           <div className={`${styles.thinkingContent} ${closingThinking.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
-                            <ReactMarkdown>{m.thinking}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.thinking}</ReactMarkdown>
                           </div>
                         )}
                       </div>
@@ -4484,8 +4970,20 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                       </div>
                     )}
                     
+                    {/* Narrative response text — rendered BEFORE the code-block
+                        expanders so users read the description first, then
+                        click into the code blocks if they want the raw output. */}
+                    <div className={styles.chatMarkdown}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                    </div>
+
                     {/* JSON Specification - expandable with copy button */}
-                    {m.jsonSpec && (
+                    {m.jsonSpec && (() => {
+                      // Show a streaming indicator while this message is being
+                      // generated (only on the last message and only while
+                      // chatSending is true).
+                      const isStreaming = chatSending && idx === chatMessages.length - 1;
+                      return (
                       <div className={styles.codeArtifactSection}>
                         <div className={styles.codeArtifactHeader}>
                           <button 
@@ -4504,6 +5002,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                           >
                             <DataObjectIcon className={styles.codeArtifactIcon} />
                             <span>JSON Specification</span>
+                            {isStreaming && (
+                              <span className={styles.streamingIndicator} aria-label="generating">
+                                <span className={styles.streamingDot} />
+                                generating
+                              </span>
+                            )}
                             <ExpandMoreIcon className={`${styles.codeArtifactChevron} ${expandedJsonSpec.has(idx) ? styles.expanded : ''}`} />
                           </button>
                           <button 
@@ -4527,10 +5031,13 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                           </div>
                         )}
                       </div>
-                    )}
+                      );
+                    })()}
                     
                     {/* Mermaid Diagram - expandable with copy button */}
-                    {m.mermaidCode && (
+                    {m.mermaidCode && (() => {
+                      const isStreaming = chatSending && idx === chatMessages.length - 1;
+                      return (
                       <div className={styles.codeArtifactSection}>
                         <div className={styles.codeArtifactHeader}>
                           <button 
@@ -4549,6 +5056,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                           >
                             <AccountTreeIcon className={styles.codeArtifactIcon} />
                             <span>Mermaid Diagram</span>
+                            {isStreaming && (
+                              <span className={styles.streamingIndicator} aria-label="generating">
+                                <span className={styles.streamingDot} />
+                                generating
+                              </span>
+                            )}
                             <ExpandMoreIcon className={`${styles.codeArtifactChevron} ${expandedMermaid.has(idx) ? styles.expanded : ''}`} />
                           </button>
                           <button 
@@ -4572,59 +5085,57 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                           </div>
                         )}
                       </div>
-                    )}
-                    
-                    <div className={styles.chatMarkdown}>
-                      <ReactMarkdown>{m.text}</ReactMarkdown>
-                    </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ))}
+
+              {/* Starter prompts - compact chips inside the scrollable area to avoid
+                  overflowing into the chat input row when the panel is short. */}
+              {chatMessages.length <= 1 && !chatSending && (
+                <div className={styles.starterPrompts}>
+                  <div className={styles.starterHint}>
+                    <span>Try a reference architecture</span>
+                    <span className={styles.starterHintActions}>click to send • hold ⌥ to edit</span>
+                  </div>
+                  <div className={styles.starterChips}>
+                    {[
+                      { icon: '/icons/Snowflake_ICON_RA_Stream.svg', label: 'Streaming', prompt: 'Generate a Snowflake Streaming Data Stack reference architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Security.svg', label: 'Security Analytics', prompt: 'Generate a Snowflake Security Analytics architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Cloud.svg', label: 'Serverless', prompt: 'Generate a Snowflake Serverless Data Stack architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Users.svg', label: 'Customer 360', prompt: 'Generate a Snowflake Customer 360 architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Embedded_Analytics.svg', label: 'Embedded Analytics', prompt: 'Generate a Snowflake Embedded Analytics architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_IoT.svg', label: 'IoT', prompt: 'Generate a Snowflake IoT Reference Architecture diagram' },
+                      { icon: '/icons/Snowflake_ICON_Workloads_AI.svg', label: 'ML Pipeline', prompt: 'Generate a Snowflake Machine Learning architecture diagram' },
+                    ].map((starter, i) => (
+                      <button
+                        key={i}
+                        className={styles.starterChip}
+                        onClick={(e) => {
+                          if (e.altKey || e.metaKey) {
+                            // Alt/Option or Cmd: fill input for editing
+                            setChatInput(starter.prompt);
+                          } else {
+                            // Normal click: send immediately
+                            setChatInput(starter.prompt);
+                            handleSendChatWithPrompt(starter.prompt);
+                          }
+                        }}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          setChatInput(starter.prompt);
+                        }}
+                      >
+                        <img src={starter.icon} alt="" className={styles.starterChipIcon} />
+                        <span>{starter.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            
-            {/* Starter prompts - compact chips above input */}
-            {chatMessages.length <= 1 && !chatSending && (
-              <div className={styles.starterPrompts}>
-                <div className={styles.starterHint}>
-                  <span>Try a reference architecture</span>
-                  <span className={styles.starterHintActions}>click to send • hold ⌥ to edit</span>
-                </div>
-                <div className={styles.starterChips}>
-                  {[
-                    { icon: '/icons/Snowflake_ICON_RA_Stream.svg', label: 'Streaming', prompt: 'Generate a Snowflake Streaming Data Stack reference architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Security.svg', label: 'Security Analytics', prompt: 'Generate a Snowflake Security Analytics architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Cloud.svg', label: 'Serverless', prompt: 'Generate a Snowflake Serverless Data Stack architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Users.svg', label: 'Customer 360', prompt: 'Generate a Snowflake Customer 360 architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Embedded_Analytics.svg', label: 'Embedded Analytics', prompt: 'Generate a Snowflake Embedded Analytics architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_IoT.svg', label: 'IoT', prompt: 'Generate a Snowflake IoT Reference Architecture diagram' },
-                    { icon: '/icons/Snowflake_ICON_Workloads_AI.svg', label: 'ML Pipeline', prompt: 'Generate a Snowflake Machine Learning architecture diagram' },
-                  ].map((starter, i) => (
-                    <button
-                      key={i}
-                      className={styles.starterChip}
-                      onClick={(e) => {
-                        if (e.altKey || e.metaKey) {
-                          // Alt/Option or Cmd: fill input for editing
-                          setChatInput(starter.prompt);
-                        } else {
-                          // Normal click: send immediately
-                          setChatInput(starter.prompt);
-                          handleSendChatWithPrompt(starter.prompt);
-                        }
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        setChatInput(starter.prompt);
-                      }}
-                    >
-                      <img src={starter.icon} alt="" className={styles.starterChipIcon} />
-                      <span>{starter.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            
+
             <div className={styles.chatInputRow}>
               <textarea
                 className={styles.chatInput}
@@ -4679,6 +5190,25 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 <div className={styles.debugRow}>
                   <span>Nodes: {nodes.length}</span>
                   <span>Edges: {edges.length}</span>
+                </div>
+                <div className={styles.debugRow}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={useUnifiedPipeline}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        setUseUnifiedPipeline(next);
+                        if (typeof window !== 'undefined') {
+                          window.localStorage.setItem('useDiagramSpec', String(next));
+                        }
+                      }}
+                    />
+                    <span>Use unified pipeline (DiagramSpec)</span>
+                  </label>
+                  <span style={{ fontSize: 10, opacity: 0.7 }}>
+                    {useUnifiedPipeline ? 'new path' : 'legacy path'} — re-render to apply
+                  </span>
                 </div>
                 <div className={styles.debugMermaidLabel}>Current Mermaid</div>
                 <pre className={styles.debugMermaid}>{currentMermaid}</pre>
@@ -4756,6 +5286,186 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           </div>
         </div>
       )}
+
+      {/* Import Modal — accepts .mmd / .mermaid / .json or pasted text. */}
+      {showImportModal && (
+        <div className={styles.modalOverlay} onClick={() => !importing && setShowImportModal(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <img
+                src="/icons/Snowflake_ICON_Copy.svg"
+                alt="Import"
+                className={styles.modalIcon}
+              />
+              <h3 className={styles.modalTitle}>Import Diagram</h3>
+            </div>
+
+            <div className={styles.importDestination}>
+              <label>
+                <input
+                  type="radio"
+                  name="importDestination"
+                  value="replace"
+                  checked={importDestination === 'replace'}
+                  onChange={() => setImportDestination('replace')}
+                />
+                <span>Replace current tab</span>
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="importDestination"
+                  value="newTab"
+                  checked={importDestination === 'newTab'}
+                  onChange={() => setImportDestination('newTab')}
+                />
+                <span>Open as new tab</span>
+              </label>
+            </div>
+
+            <label
+              className={`${styles.importDropzone} ${importDragActive ? styles.importDropzoneActive : ''}`}
+              onDragOver={(e) => { e.preventDefault(); setImportDragActive(true); }}
+              onDragLeave={() => setImportDragActive(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setImportDragActive(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) handleImportFile(file);
+              }}
+            >
+              <input
+                type="file"
+                accept=".mmd,.mermaid,.json,text/plain,application/json"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleImportFile(file);
+                  // Reset so the same file can be re-picked.
+                  e.target.value = '';
+                }}
+              />
+              <span className={styles.importDropzoneText}>
+                {importDragActive ? 'Drop to import' : 'Drop a .mmd or .json file here, or click to browse'}
+              </span>
+            </label>
+
+            <div className={styles.importDivider}>or paste below</div>
+
+            <textarea
+              className={styles.importTextarea}
+              value={importPasteText}
+              onChange={(e) => setImportPasteText(e.target.value)}
+              placeholder={`flowchart LR\n  s3[(S3)] --> snowpipe[Snowpipe] --> bronze[Bronze]\n\n— or paste a SnowGram JSON export —`}
+              spellCheck={false}
+              autoFocus
+            />
+
+            <div className={styles.importHint}>
+              Mermaid imported from outside SnowGram may render without lane / section badges or custom styling.
+            </div>
+
+            {importError && (
+              <div className={styles.importError}>{importError}</div>
+            )}
+
+            <div className={styles.modalActions}>
+              <button
+                className={styles.modalButtonSecondary}
+                onClick={() => setShowImportModal(false)}
+                disabled={importing}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.modalButtonPrimary}
+                onClick={() => importFromText(importPasteText)}
+                disabled={importing || !importPasteText.trim()}
+              >
+                {importing ? 'Importing…' : 'Import'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-app log console — captures console.* output and window errors.
+          Drag the top edge to resize when expanded. */}
+      <div
+        className={`${styles.logPanel} ${logPanelOpen ? styles.logPanelOpen : ''}`}
+        style={{ height: logPanelOpen ? logPanelHeight : 28 }}
+      >
+        {logPanelOpen && (
+          <div
+            className={styles.logPanelResize}
+            onMouseDown={(e) => { e.preventDefault(); setLogPanelResizing(true); }}
+            title="Drag to resize"
+          />
+        )}
+        <div className={styles.logPanelHeader}>
+          <button
+            className={styles.logPanelToggle}
+            onClick={() => setLogPanelOpen((o) => !o)}
+            title={logPanelOpen ? 'Collapse console' : 'Expand console'}
+          >
+            <span className={styles.logPanelChevron}>{logPanelOpen ? '▾' : '▴'}</span>
+            <span>Console</span>
+            <span className={styles.logPanelCount}>{logEntries.length}</span>
+            {logEntries.some(l => l.level === 'error') && (
+              <span className={styles.logPanelErrorBadge}>
+                {logEntries.filter(l => l.level === 'error').length} errors
+              </span>
+            )}
+          </button>
+          <div className={styles.logPanelActions}>
+            <button
+              className={styles.logPanelButton}
+              onClick={async () => {
+                const text = logEntries
+                  .map(l => `[${new Date(l.ts).toISOString().slice(11, 23)}] [${l.level}] ${l.message}`)
+                  .join('\n');
+                try {
+                  await navigator.clipboard.writeText(text);
+                  setLogCopied(true);
+                  setTimeout(() => setLogCopied(false), 1500);
+                } catch (err) {
+                  console.error('clipboard write failed', err);
+                }
+              }}
+              title="Copy all logs to clipboard"
+            >
+              {logCopied ? 'Copied ✓' : 'Copy'}
+            </button>
+            <button
+              className={styles.logPanelButton}
+              onClick={() => setLogEntries([])}
+              title="Clear log buffer"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        {logPanelOpen && (
+          <div className={styles.logPanelBody}>
+            {logEntries.length === 0 ? (
+              <div className={styles.logPanelEmpty}>No log output yet. Try sending a prompt.</div>
+            ) : (
+              logEntries.map((entry, i) => (
+                <div
+                  key={i}
+                  className={`${styles.logPanelEntry} ${styles[`logLevel_${entry.level}`] ?? ''}`}
+                >
+                  <span className={styles.logPanelTime}>
+                    {new Date(entry.ts).toISOString().slice(11, 23)}
+                  </span>
+                  <span className={styles.logPanelLevel}>{entry.level}</span>
+                  <span className={styles.logPanelMessage}>{entry.message}</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

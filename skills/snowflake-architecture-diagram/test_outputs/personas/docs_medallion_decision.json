@@ -7,7 +7,8 @@
       "object_type": "S3",
       "label": "Cloud Storage",
       "detail": "Object store / data lake",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
     },
     {
       "stage": "ingestion",
@@ -46,7 +47,8 @@
       "object_type": "BI_TOOL",
       "label": "Analytics",
       "detail": "BI dashboards & reports",
-      "zone": "Consumption"
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
     }
   ]
 }

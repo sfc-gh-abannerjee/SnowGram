@@ -37,11 +37,41 @@ This document is the **authoritative source** for the autonomous feedback loop t
 
 ---
 
+## Dual-Track Design
+
+SnowGram intentionally maintains **two independent generation tracks** that serve different user populations. They share no layout code by design.
+
+### Track 1 — Standalone CoCo Skill
+
+**Location**: `skills/snowflake-architecture-diagram/`
+
+A fully local generation path that requires no Snowflake-side agent deployment. The flow is:
+
+```
+CoCo skill → flow_builder.py → state JSON → index.html viewer
+```
+
+Everything runs client-side within Cortex Code. This track targets users who cannot or prefer not to deploy the Snowflake-side agent — for example, quick ad-hoc diagrams during a customer call, or environments where the `SNOWGRAM_DB` objects don't exist.
+
+### Track 2 — SnowGram Agent + GUI
+
+**Location**: `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT` (server) + `frontend/` (client)
+
+The Snowflake-deployed interactive path. Server-side: a Cortex Agent backed by tool functions (`SUGGEST_COMPONENTS_JSON`, `GENERATE_MERMAID_FROM_COMPONENTS`, etc.) and the `COMPONENT_MAP_SV` semantic view. Client-side: a Next.js 15 frontend rendering diagrams via ReactFlow and ELK.js layout.
+
+This track powers the full interactive GUI with multi-tab support, conversational refinement, and persistent diagram state.
+
+### Why Two Tracks?
+
+The tracks exist because their audiences have fundamentally different constraints. Track 1 optimizes for zero-setup portability; Track 2 optimizes for rich interactivity and Snowflake-native intelligence. Merging them would compromise both. The autonomous improvement loop documented below applies exclusively to Track 2.
+
+---
+
 ## Core Components to Improve
 
 ### 1. Cortex Agent (`SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT`)
 
-**Spec File**: `/Users/abannerjee/Documents/SnowGram/agent_spec_v5.yaml`
+**Spec File**: `backend/agent/agent_spec_deployed.yaml`
 **Deploy Command**: `ALTER AGENT SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT SET AGENT_SPEC = '...'`
 
 **Improvement Areas**:
@@ -140,7 +170,7 @@ response = await snowgram_agent.run(
 ```
 IF component_names_wrong:
     ROOT_CAUSE = "agent_instructions"
-    TARGET = agent_spec_v5.yaml:instructions.orchestration
+    TARGET = backend/agent/agent_spec_deployed.yaml:instructions.orchestration
     
 ELIF components_missing:
     IF user_term_not_in_synonyms:
@@ -152,11 +182,11 @@ ELIF components_missing:
         
 ELIF connections_wrong:
     ROOT_CAUSE = "agent_instructions"
-    TARGET = agent_spec_v5.yaml (edge direction guidance)
+    TARGET = backend/agent/agent_spec_deployed.yaml (edge direction guidance)
     
 ELIF tool_not_called:
     ROOT_CAUSE = "agent_tool_config"
-    TARGET = agent_spec_v5.yaml:tools section
+    TARGET = backend/agent/agent_spec_deployed.yaml:tools section
     
 ELIF layout_broken:
     ROOT_CAUSE = "frontend_code"
@@ -169,7 +199,7 @@ ELIF layout_broken:
 
 | Root Cause | Improvement Action | Agent to Invoke |
 |------------|-------------------|-----------------|
-| `agent_instructions` | Edit agent_spec_v5.yaml, redeploy | `$cortex-agent` skill |
+| `agent_instructions` | Edit backend/agent/agent_spec_deployed.yaml, redeploy | `$cortex-agent` skill |
 | `semantic_view` | INSERT INTO COMPONENT_SYNONYMS | `$semantic-view` skill |
 | `suggest_function` | ALTER FUNCTION with fixed SQL | `$snowgram-debugger` |
 | `agent_tool_config` | Update tool_resources in spec | `$cortex-agent` skill |
@@ -216,7 +246,7 @@ skill("cortex-agent")
 
 **Target for SnowGram**:
 - Agent: `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT`
-- Spec File: `/Users/abannerjee/Documents/SnowGram/agent_spec_v5.yaml`
+- Spec File: `backend/agent/agent_spec_deployed.yaml`
 
 ### `$semantic-view` (Semantic View Optimization)
 
@@ -342,7 +372,7 @@ Use these prompts to verify improvements:
 
 | File | Purpose | When to Modify |
 |------|---------|----------------|
-| `agent_spec_v5.yaml` | Agent instructions and tool config | Wrong component names, tool order |
+| `backend/agent/agent_spec_deployed.yaml` | Agent instructions and tool config | Wrong component names, tool order |
 | `deploy_agent_v4.sql` | Agent deployment SQL | After any spec change |
 | `COMPONENT_SYNONYMS` table | User term → component mappings | Missing synonyms |
 | `COMPONENT_MAP_SV` view | Semantic view for queries | After table changes |
@@ -357,10 +387,10 @@ Use these prompts to verify improvements:
 ### Redeploy Agent After Spec Change
 ```bash
 # Generate compact JSON from YAML
-python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('agent_spec_v5.yaml'))))" > agent_spec_v5.json
+python -c "import yaml, json; print(json.dumps(yaml.safe_load(open('backend/agent/agent_spec_deployed.yaml'))))" > agent_spec_deployed.json
 
 # Deploy via SQL
-snow sql -q "ALTER AGENT SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT SET AGENT_SPEC = '\$(cat agent_spec_v5.json)'"
+snow sql -q "ALTER AGENT SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT SET AGENT_SPEC = '\$(cat agent_spec_deployed.json)'"
 ```
 
 ### Add Synonym to Semantic View

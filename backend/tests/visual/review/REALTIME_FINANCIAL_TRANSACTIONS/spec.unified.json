@@ -1,0 +1,198 @@
+{
+  "nodes": [
+    {
+      "id": "kafka",
+      "label": "Kafka Transaction Stream",
+      "componentType": "Stream",
+      "groupId": "sources",
+      "layer": "external"
+    },
+    {
+      "id": "pipe_stream",
+      "label": "Snowpipe Streaming MAX_CLIENT_LAG=1s Sub-Second Latency",
+      "componentType": "Stream",
+      "groupId": "ingestion",
+      "layer": "snowflake"
+    },
+    {
+      "id": "table_raw",
+      "label": "Raw Transactions Append-Only",
+      "componentType": "Raw Transactions Append-Only",
+      "groupId": "ingestion",
+      "layer": "bronze"
+    },
+    {
+      "id": "ext_func",
+      "label": "External Function Fraud Detection API External Access Int",
+      "componentType": "Stream",
+      "groupId": "enrichment",
+      "layer": "external"
+    },
+    {
+      "id": "table_enriched",
+      "label": "Enriched Transactions Fraud Score",
+      "componentType": "Enriched Transactions Fraud Score",
+      "groupId": "enrichment",
+      "layer": "snowflake"
+    },
+    {
+      "id": "stream",
+      "label": "Stream METADATA$ACTION",
+      "componentType": "Stream",
+      "groupId": "transform",
+      "layer": "snowflake"
+    },
+    {
+      "id": "task",
+      "label": "Serverless Task Aggregation",
+      "componentType": "Task",
+      "groupId": "transform",
+      "layer": "snowflake"
+    },
+    {
+      "id": "table_agg",
+      "label": "Transaction Summary Dynamic Table",
+      "componentType": "Table",
+      "groupId": "transform",
+      "layer": "snowflake"
+    },
+    {
+      "id": "masking",
+      "label": "Dynamic Masking PAN, SSN",
+      "componentType": "Dynamic",
+      "groupId": "security",
+      "layer": "snowflake"
+    },
+    {
+      "id": "secure_view",
+      "label": "Secure View Customer RLS",
+      "componentType": "View",
+      "groupId": "security",
+      "layer": "snowflake"
+    },
+    {
+      "id": "role_analyst",
+      "label": "FINANCE_ANALYST",
+      "componentType": "FINANCE_ANALYST",
+      "groupId": "security",
+      "layer": "snowflake"
+    },
+    {
+      "id": "role_manager",
+      "label": "FINANCE_MANAGER",
+      "componentType": "FINANCE_MANAGER",
+      "groupId": "security",
+      "layer": "snowflake"
+    },
+    {
+      "id": "access_history",
+      "label": "ACCESS_HISTORY Who Queried What",
+      "componentType": "Access",
+      "groupId": "audit",
+      "layer": "snowflake"
+    },
+    {
+      "id": "time_travel",
+      "label": "Time Travel 90-day Retention",
+      "componentType": "Time",
+      "groupId": "audit",
+      "layer": "snowflake"
+    }
+  ],
+  "edges": [
+    {
+      "source": "kafka",
+      "target": "pipe_stream",
+      "style": "solid"
+    },
+    {
+      "source": "table_raw",
+      "target": "ext_func",
+      "style": "solid"
+    },
+    {
+      "source": "table_enriched",
+      "target": "stream",
+      "style": "solid"
+    },
+    {
+      "source": "table_agg",
+      "target": "masking",
+      "style": "solid"
+    },
+    {
+      "source": "secure_view",
+      "target": "role_analyst",
+      "style": "solid"
+    },
+    {
+      "source": "table_enriched",
+      "target": "access_history",
+      "style": "solid"
+    },
+    {
+      "source": "table_enriched",
+      "target": "time_travel",
+      "style": "solid"
+    }
+  ],
+  "groups": [
+    {
+      "id": "sources",
+      "label": "Data Sources",
+      "type": "boundary",
+      "index": -1,
+      "style": {
+        "background": "#E3F2FD"
+      }
+    },
+    {
+      "id": "ingestion",
+      "label": "Ingestion",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#F3E5F5"
+      }
+    },
+    {
+      "id": "enrichment",
+      "label": "Enrichment",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E8F5E9"
+      }
+    },
+    {
+      "id": "transform",
+      "label": "Transformation",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FFF8E1"
+      }
+    },
+    {
+      "id": "security",
+      "label": "Security & Compliance",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E1F5FE"
+      }
+    },
+    {
+      "id": "audit",
+      "label": "Audit Trail",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FCE4EC"
+      }
+    }
+  ],
+  "badges": [],
+  "direction": "LR",
+  "mermaidSource": "flowchart TD\n    subgraph sources[\"Data Sources\"]\n        kafka[\"Kafka<br/>Transaction Stream\"]\n    end\n\n    subgraph ingestion[\"Ingestion\"]\n        pipe_stream[\"Snowpipe Streaming<br/>MAX_CLIENT_LAG=1s<br/>Sub-Second Latency\"]\n        table_raw[\"Raw Transactions<br/>Append-Only\"]\n    end\n\n    subgraph enrichment[\"Enrichment\"]\n        ext_func[\"External Function<br/>Fraud Detection API<br/>External Access Int\"]\n        table_enriched[\"Enriched Transactions<br/>Fraud Score\"]\n    end\n\n    subgraph transform[\"Transformation\"]\n        stream[\"Stream<br/>METADATA$ACTION\"]\n        task[\"Serverless Task<br/>Aggregation\"]\n        table_agg[\"Transaction Summary<br/>Dynamic Table\"]\n    end\n\n    subgraph security[\"Security & Compliance\"]\n        masking[\"Dynamic Masking<br/>PAN, SSN\"]\n        secure_view[\"Secure View<br/>Customer RLS\"]\n        role_analyst[\"FINANCE_ANALYST\"]\n        role_manager[\"FINANCE_MANAGER\"]\n    end\n\n    subgraph audit[\"Audit Trail\"]\n        access_history[\"ACCESS_HISTORY<br/>Who Queried What\"]\n        time_travel[\"Time Travel<br/>90-day Retention\"]\n    end\n\n    kafka --> pipe_stream --> table_raw\n    table_raw --> ext_func --> table_enriched\n    table_enriched --> stream --> task --> table_agg\n    table_agg --> masking --> secure_view\n    secure_view --> role_analyst & role_manager\n    table_enriched --> access_history\n    table_enriched --> time_travel\n\n    style sources fill:#231F20,stroke:#fff\n    style ingestion fill:#29B5E8,stroke:#fff\n    style enrichment fill:#FF6B6B,stroke:#fff\n    style transform fill:#29B5E8,stroke:#fff\n    style security fill:#4ECDC4,stroke:#fff\n    style audit fill:#95E1D3,stroke:#333"
+}

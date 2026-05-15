@@ -848,6 +848,31 @@
     drop-shadow(0 0 6px rgba(16, 185, 129, 0.95));
 }
 
+/* Import button: blue icon + glow on hover (mirrors Export styling). */
+.actionButtonImport .btnIcon {
+  transition: filter 0.15s ease;
+}
+
+.actionButtonImport:hover .btnIcon,
+.actionButtonImport:focus-visible .btnIcon,
+.actionButtonImport:active .btnIcon {
+  filter: brightness(0) saturate(100%) invert(54%) sepia(82%) saturate(2476%) hue-rotate(184deg) brightness(96%) contrast(98%)
+    drop-shadow(0 0 6px rgba(56, 189, 248, 0.85));
+}
+
+.darkMode .actionButtonImport:hover .btnIcon,
+.darkMode .actionButtonImport:focus-visible .btnIcon,
+.darkMode .actionButtonImport:active .btnIcon {
+  filter: brightness(0) saturate(100%) invert(54%) sepia(82%) saturate(2476%) hue-rotate(184deg) brightness(96%) contrast(98%)
+    drop-shadow(0 0 6px rgba(56, 189, 248, 0.95));
+}
+
+/* Reuse the download icon for Import by mirroring it horizontally so it
+   reads as "incoming" rather than "outgoing". */
+.btnIconFlipped {
+  transform: rotate(180deg);
+}
+
 /* Clear Confirmation Overlay (centered, diegetic) */
 .clearConfirmOverlay {
   position: absolute;
@@ -2115,6 +2140,72 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
+/* GFM tables — render markdown tables as proper HTML tables.
+   Wrapped in a horizontally-scrollable container so wide tables in the
+   narrow chat panel never overflow the bubble. */
+.chatMarkdown table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.92em;
+  line-height: 1.4;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+}
+.chatMarkdown thead {
+  background: rgba(41, 181, 232, 0.08);
+}
+.chatMarkdown th,
+.chatMarkdown td {
+  padding: 6px 10px;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: top;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+.chatMarkdown th:last-child,
+.chatMarkdown td:last-child {
+  border-right: none;
+}
+.chatMarkdown tr:last-child td {
+  border-bottom: none;
+}
+.chatMarkdown th {
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+}
+.chatMarkdown tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.025);
+}
+.chatMarkdown tbody tr:hover {
+  background: rgba(41, 181, 232, 0.06);
+}
+.darkMode .chatMarkdown table {
+  border-color: #1f2937;
+}
+.darkMode .chatMarkdown thead {
+  background: rgba(41, 181, 232, 0.12);
+}
+.darkMode .chatMarkdown th,
+.darkMode .chatMarkdown td {
+  border-color: #1f2937;
+}
+.darkMode .chatMarkdown th {
+  color: #e5edf5;
+}
+.darkMode .chatMarkdown tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.025);
+}
+.darkMode .chatMarkdown tbody tr:hover {
+  background: rgba(41, 181, 232, 0.1);
+}
+
 /* Thinking section styles - Snowflake STAR BLUE brand color (#71D3DC) */
 .thinkingSection {
   margin: 8px 0;
@@ -2435,6 +2526,41 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+/* Streaming indicator shown next to the Mermaid Diagram / JSON Specification
+   expander labels while the agent is still generating. Lets the user know
+   the partial code in the dropdown will continue to grow. */
+.streamingIndicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(124, 58, 237, 0.15);
+  color: #7c3aed;
+  margin-left: 6px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.streamingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+  animation: streamingDotPulse 1s ease-in-out infinite;
+}
+@keyframes streamingDotPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
+}
+.darkMode .streamingIndicator {
+  background: rgba(167, 139, 250, 0.2);
+  color: #a78bfa;
 }
 .toolChipCompleted {
   background: rgba(34, 197, 94, 0.15);
@@ -2956,6 +3082,32 @@
 .react-flow__panel.react-flow__attribution {
   display: none !important;
 }
+/* ===== EXPORT MODE - Hide UI elements during screenshot capture ===== */
+:global(.export-mode) .instructionsPanel {
+  display: none !important;
+}
+
+:global(.export-mode) .panelActions {
+  display: none !important;
+}
+
+:global(.export-mode) .actionButton {
+  display: none !important;
+}
+
+/* Hide zoom controls and minimap during export */
+:global(.export-mode) .react-flow__panel {
+  display: none !important;
+}
+
+:global(.export-mode) .react-flow__minimap {
+  display: none !important;
+}
+
+:global(.export-mode) .react-flow__controls {
+  display: none !important;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {
@@ -2979,4 +3131,266 @@
     width: 18px;
     height: 18px;
   }
+}
+
+/* =========================================================================
+   In-app console / log panel
+   Anchored to the bottom of the viewport, collapsed-by-default header strip.
+   When expanded, a top resize handle lets the user drag the panel taller.
+   ========================================================================= */
+.logPanel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: rgba(15, 23, 42, 0.96);
+  color: #d1d5db;
+  border-top: 1px solid #1f2937;
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.35);
+  transition: height 120ms ease;
+}
+.logPanelResize {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  background: transparent;
+  z-index: 1;
+}
+.logPanelResize:hover {
+  background: rgba(124, 58, 237, 0.4);
+}
+.logPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+  height: 28px;
+  flex-shrink: 0;
+  user-select: none;
+}
+.logPanelToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+}
+.logPanelToggle:hover {
+  color: #e5edf5;
+}
+.logPanelChevron {
+  font-size: 14px;
+  line-height: 1;
+}
+.logPanelCount {
+  background: rgba(148, 163, 184, 0.2);
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  color: #cbd5e1;
+}
+.logPanelErrorBadge {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.logPanelActions {
+  display: inline-flex;
+  gap: 6px;
+}
+.logPanelButton {
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  color: #cbd5e1;
+  font-family: inherit;
+  font-size: 10px;
+  padding: 2px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+.logPanelButton:hover {
+  background: rgba(148, 163, 184, 0.22);
+  color: #e5edf5;
+}
+.logPanelBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 12px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.logPanelBody::-webkit-scrollbar {
+  width: 8px;
+}
+.logPanelBody::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+.logPanelEmpty {
+  color: #64748b;
+  padding: 8px 0;
+  font-style: italic;
+}
+.logPanelEntry {
+  display: flex;
+  gap: 8px;
+  padding: 1px 0;
+  white-space: nowrap;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.4);
+}
+.logPanelEntry:last-child {
+  border-bottom: none;
+}
+.logPanelTime {
+  color: #64748b;
+  flex-shrink: 0;
+}
+.logPanelLevel {
+  text-transform: uppercase;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 38px;
+}
+.logPanelMessage {
+  color: #d1d5db;
+  flex: 1;
+  word-break: break-all;
+}
+.logLevel_error .logPanelLevel,
+.logLevel_error .logPanelMessage {
+  color: #fca5a5;
+}
+.logLevel_warn .logPanelLevel,
+.logLevel_warn .logPanelMessage {
+  color: #fcd34d;
+}
+.logLevel_info .logPanelLevel {
+  color: #7dd3fc;
+}
+.logLevel_debug .logPanelLevel {
+  color: #a78bfa;
+}
+.logLevel_log .logPanelLevel {
+  color: #94a3b8;
+}
+
+/* =========================================================================
+   Import modal styling — radio destination, dropzone, textarea, error banner
+   ========================================================================= */
+.importDestination {
+  display: flex;
+  gap: 16px;
+  padding: 8px 4px 12px;
+  font-size: 13px;
+}
+.importDestination label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.importDestination input[type='radio'] {
+  margin: 0;
+  cursor: pointer;
+}
+.importDropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 76px;
+  padding: 16px;
+  margin: 0 0 8px;
+  border: 2px dashed rgba(148, 163, 184, 0.4);
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.04);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.importDropzone:hover {
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.06);
+}
+.importDropzoneActive {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+.importDropzoneText {
+  font-size: 13px;
+  color: #64748b;
+  text-align: center;
+  pointer-events: none;
+}
+.darkMode .importDropzoneText {
+  color: #94a3b8;
+}
+.importDivider {
+  text-align: center;
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 8px 0;
+}
+.importTextarea {
+  width: 100%;
+  min-height: 140px;
+  max-height: 240px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 6px;
+  font-family: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: rgba(15, 23, 42, 0.04);
+  color: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+.darkMode .importTextarea {
+  background: rgba(15, 23, 42, 0.5);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+.importTextarea:focus {
+  outline: none;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18);
+}
+.importHint {
+  font-size: 11px;
+  color: #94a3b8;
+  font-style: italic;
+  padding: 6px 4px 0;
+}
+.importError {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.darkMode .importError {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
 }

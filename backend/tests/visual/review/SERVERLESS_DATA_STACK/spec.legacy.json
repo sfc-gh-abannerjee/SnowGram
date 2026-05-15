@@ -1,0 +1,268 @@
+{
+  "nodes": [
+    {
+      "id": "client",
+      "label": "Client Applications",
+      "componentType": "Application",
+      "groupId": "clients",
+      "layer": "snowflake"
+    },
+    {
+      "id": "api_gateway",
+      "label": "API Gateway REST Endpoints",
+      "componentType": "Stream",
+      "groupId": "api",
+      "layer": "external"
+    },
+    {
+      "id": "lambda",
+      "label": "AWS Lambda",
+      "componentType": "AWS Lambda",
+      "groupId": "serverless_compute",
+      "layer": "external"
+    },
+    {
+      "id": "azure_func",
+      "label": "Azure Functions",
+      "componentType": "Function",
+      "groupId": "serverless_compute",
+      "layer": "snowflake"
+    },
+    {
+      "id": "cloud_func",
+      "label": "GCP Cloud Functions",
+      "componentType": "Function",
+      "groupId": "serverless_compute",
+      "layer": "snowflake"
+    },
+    {
+      "id": "oltp",
+      "label": "OLTP Database",
+      "componentType": "Database",
+      "groupId": "transactional",
+      "layer": "snowflake"
+    },
+    {
+      "id": "nosql",
+      "label": "NoSQL Database",
+      "componentType": "Database",
+      "groupId": "transactional",
+      "layer": "snowflake"
+    },
+    {
+      "id": "glue",
+      "label": "AWS Glue",
+      "componentType": "AWS Glue",
+      "groupId": "serverless_etl",
+      "layer": "external"
+    },
+    {
+      "id": "adf",
+      "label": "Azure Data Factory",
+      "componentType": "Data",
+      "groupId": "serverless_etl",
+      "layer": "snowflake"
+    },
+    {
+      "id": "hybrid",
+      "label": "Hybrid Tables Index-Based Reads Row Locking CTAS Bulk Load",
+      "componentType": "Table",
+      "groupId": "operational",
+      "layer": "snowflake"
+    },
+    {
+      "id": "json",
+      "label": "Native JSON VARIANT Type",
+      "componentType": "JSON",
+      "groupId": "storage",
+      "layer": "snowflake"
+    },
+    {
+      "id": "vw_ops",
+      "label": "WH_OPERATIONAL X-Small Multi-Cluster",
+      "componentType": "WH_OPERATIONAL X-Small Multi-Cluster",
+      "groupId": "compute",
+      "layer": "snowflake"
+    },
+    {
+      "id": "vw_analytics",
+      "label": "WH_ANALYTICS Workload Isolated",
+      "componentType": "View",
+      "groupId": "compute",
+      "layer": "bi"
+    },
+    {
+      "id": "serverless_tasks",
+      "label": "Serverless Tasks Auto-Scaling",
+      "componentType": "Task",
+      "groupId": "tasks",
+      "layer": "snowflake"
+    }
+  ],
+  "edges": [
+    {
+      "source": "client",
+      "target": "api_gateway",
+      "style": "solid"
+    },
+    {
+      "source": "api_gateway",
+      "target": "lambda",
+      "style": "solid"
+    },
+    {
+      "source": "lambda",
+      "target": "oltp",
+      "style": "solid"
+    },
+    {
+      "source": "azure_func",
+      "target": "nosql",
+      "style": "solid"
+    },
+    {
+      "source": "cloud_func",
+      "target": "oltp",
+      "style": "solid"
+    },
+    {
+      "source": "oltp",
+      "target": "glue",
+      "style": "solid"
+    },
+    {
+      "source": "nosql",
+      "target": "adf",
+      "style": "solid"
+    },
+    {
+      "source": "glue",
+      "target": "json",
+      "style": "solid"
+    },
+    {
+      "source": "adf",
+      "target": "json",
+      "style": "solid"
+    },
+    {
+      "source": "json",
+      "target": "hybrid",
+      "style": "solid"
+    },
+    {
+      "source": "hybrid",
+      "target": "vw_ops",
+      "style": "solid"
+    },
+    {
+      "source": "json",
+      "target": "vw_analytics",
+      "style": "solid"
+    },
+    {
+      "source": "serverless_tasks",
+      "target": "json",
+      "style": "solid"
+    }
+  ],
+  "groups": [
+    {
+      "id": "clients",
+      "label": "Clients",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E3F2FD"
+      }
+    },
+    {
+      "id": "api",
+      "label": "API Layer",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#F3E5F5"
+      }
+    },
+    {
+      "id": "serverless_compute",
+      "label": "Serverless Compute",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E8F5E9"
+      }
+    },
+    {
+      "id": "transactional",
+      "label": "Transactional Storage",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FFF8E1"
+      }
+    },
+    {
+      "id": "serverless_etl",
+      "label": "Serverless ETL",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E1F5FE"
+      }
+    },
+    {
+      "id": "snowflake",
+      "label": "Snowflake Data Cloud",
+      "type": "boundary",
+      "index": 0,
+      "style": {
+        "background": "#FCE4EC"
+      }
+    },
+    {
+      "id": "operational",
+      "label": "Operational",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E0F2F1"
+      }
+    },
+    {
+      "id": "storage",
+      "label": "Storage",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#FFF3E0"
+      }
+    },
+    {
+      "id": "compute",
+      "label": "Compute",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E8EAF6"
+      }
+    },
+    {
+      "id": "tasks",
+      "label": "Serverless",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#F1F8E9"
+      }
+    }
+  ],
+  "badges": [],
+  "direction": "LR",
+  "mermaidSource": "flowchart LR\n    subgraph clients[\"Clients\"]\n        client[\"Client Applications\"]\n    end\n    \n    subgraph api[\"API Layer\"]\n        api_gateway[\"API Gateway<br/>REST Endpoints\"]\n    end\n    \n    subgraph serverless_compute[\"Serverless Compute\"]\n        lambda[\"AWS Lambda\"]\n        azure_func[\"Azure Functions\"]\n        cloud_func[\"GCP Cloud Functions\"]\n    end\n    \n    subgraph transactional[\"Transactional Storage\"]\n        oltp[\"OLTP Database\"]\n        nosql[\"NoSQL Database\"]\n    end\n    \n    subgraph serverless_etl[\"Serverless ETL\"]\n        glue[\"AWS Glue\"]\n        adf[\"Azure Data Factory\"]\n    end\n    \n    subgraph snowflake[\"Snowflake Data Cloud\"]\n        subgraph operational[\"Operational\"]\n            hybrid[\"Hybrid Tables<br/>Index-Based Reads<br/>Row Locking<br/>CTAS Bulk Load\"]\n        end\n        \n        subgraph storage[\"Storage\"]\n            json[\"Native JSON<br/>VARIANT Type\"]\n        end\n        \n        subgraph compute[\"Compute\"]\n            vw_ops[\"WH_OPERATIONAL<br/>X-Small Multi-Cluster\"]\n            vw_analytics[\"WH_ANALYTICS<br/>Workload Isolated\"]\n        end\n        \n        subgraph tasks[\"Serverless\"]\n            serverless_tasks[\"Serverless Tasks<br/>Auto-Scaling\"]\n        end\n    end\n    \n    client --> api_gateway\n    api_gateway --> lambda & azure_func & cloud_func\n    lambda --> oltp\n    azure_func --> nosql\n    cloud_func --> oltp\n    oltp --> glue\n    nosql --> adf\n    glue --> json\n    adf --> json\n    json --> hybrid\n    hybrid --> vw_ops\n    json --> vw_analytics\n    serverless_tasks --> json\n    \n    style clients fill:#E8F4FD,stroke:#29B5E8\n    style api fill:#FFE4B5,stroke:#FFA500\n    style serverless_compute fill:#E6E6FA,stroke:#9370DB\n    style transactional fill:#FFDAB9,stroke:#FF8C00\n    style serverless_etl fill:#D8BFD8,stroke:#8B008B\n    style snowflake fill:#E0F7FA,stroke:#00ACC1"
+}

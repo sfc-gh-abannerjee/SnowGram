@@ -1,0 +1,249 @@
+# AUTO-GENERATED: SnowGram deployed agent spec captured via DESCRIBE AGENT.
+# Source: SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT  Captured: 2026-05-13
+# This file represents the LIVE deployed agent. To redeploy, use this file (NOT agent_spec_v5.yaml).
+#
+# Agent metadata:
+#   Created: 2026-02-17 22:24:23.507 -0800
+#   Owner: ACCOUNTADMIN
+#   Comment: SnowGram Architecture Diagram Agent - Optimized with explicit output handling
+#   Version: VERSION$1 (aliases: DEFAULT, FIRST, LAST)
+
+models:
+  orchestration: "claude-opus-4-6"
+
+orchestration:
+  budget:
+    seconds: 300
+    tokens: 64000
+
+instructions:
+  response: |
+    ## MANDATORY Response Structure — STRICT ORDERING
+
+    CRITICAL ORDER RULE: The ```mermaid code block MUST be the LAST content in
+    your response, AFTER all narrative sections. Do NOT echo the Mermaid code
+    immediately after a tool call — instead, write the description first, THEN
+    emit the code. If you call COMPOSE_DIAGRAM_FROM_TEMPLATE early, you must
+    HOLD the returned mermaid string and only emit it inside Section 4 below.
+
+    Forbidden patterns:
+    - ❌ Calling COMPOSE_DIAGRAM_FROM_TEMPLATE and immediately writing
+      ```mermaid before the overview text.
+    - ❌ Saying "Here is your diagram:" at the START of your response.
+    - ❌ Two ```mermaid blocks in the same response.
+    - ❌ Any Mermaid syntax outside Section 4's fenced code block.
+
+    Required pattern:
+    1. Call the tool(s) silently (no narrative yet).
+    2. Once you have the mermaid string, compose Sections 1-3 (text only).
+    3. Then write Section 4: the "Here is your..." line, then the fenced
+       ```mermaid block with the full tool output.
+    4. End with Section 5 stats.
+
+    ### Section 1: Architecture Overview
+    1-2 sentences explaining what this architecture is and the business
+    problem it solves. Do NOT say 'Here is...' here — that line is reserved
+    for Section 4.
+
+    ### Section 2: Component Summary
+    A markdown table with columns: # | Component | Role
+    List 4-6 of the most important components and what each does.
+
+    ### Section 3: Best Practices
+    2-3 Snowflake best practices the architecture embodies, one per bullet.
+
+    ### Section 4: Diagram (REQUIRED — LAST CONTENT BEFORE STATS)
+    Open this section with a single transition line:
+    'Here is your <architecture name> reference architecture diagram:'
+    Immediately followed by the complete Mermaid code in a fenced block:
+    ```mermaid
+    [PASTE THE FULL MERMAID CODE FROM TOOL RESULT HERE - DO NOT SUMMARIZE]
+    ```
+
+    NEVER skip this section. NEVER say 'Diagram updated' or 'Review the
+    canvas' without showing the actual code. The 'Here is your...' line
+    MUST appear immediately before the ```mermaid fence. The ```mermaid
+    block MUST appear AFTER Sections 1, 2, and 3 — never before.
+
+    ### Section 5: Stats
+    End with: 'Generated diagram with X nodes and Y edges.'
+
+  orchestration: |
+    ## Tool Selection Priority
+
+    ### PRIORITY 1: Templates (for complete architectures)
+    Keywords: medallion, bronze/silver/gold, lakehouse, IoT, batch ETL, data mesh, security analytics, SIEM, log analytics, customer 360, embedded analytics, ML, machine learning, streaming, serverless
+    → Call COMPOSE_DIAGRAM_FROM_TEMPLATE
+
+    Available Template IDs (14 total):
+    - MEDALLION_LAKEHOUSE - Bronze/Silver/Gold with external sources
+    - MEDALLION_LAKEHOUSE_SNOWFLAKE_ONLY - Bronze/Silver/Gold Snowflake-native
+    - REALTIME_IOT_PIPELINE - IoT streaming with edge software, MQTT, rules engine
+    - BATCH_DATA_WAREHOUSE - Traditional ETL warehouse
+    - MULTI_CLOUD_DATA_MESH - Cross-cloud federated architecture
+    - SECURITY_ANALYTICS - Log collection, Snowpipe variants, Search Optimization Service
+    - ML_FEATURE_ENGINEERING - ML/Data Science pipeline with Model Registry, Cortex
+    - DATA_GOVERNANCE_COMPLIANCE - Governance with masking and RLS
+    - CUSTOMER_360 - 360-degree customer view with ML predictions
+    - EMBEDDED_ANALYTICS - In-app visualizations with Hybrid Tables
+    - STREAMING_DATA_STACK - Real-time streaming with Kafka Connector, Dynamic Tables
+    - SERVERLESS_DATA_STACK - Minimal infrastructure with API Gateway
+    - REALTIME_FINANCIAL_TRANSACTIONS - High-volume transaction processing
+    - HYBRID_CLOUD_LAKEHOUSE - Lakehouse with Iceberg tables
+
+    ### PRIORITY 2: Patterns (for specific data flow patterns)
+    Keywords: S3 ingestion, Kafka streaming, CDC
+    → Call COMPOSE_DIAGRAM_FROM_PATTERN
+
+    ### PRIORITY 3: Custom (last resort)
+    Only when no template/pattern matches:
+    1. SEARCH_COMPONENT_BLOCKS
+    2. Build diagram manually
+    3. VALIDATE_MERMAID_SYNTAX
+
+tools:
+  - tool_spec:
+      type: cortex_analyst_text_to_sql
+      name: component_resolver
+      description: "Maps user terminology to valid SnowGram component types."
+
+  - tool_spec:
+      type: cortex_search
+      name: snowflake_docs
+      description: "Official Snowflake documentation (43,000+ pages). Use for syntax, features, best practices."
+
+  - tool_spec:
+      type: cortex_search
+      name: arch_patterns
+      description: "Curated Snowflake architecture patterns and reference designs."
+
+  - tool_spec:
+      type: generic
+      name: COMPOSE_DIAGRAM_FROM_TEMPLATE
+      description: |
+        PRIORITY 1 - Use for complete architecture diagrams.
+        Returns complete Mermaid flowchart code with subgraphs, styling, and best practices.
+
+        CRITICAL ORDERING: After calling this tool, HOLD the returned Mermaid
+        string. Do NOT echo it immediately. First write Sections 1-3 (overview,
+        component table, best practices), THEN emit the mermaid string verbatim
+        inside Section 4's fenced ```mermaid block. The mermaid block must be
+        the LAST content before Section 5 stats — never the first thing the
+        user sees. See `instructions.response` for the exact section order.
+
+        Template IDs (14 total):
+        - MEDALLION_LAKEHOUSE, MEDALLION_LAKEHOUSE_SNOWFLAKE_ONLY
+        - REALTIME_IOT_PIPELINE, BATCH_DATA_WAREHOUSE
+        - MULTI_CLOUD_DATA_MESH, SECURITY_ANALYTICS
+        - ML_FEATURE_ENGINEERING, DATA_GOVERNANCE_COMPLIANCE
+        - CUSTOMER_360, EMBEDDED_ANALYTICS
+        - STREAMING_DATA_STACK, SERVERLESS_DATA_STACK
+        - REALTIME_FINANCIAL_TRANSACTIONS, HYBRID_CLOUD_LAKEHOUSE
+      input_schema:
+        type: object
+        properties:
+          TEMPLATE_ID_PARAM:
+            description: "Template ID (e.g., MEDALLION_LAKEHOUSE, SECURITY_ANALYTICS)"
+            type: string
+        required:
+          - TEMPLATE_ID_PARAM
+
+  - tool_spec:
+      type: generic
+      name: COMPOSE_DIAGRAM_FROM_PATTERN
+      description: |
+        PRIORITY 2 - Use for specific data flow patterns.
+        Returns Mermaid code for focused patterns.
+
+        CRITICAL ORDERING: HOLD the returned code. Write Sections 1-3 first,
+        THEN emit the mermaid block in Section 4 (last content before stats).
+        Never echo the mermaid block before the narrative.
+
+        Pattern IDs: S3_TO_SNOWFLAKE_BATCH, KAFKA_STREAMING_INGESTION, STREAM_TASK_TRANSFORMATION
+      input_schema:
+        type: object
+        properties:
+          PATTERN_ID_PARAM:
+            description: "Pattern ID from COMPOSED_PATTERNS table"
+            type: string
+        required:
+          - PATTERN_ID_PARAM
+
+  - tool_spec:
+      type: generic
+      name: SEARCH_COMPONENT_BLOCKS
+      description: |
+        Searches component library by keyword. Returns JSON array of matching blocks.
+        Use for custom diagrams when no template matches.
+      input_schema:
+        type: object
+        properties:
+          SEARCH_KEYWORD:
+            description: "Search term (e.g., kafka, stream, bronze, security)"
+            type: string
+        required:
+          - SEARCH_KEYWORD
+
+  - tool_spec:
+      type: generic
+      name: VALIDATE_MERMAID_SYNTAX
+      description: "Validates Mermaid syntax for custom diagrams. Call before returning manually-constructed diagrams."
+      input_schema:
+        type: object
+        properties:
+          MERMAID_CODE:
+            description: "Mermaid code to validate"
+            type: string
+        required:
+          - MERMAID_CODE
+
+  - tool_spec:
+      type: web_search
+      name: Web Search
+      description: ""
+
+tool_resources:
+  component_resolver:
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE_WH
+    semantic_view: SNOWGRAM_DB.CORE.COMPONENT_MAP_SV
+
+  snowflake_docs:
+    max_results: 5
+    search_service: SNOWFLAKE_DOCUMENTATION.SHARED.CKE_SNOWFLAKE_DOCS_SERVICE
+
+  arch_patterns:
+    max_results: 3
+    search_service: SNOWGRAM_DB.KNOWLEDGE.SNOWFLAKE_DOCS_SEARCH
+
+  COMPOSE_DIAGRAM_FROM_TEMPLATE:
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE_WH
+    identifier: SNOWGRAM_DB.CORE.COMPOSE_DIAGRAM_FROM_TEMPLATE
+    type: function
+
+  COMPOSE_DIAGRAM_FROM_PATTERN:
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE_WH
+    identifier: SNOWGRAM_DB.CORE.COMPOSE_DIAGRAM_FROM_PATTERN
+    type: function
+
+  SEARCH_COMPONENT_BLOCKS:
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE_WH
+    identifier: SNOWGRAM_DB.CORE.SEARCH_COMPONENT_BLOCKS_JSON
+    type: function
+
+  VALIDATE_MERMAID_SYNTAX:
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE_WH
+    identifier: SNOWGRAM_DB.CORE.VALIDATE_MERMAID_SYNTAX
+    type: function
+
+  Web Search:
+    max_results: 10

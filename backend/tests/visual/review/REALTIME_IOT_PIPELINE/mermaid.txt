@@ -1,0 +1,52 @@
+flowchart LR
+    subgraph edge["Edge / IoT Devices"]
+        sensors["Smart Devices<br/>Sensors & IoT"]
+        edge_software["Edge Software<br/>HighByte, DXC<br/>Data Merging"]
+        mqtt["MQTT Protocol<br/>Pub/Sub Broker"]
+    end
+    
+    subgraph streaming["Streaming Service"]
+        kafka["Streaming Service<br/>Kafka / Kinesis<br/>Reliable Delivery"]
+    end
+    
+    subgraph object_storage["Object Storage"]
+        s3["Object Storage<br/>Batch Staging<br/>Aggregated Data"]
+    end
+    
+    subgraph snowflake["Snowflake"]
+        subgraph ingestion["Ingestion"]
+            snowpipe_stream["Snowpipe Streaming<br/>Chronological Insert<br/>Time Series Optimized"]
+            snowpipe["Snowpipe<br/>Batch Load"]
+        end
+        
+        subgraph storage["Storage & Processing"]
+            raw_json["Staging Table<br/>Native JSON/VARIANT"]
+            dynamic_tables["Dynamic Tables<br/>Automated Aggregation<br/>Minute/Hour/Day"]
+            snowpark["Snowpark<br/>External Libraries"]
+        end
+    end
+    
+    subgraph rules["IoT Rules Engine"]
+        rules_engine["Rules Engine<br/>Business Logic<br/>Threshold Alerts"]
+        device_control["Device Control<br/>Command Messages"]
+    end
+    
+    sensors --> edge_software
+    edge_software --> mqtt
+    mqtt --> kafka
+    kafka --> snowpipe_stream
+    mqtt --> s3
+    s3 --> snowpipe
+    snowpipe_stream --> raw_json
+    snowpipe --> raw_json
+    raw_json --> dynamic_tables
+    dynamic_tables --> snowpark
+    raw_json --> rules_engine
+    rules_engine --> device_control
+    device_control --> mqtt
+    
+    style edge fill:#E8F4FD,stroke:#29B5E8
+    style streaming fill:#FFE4B5,stroke:#FFA500
+    style object_storage fill:#E6E6FA,stroke:#9370DB
+    style snowflake fill:#E0F7FA,stroke:#00ACC1
+    style rules fill:#FFE4E1,stroke:#FF6B6B

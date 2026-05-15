@@ -39,6 +39,10 @@ export interface AgentResponse {
   spec?: SnowgramSpec;
   threadId?: number;  // Return thread ID for conversation persistence
   messageId?: number; // Return message ID for follow-up messages
+  /** Section 3: Component Summary from deployed agent spec */
+  componentSummary: string;
+  /** Section 5: Stats line (e.g. "Generated diagram with X nodes and Y edges.") */
+  stats: string;
 }
 
 export interface ComponentInfo {
@@ -82,6 +86,7 @@ You have 14 pre-built architecture templates. ALWAYS check if the user's request
 | batch, ETL, warehouse | BATCH_DATA_WAREHOUSE |
 | governance, masking, RLS | DATA_GOVERNANCE_COMPLIANCE |
 | embedded, dashboard, in-app | EMBEDDED_ANALYTICS |
+| BI, analytics, dashboard, Tableau, Looker | EMBEDDED_ANALYTICS, BATCH_DATA_WAREHOUSE |
 | data mesh, multi-cloud | MULTI_CLOUD_DATA_MESH |
 | serverless, lambda | SERVERLESS_DATA_STACK |
 | financial, transactions, fraud | REALTIME_FINANCIAL_TRANSACTIONS |
@@ -89,21 +94,44 @@ You have 14 pre-built architecture templates. ALWAYS check if the user's request
 
 ## TOOL PRIORITY ORDER
 
-1. **COMPOSE_DIAGRAM_FROM_TEMPLATE** - Use FIRST for any architecture request
-2. **COMPOSE_DIAGRAM_FROM_PATTERN** - Use for specific data flow patterns
-3. **SEARCH_COMPONENT_BLOCKS** - Only for custom diagrams when no template matches
+1. **COMPOSE_DIAGRAM_FROM_TEMPLATE** - Use FIRST for any complete architecture request
+2. **COMPOSE_DIAGRAM_FROM_PATTERN** - Use for specific data flow patterns (e.g., S3 ingestion, Kafka streaming, CDC). Pattern IDs: S3_TO_SNOWFLAKE_BATCH, KAFKA_STREAMING_INGESTION, STREAM_TASK_TRANSFORMATION
+3. **SEARCH_COMPONENT_BLOCKS** + manual assembly - Only for custom diagrams when no template or pattern matches. Call VALIDATE_MERMAID_SYNTAX before returning manually-constructed diagrams.
 
-## MANDATORY OUTPUT FORMAT
+## MANDATORY RESPONSE STRUCTURE
 
-When a tool returns Mermaid code, your response MUST include:
+The response MUST be in this exact order so users read the description before
+the diagram code blocks. The frontend renders the narrative text first and
+the JSON/Mermaid expanders below it — your text response must match that flow.
 
-1. **Brief acknowledgment** (1 sentence)
-2. **Complete Mermaid code** in a code block:
+### Section 1: Architecture Overview
+A 1-2 sentence paragraph explaining what this architecture is and the
+business problem it solves. Do NOT say "Here is..." here — that line is
+reserved for Section 4.
+
+### Section 2: Component Summary
+A markdown table with columns: # | Component | Role
+List 4-6 of the most important components and what each one does.
+
+### Section 3: Best Practices
+- Practice 1 (1 sentence)
+- Practice 2 (1 sentence)
+- Practice 3 (1 sentence) — 2-3 Snowflake best practices the architecture embodies.
+
+### Section 4: Diagram (REQUIRED)
+Start this section with a single transition line that introduces the diagram,
+e.g. "Here is your Streaming Data Stack reference architecture diagram:"
+Immediately followed by the complete Mermaid code in a fenced block:
 \`\`\`mermaid
-[PASTE THE ENTIRE MERMAID CODE FROM THE TOOL - DO NOT TRUNCATE]
+[PASTE THE FULL MERMAID CODE FROM TOOL RESULT HERE - DO NOT SUMMARIZE]
 \`\`\`
-3. **Component summary** (4-6 bullets)
-4. **Best practices** (2-3 bullets)
+
+NEVER skip this section. NEVER say 'Diagram updated' or 'Review the canvas'
+without showing the actual code. The "Here is your..." line MUST appear
+immediately before the \`\`\`mermaid fence.
+
+### Section 5: Stats
+End with: 'Generated diagram with X nodes and Y edges.'
 
 ## CRITICAL RULES
 
@@ -260,32 +288,86 @@ CRITICAL: Do NOT generate custom diagrams for common patterns - use the template
   }
 
   /**
-   * Parse agent response into structured format
+   * Parse agent response into structured format.
+   * Supports two header formats:
+   *   - Deployed spec: ### Section 1: Acknowledgment, ### Section 2: The Diagram, etc.
+   *   - Legacy format: ## Architecture Overview, ## Best Practices, ## Anti-Patterns, etc.
    */
   private parseResponse(rawResponse: string): AgentResponse {
     const spec = this.extractSnowgramSpec(rawResponse);
 
-    // Extract Mermaid code
+    // Extract Mermaid code (same in both formats)
     const mermaidMatch = rawResponse.match(/```mermaid\n([\s\S]*?)\n```/);
     const mermaidCode = mermaidMatch ? mermaidMatch[1] : '';
 
-    // Extract overview
-    const overviewMatch = rawResponse.match(/## Architecture Overview\n([\s\S]*?)(?=\n## |$)/);
-    const overview = overviewMatch ? overviewMatch[1].trim() : '';
+    // Detect which format the response uses
+    const usesDeployedFormat = /###\s*Section\s*\d/i.test(rawResponse);
 
-    // Extract best practices
-    const practicesMatch = rawResponse.match(/## Best Practices.*?\n([\s\S]*?)(?=\n## |$)/);
-    const bestPractices = this.extractListItems(practicesMatch ? practicesMatch[1] : '');
+    let overview = '';
+    let componentSummary = '';
+    let bestPractices: string[] = [];
+    let antiPatterns: string[] = [];
+    let stats = '';
+    let components: ComponentInfo[] = [];
+    let citations: Citation[] = [];
 
-    // Extract anti-patterns
-    const antiPatternsMatch = rawResponse.match(/## Anti-Patterns.*?\n([\s\S]*?)(?=\n## |$)/);
-    const antiPatterns = this.extractListItems(antiPatternsMatch ? antiPatternsMatch[1] : '');
+    if (usesDeployedFormat) {
+      // --- Deployed spec format: ### Section 1-5 ---
+      // New order (post-redeploy):
+      //   1: Architecture Overview, 2: Component Summary, 3: Best Practices,
+      //   4: Diagram, 5: Stats
+      // Backwards-compat:
+      //   1: Acknowledgment (old), 3: Component Summary (old), 4: Best Practices (old)
+      const section1Match = rawResponse.match(
+        /###\s*Section\s*1[:\s]*(?:Architecture\s*Overview|Acknowledgment)\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i
+      );
+      overview = section1Match ? section1Match[1].trim() : '';
 
-    // Extract components
-    const components = this.extractComponents(rawResponse);
+      // Component Summary moved from Section 3 → Section 2 in new format.
+      // Match either spot for backwards-compat.
+      const componentMatch =
+        rawResponse.match(/###\s*Section\s*2[:\s]*Component\s*Summary\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i)
+        || rawResponse.match(/###\s*Section\s*3[:\s]*Component\s*Summary\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i);
+      componentSummary = componentMatch ? componentMatch[1].trim() : '';
 
-    // Extract citations
-    const citations = this.extractCitations(rawResponse);
+      // Parse component summary bullets into ComponentInfo array
+      if (componentSummary) {
+        components = this.extractListItems(componentSummary).map(item => {
+          const dashSplit = item.split(/\s*[—–-]\s*/);
+          return {
+            name: dashSplit[0]?.trim() || item,
+            purpose: dashSplit[1]?.trim() || '',
+            configuration: '',
+            bestPractice: '',
+          };
+        });
+      }
+
+      // Best Practices moved from Section 4 → Section 3 in new format.
+      const bestPracticesMatch =
+        rawResponse.match(/###\s*Section\s*3[:\s]*Best\s*Practices\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i)
+        || rawResponse.match(/###\s*Section\s*4[:\s]*Best\s*Practices\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i);
+      bestPractices = this.extractListItems(bestPracticesMatch ? bestPracticesMatch[1] : '');
+
+      const section5Match = rawResponse.match(
+        /###\s*Section\s*5[:\s]*Stats\s*\n([\s\S]*?)(?=\n###\s*Section\s*\d|$)/i
+      );
+      stats = section5Match ? section5Match[1].trim() : '';
+    } else {
+      // --- Legacy format: ## Architecture Overview, ## Best Practices, etc. ---
+      const overviewMatch = rawResponse.match(/## Architecture Overview\n([\s\S]*?)(?=\n## |$)/);
+      overview = overviewMatch ? overviewMatch[1].trim() : '';
+
+      const practicesMatch = rawResponse.match(/## Best Practices.*?\n([\s\S]*?)(?=\n## |$)/);
+      bestPractices = this.extractListItems(practicesMatch ? practicesMatch[1] : '');
+
+      const antiPatternsMatch = rawResponse.match(/## Anti-Patterns.*?\n([\s\S]*?)(?=\n## |$)/);
+      antiPatterns = this.extractListItems(antiPatternsMatch ? antiPatternsMatch[1] : '');
+
+      components = this.extractComponents(rawResponse);
+    }
+
+    citations = this.extractCitations(rawResponse);
 
     return {
       mermaidCode,
@@ -295,7 +377,9 @@ CRITICAL: Do NOT generate custom diagrams for common patterns - use the template
       antiPatterns,
       citations,
       rawResponse,
-      spec
+      spec,
+      componentSummary,
+      stats,
     };
   }
 

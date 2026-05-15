@@ -1,0 +1,47 @@
+flowchart TD
+    subgraph sources["Data Sources"]
+        kafka["Kafka<br/>Transaction Stream"]
+    end
+
+    subgraph ingestion["Ingestion"]
+        pipe_stream["Snowpipe Streaming<br/>MAX_CLIENT_LAG=1s<br/>Sub-Second Latency"]
+        table_raw["Raw Transactions<br/>Append-Only"]
+    end
+
+    subgraph enrichment["Enrichment"]
+        ext_func["External Function<br/>Fraud Detection API<br/>External Access Int"]
+        table_enriched["Enriched Transactions<br/>Fraud Score"]
+    end
+
+    subgraph transform["Transformation"]
+        stream["Stream<br/>METADATA$ACTION"]
+        task["Serverless Task<br/>Aggregation"]
+        table_agg["Transaction Summary<br/>Dynamic Table"]
+    end
+
+    subgraph security["Security & Compliance"]
+        masking["Dynamic Masking<br/>PAN, SSN"]
+        secure_view["Secure View<br/>Customer RLS"]
+        role_analyst["FINANCE_ANALYST"]
+        role_manager["FINANCE_MANAGER"]
+    end
+
+    subgraph audit["Audit Trail"]
+        access_history["ACCESS_HISTORY<br/>Who Queried What"]
+        time_travel["Time Travel<br/>90-day Retention"]
+    end
+
+    kafka --> pipe_stream --> table_raw
+    table_raw --> ext_func --> table_enriched
+    table_enriched --> stream --> task --> table_agg
+    table_agg --> masking --> secure_view
+    secure_view --> role_analyst & role_manager
+    table_enriched --> access_history
+    table_enriched --> time_travel
+
+    style sources fill:#231F20,stroke:#fff
+    style ingestion fill:#29B5E8,stroke:#fff
+    style enrichment fill:#FF6B6B,stroke:#fff
+    style transform fill:#29B5E8,stroke:#fff
+    style security fill:#4ECDC4,stroke:#fff
+    style audit fill:#95E1D3,stroke:#333

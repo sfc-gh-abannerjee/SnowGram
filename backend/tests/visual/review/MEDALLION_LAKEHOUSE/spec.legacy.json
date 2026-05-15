@@ -1,0 +1,225 @@
+{
+  "nodes": [
+    {
+      "id": "s3",
+      "label": "AWS S3 Data Lake",
+      "componentType": "S3",
+      "groupId": "source",
+      "layer": "external"
+    },
+    {
+      "id": "pipe",
+      "label": "Snowpipe Auto-Ingest Separate from Streaming",
+      "componentType": "Stream",
+      "groupId": "bronze",
+      "layer": "bronze"
+    },
+    {
+      "id": "bronze_db",
+      "label": "BRONZE_DB",
+      "componentType": "BRONZE_DB",
+      "groupId": "bronze",
+      "layer": "bronze"
+    },
+    {
+      "id": "bronze_raw",
+      "label": "Raw Tables Append-Only VARIANT for JSON",
+      "componentType": "Table",
+      "groupId": "bronze",
+      "layer": "bronze"
+    },
+    {
+      "id": "stream_b",
+      "label": "Stream Bronze CDC",
+      "componentType": "Stream",
+      "groupId": "silver",
+      "layer": "bronze"
+    },
+    {
+      "id": "task_clean",
+      "label": "Serverless Task Data Quality",
+      "componentType": "Task",
+      "groupId": "silver",
+      "layer": "silver"
+    },
+    {
+      "id": "silver_db",
+      "label": "SILVER_DB",
+      "componentType": "SILVER_DB",
+      "groupId": "silver",
+      "layer": "silver"
+    },
+    {
+      "id": "silver_tables",
+      "label": "Cleaned Tables SCD Type 2",
+      "componentType": "Table",
+      "groupId": "silver",
+      "layer": "silver"
+    },
+    {
+      "id": "dyn_table",
+      "label": "Dynamic Tables TARGET_LAG=DOWNSTREAM Dedicated WH Set Refresh Mode",
+      "componentType": "Table",
+      "groupId": "gold",
+      "layer": "snowflake"
+    },
+    {
+      "id": "gold_db",
+      "label": "GOLD_DB",
+      "componentType": "GOLD_DB",
+      "groupId": "gold",
+      "layer": "gold"
+    },
+    {
+      "id": "gold_agg",
+      "label": "Aggregated Facts Business Metrics",
+      "componentType": "Task",
+      "groupId": "gold",
+      "layer": "gold"
+    },
+    {
+      "id": "wh_load",
+      "label": "WH_LOADING Ingestion",
+      "componentType": "Stream",
+      "groupId": "compute",
+      "layer": "bronze"
+    },
+    {
+      "id": "wh_transform",
+      "label": "WH_TRANSFORM DT Refresh",
+      "componentType": "Task",
+      "groupId": "compute",
+      "layer": "silver"
+    },
+    {
+      "id": "wh_bi",
+      "label": "WH_BI_ANALYTICS Multi-Cluster",
+      "componentType": "View",
+      "groupId": "compute",
+      "layer": "bi"
+    },
+    {
+      "id": "bi_tools",
+      "label": "BI Tools Dashboards",
+      "componentType": "View",
+      "groupId": "bi",
+      "layer": "bi"
+    }
+  ],
+  "edges": [
+    {
+      "source": "s3",
+      "target": "pipe",
+      "style": "solid"
+    },
+    {
+      "source": "pipe",
+      "target": "bronze_raw",
+      "style": "solid"
+    },
+    {
+      "source": "bronze_raw",
+      "target": "stream_b",
+      "style": "solid"
+    },
+    {
+      "source": "stream_b",
+      "target": "task_clean",
+      "style": "solid"
+    },
+    {
+      "source": "task_clean",
+      "target": "silver_tables",
+      "style": "solid"
+    },
+    {
+      "source": "silver_tables",
+      "target": "dyn_table",
+      "style": "solid"
+    },
+    {
+      "source": "dyn_table",
+      "target": "gold_agg",
+      "style": "solid"
+    },
+    {
+      "source": "gold_agg",
+      "target": "bi_tools",
+      "style": "solid"
+    },
+    {
+      "source": "wh_load",
+      "target": "pipe",
+      "style": "dotted"
+    },
+    {
+      "source": "wh_transform",
+      "target": "dyn_table",
+      "style": "dotted"
+    },
+    {
+      "source": "wh_bi",
+      "target": "bi_tools",
+      "style": "dotted"
+    }
+  ],
+  "groups": [
+    {
+      "id": "source",
+      "label": "Data Sources",
+      "type": "boundary",
+      "index": -1,
+      "style": {
+        "background": "#E3F2FD"
+      }
+    },
+    {
+      "id": "bronze",
+      "label": "Bronze Layer (Raw)",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#F3E5F5"
+      }
+    },
+    {
+      "id": "silver",
+      "label": "Silver Layer (Cleaned)",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E8F5E9"
+      }
+    },
+    {
+      "id": "gold",
+      "label": "Gold Layer (Business)",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FFF8E1"
+      }
+    },
+    {
+      "id": "compute",
+      "label": "Warehouse Strategy",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E1F5FE"
+      }
+    },
+    {
+      "id": "bi",
+      "label": "Analytics",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FCE4EC"
+      }
+    }
+  ],
+  "badges": [],
+  "direction": "LR",
+  "mermaidSource": "flowchart LR\n    subgraph source[\"Data Sources\"]\n        s3[\"AWS S3<br/>Data Lake\"]\n    end\n\n    subgraph bronze[\"Bronze Layer (Raw)\"]\n        pipe[\"Snowpipe<br/>Auto-Ingest<br/>Separate from Streaming\"]\n        bronze_db[\"BRONZE_DB\"]\n        bronze_raw[\"Raw Tables<br/>Append-Only<br/>VARIANT for JSON\"]\n    end\n\n    subgraph silver[\"Silver Layer (Cleaned)\"]\n        stream_b[\"Stream<br/>Bronze CDC\"]\n        task_clean[\"Serverless Task<br/>Data Quality\"]\n        silver_db[\"SILVER_DB\"]\n        silver_tables[\"Cleaned Tables<br/>SCD Type 2\"]\n    end\n\n    subgraph gold[\"Gold Layer (Business)\"]\n        dyn_table[\"Dynamic Tables<br/>TARGET_LAG=DOWNSTREAM<br/>Dedicated WH<br/>Set Refresh Mode\"]\n        gold_db[\"GOLD_DB\"]\n        gold_agg[\"Aggregated Facts<br/>Business Metrics\"]\n    end\n\n    subgraph compute[\"Warehouse Strategy\"]\n        wh_load[\"WH_LOADING<br/>Ingestion\"]\n        wh_transform[\"WH_TRANSFORM<br/>DT Refresh\"]\n        wh_bi[\"WH_BI_ANALYTICS<br/>Multi-Cluster\"]\n    end\n\n    subgraph bi[\"Analytics\"]\n        bi_tools[\"BI Tools<br/>Dashboards\"]\n    end\n\n    s3 --> pipe\n    pipe --> bronze_raw\n    bronze_raw --> stream_b\n    stream_b --> task_clean\n    task_clean --> silver_tables\n    silver_tables --> dyn_table\n    dyn_table --> gold_agg\n    gold_agg --> bi_tools\n    \n    wh_load -.-> pipe\n    wh_transform -.-> dyn_table\n    wh_bi -.-> bi_tools\n\n    style source fill:#FF9900,stroke:#fff\n    style bronze fill:#CD7F32,stroke:#8B4513\n    style silver fill:#C0C0C0,stroke:#808080\n    style gold fill:#FFD700,stroke:#DAA520\n    style compute fill:#E6E6FA,stroke:#9370DB\n    style bi fill:#F2C94C,stroke:#333"
+}

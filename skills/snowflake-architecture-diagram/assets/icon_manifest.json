@@ -21,6 +21,14 @@
     "icon": "Snowflake_ICON_RA_Table_Hybrid.svg",
     "category": "snow"
   },
+  "EXTERNAL_VOLUME": {
+    "icon": "Snowflake_ICON_RA_Volume.svg",
+    "category": "snow"
+  },
+  "CATALOG_INTEGRATION": {
+    "icon": "Snowflake_ICON_RA_Stage_External.svg",
+    "category": "snow"
+  },
   "VIEW": {
     "icon": "Snowflake_ICON_RA_View.svg",
     "category": "snow"

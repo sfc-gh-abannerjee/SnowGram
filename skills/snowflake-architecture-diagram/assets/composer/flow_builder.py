@@ -401,6 +401,36 @@ def _zone_for(block_id: str, category: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Compose-path entry point — used by the standalone diagram_from_prompt.py
+# orchestrator when intent_router.route_v2 returns {"type": "compose", ...}
+# --------------------------------------------------------------------------- #
+
+_COMPONENT_BLOCKS_PATH = _ASSETS / "component_blocks.json"
+
+
+def _load_component_blocks() -> dict[str, dict[str, Any]]:
+    """Load component_blocks.json keyed by BLOCK_ID."""
+    if not _COMPONENT_BLOCKS_PATH.exists():
+        return {}
+    raw = json.loads(_COMPONENT_BLOCKS_PATH.read_text(encoding="utf-8"))
+    if isinstance(raw, list):
+        return {b.get("BLOCK_ID", ""): b for b in raw if b.get("BLOCK_ID")}
+    if isinstance(raw, dict):
+        return raw
+    return {}
+
+
+def build_flow_from_block_ids(block_ids: list[str]) -> dict[str, list]:
+    """
+    Convenience wrapper around `build_flow` that loads the bundled
+    COMPONENT_BLOCKS snapshot. Used by the compose path to produce rich state
+    ({nodes, edges, zones}) from a router-supplied block_id list.
+    """
+    blocks_by_id = _load_component_blocks()
+    return build_flow(block_ids, blocks_by_id)
+
+
+# --------------------------------------------------------------------------- #
 # Legacy public API (unchanged)
 # --------------------------------------------------------------------------- #
 def block_to_node(block: dict[str, Any]) -> dict[str, str]:

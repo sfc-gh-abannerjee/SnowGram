@@ -9,7 +9,8 @@
       "detail": "Object store / data lake",
       "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
       "category": "onprem",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
     },
     {
       "id": "snowpipe",
@@ -53,7 +54,8 @@
       "detail": "BI dashboards & reports",
       "icon": "Snowflake_ICON_Embedded_Analytics.svg",
       "category": "outcome",
-      "zone": "Consumption"
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
     }
   ],
   "edges": [
@@ -124,6 +126,11 @@
   ],
   "citations": [
     {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-s3",
+      "title": "Cloud Storage",
+      "excerpt": "Object store / data lake"
+    },
+    {
       "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview",
       "title": "Snowpipe",
       "excerpt": "Event-driven auto-ingest"
@@ -132,6 +139,11 @@
       "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
       "title": "Landing Table",
       "excerpt": "Append-only raw data"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
+      "title": "Analytics",
+      "excerpt": "BI dashboards & reports"
     }
   ]
 }

@@ -127,7 +127,19 @@ test_results_*/
 # Agent version snapshots (local only)
 SNOWGRAM_DB_AGENTS_SNOWGRAM_AGENT/versions/
 
+# ELK matplotlib renderer (removed; ignore in case it returns)
+backend/elk_diagram/output/
+backend/elk_diagram/elk_layout/*.json
 
+# Ralph convergence loop debug artifacts (auto-generated)
+backend/tests/.ralph/
+.ralph/
+
+# Cortex Code workflow plans (session artifacts)
+.cortex/plans/
+
+# Cortex Code stash backups (auto-generated patch archives)
+.cortex/stash_backups/
 
 
 

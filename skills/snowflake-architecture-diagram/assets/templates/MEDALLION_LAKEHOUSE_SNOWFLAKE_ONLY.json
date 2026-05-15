@@ -9,5 +9,137 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2026-01-26T14:28:38.900000-08:00",
-  "UPDATED_AT": "2026-02-17T21:55:44.238000-08:00"
+  "UPDATED_AT": "2026-02-17T21:55:44.238000-08:00",
+  "RICH_STATE": {
+    "title": "Medallion Architecture (Snowflake-Only)",
+    "subtitle": "All-Snowflake medallion: Stages \u2192 Bronze \u2192 Silver \u2192 Gold \u2192 BI",
+    "nodes": [
+      {
+        "id": "stage",
+        "label": "Internal Stage",
+        "detail": "Snowflake-managed staging",
+        "icon": "Snowflake_ICON_RA_Stage_External.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "STAGE",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage"
+      },
+      {
+        "id": "pipe",
+        "label": "Snowpipe",
+        "detail": "Auto-ingest from stage",
+        "icon": "Snowflake_ICON_RA_Pipe.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "PIPE",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
+      },
+      {
+        "id": "bronze",
+        "label": "Bronze Tables",
+        "detail": "Raw landing tables",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Bronze Layer",
+        "object_type": "TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "silver",
+        "label": "Silver Dynamic Tables",
+        "detail": "Declarative cleansing",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Silver Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "curated_storage",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "gold",
+        "label": "Gold Dynamic Tables",
+        "detail": "Aggregated marts",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Gold Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "bi",
+        "label": "BI Platform",
+        "detail": "Reports & dashboards",
+        "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "BI_TOOL",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+      }
+    ],
+    "edges": [
+      {
+        "source": "stage",
+        "target": "pipe"
+      },
+      {
+        "source": "pipe",
+        "target": "bronze"
+      },
+      {
+        "source": "bronze",
+        "target": "silver"
+      },
+      {
+        "source": "silver",
+        "target": "gold"
+      },
+      {
+        "source": "gold",
+        "target": "bi"
+      }
+    ],
+    "zones": [
+      {
+        "name": "Ingestion",
+        "category": "bridge",
+        "node_ids": [
+          "stage",
+          "pipe"
+        ]
+      },
+      {
+        "name": "Bronze Layer",
+        "category": "snow",
+        "node_ids": [
+          "bronze"
+        ]
+      },
+      {
+        "name": "Silver Layer",
+        "category": "snow",
+        "node_ids": [
+          "silver"
+        ]
+      },
+      {
+        "name": "Gold Layer",
+        "category": "snow",
+        "node_ids": [
+          "gold"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "bi"
+        ]
+      }
+    ]
+  }
 }

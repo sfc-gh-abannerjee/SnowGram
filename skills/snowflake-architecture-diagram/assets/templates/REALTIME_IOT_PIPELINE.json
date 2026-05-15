@@ -9,5 +9,159 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2025-11-07T09:45:46.870000-08:00",
-  "UPDATED_AT": "2026-02-17T21:54:31.270000-08:00"
+  "UPDATED_AT": "2026-02-17T21:54:31.270000-08:00",
+  "RICH_STATE": {
+    "title": "Real-Time IoT Pipeline",
+    "subtitle": "Devices \u2192 MQTT broker \u2192 Streaming ingest \u2192 Time-series \u2192 Operations",
+    "nodes": [
+      {
+        "id": "devices",
+        "label": "IoT Devices",
+        "detail": "Sensors / edge gateways",
+        "icon": "Snowflake_ICON_IoT.svg",
+        "category": "onprem",
+        "zone": "External Sources",
+        "object_type": "IOT",
+        "stage": "source",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+      },
+      {
+        "id": "mqtt",
+        "label": "MQTT Broker",
+        "detail": "Pub/sub fan-in",
+        "icon": "Snowflake_ICON_IoT.svg",
+        "category": "onprem",
+        "zone": "External Sources",
+        "object_type": "IOT",
+        "stage": "source",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview"
+      },
+      {
+        "id": "pipe",
+        "label": "Snowpipe Streaming",
+        "detail": "Sub-second sensor ingest",
+        "icon": "Snowflake_ICON_RA_Pipe.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "SNOWPIPE_STREAMING",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
+      },
+      {
+        "id": "raw",
+        "label": "Time-Series Table",
+        "detail": "Raw sensor readings",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Raw Layer",
+        "object_type": "TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "dt",
+        "label": "Dynamic Table",
+        "detail": "Windowed rollups",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Curated Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "transformation",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "anomaly",
+        "label": "Anomaly Output",
+        "detail": "Threshold breach signals",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "ops",
+        "label": "Operations App",
+        "detail": "Live monitoring",
+        "icon": "Snowflake_ICON_Streamlit_in_Snowflake.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "STREAMLIT",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
+      }
+    ],
+    "edges": [
+      {
+        "source": "devices",
+        "target": "mqtt"
+      },
+      {
+        "source": "mqtt",
+        "target": "pipe"
+      },
+      {
+        "source": "pipe",
+        "target": "raw"
+      },
+      {
+        "source": "raw",
+        "target": "dt"
+      },
+      {
+        "source": "dt",
+        "target": "anomaly"
+      },
+      {
+        "source": "anomaly",
+        "target": "ops"
+      }
+    ],
+    "zones": [
+      {
+        "name": "External Sources",
+        "category": "onprem",
+        "node_ids": [
+          "devices",
+          "mqtt"
+        ]
+      },
+      {
+        "name": "Ingestion",
+        "category": "bridge",
+        "node_ids": [
+          "pipe"
+        ]
+      },
+      {
+        "name": "Raw Layer",
+        "category": "snow",
+        "node_ids": [
+          "raw"
+        ]
+      },
+      {
+        "name": "Curated Layer",
+        "category": "snow",
+        "node_ids": [
+          "dt"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "snow",
+        "node_ids": [
+          "anomaly"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "ops"
+        ]
+      }
+    ]
+  }
 }

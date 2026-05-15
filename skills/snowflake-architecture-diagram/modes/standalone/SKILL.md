@@ -1,164 +1,192 @@
 ---
 name: snowflake-architecture-diagram-standalone
-description: "Standalone mode: generate Snowflake architecture diagrams with no Snowflake connection required. Uses bundled templates + local Mermaid composer + cortex search docs for citations."
+description: "Standalone mode: generate Snowflake architecture diagrams with no Snowflake connection required. Default path is from-scratch composition informed by SnowflakeProductDocs and SME-skill consultation; the 14 bundled templates are FALLBACKS used only when a prompt cleanly matches a known reference architecture."
 parent_skill: snowflake-architecture-diagram
 ---
 
 # Standalone mode
 
-Generate exportable Snowflake architecture diagrams without needing a deployed SnowGram agent or any Snowflake connection. Uses 14 bundled templates + a Python composer that mirrors the deployed Mermaid generation logic byte-for-byte.
+Generate exportable Snowflake architecture diagrams without needing a deployed SnowGram agent or any Snowflake connection. The default path composes a fresh diagram from `flow_builder` informed by `cortex search docs` and Snowflake-expert SME skills. The 14 bundled reference-architecture templates serve as fallbacks for prompts that cleanly match a known pattern (e.g. "medallion lakehouse with bronze/silver/gold").
+
+**Design rule** (enforced by the rule store):
+> Templates are FALLBACKS, not the default generation path. Generate from-scratch (rich-state authoring) when the prompt does not closely match a known template pattern. Only fall back to a template when the prompt's intent maps cleanly onto one of the 14 reference architectures, AND in that case still apply prompt-driven customizations rather than emitting the template verbatim.
 
 ## Path resolution (do this once)
 
-This sub-skill uses `$SKILL_DIR/...` paths. Resolve them by sourcing the canonical helper. The absolute path to that helper is `<SKILL_BASE_DIR>/assets/scripts/skill_paths.sh`, where `<SKILL_BASE_DIR>` is the path the skill loader prints as `Base directory for this skill:` when this skill is loaded (or the path returned by `cortex skill list` for `snowflake-architecture-diagram`).
+This sub-skill uses `$SKILL_DIR/...` paths. Resolve them by sourcing the canonical helper:
 
 ```bash
 source "<SKILL_BASE_DIR>/assets/scripts/skill_paths.sh"
-# Now: $SKILL_DIR, $TEMPLATES_DIR, $COMPOSER_DIR, $VIEWER_DIR, $SCRIPTS_DIR,
-#      $STATE_FILE are all set. See the parent SKILL.md for the full table.
+# Sets $SKILL_DIR, $TEMPLATES_DIR, $COMPOSER_DIR, $VIEWER_DIR, $SCRIPTS_DIR, $STATE_FILE.
 ```
 
 For Python helpers, import `assets/scripts/skill_paths.py` analogously. The parent SKILL.md shows the importlib pattern.
 
 ## Workflow
 
-### Step 1: Match prompt to a template OR resolve via docs
+### Step 1 — Gather domain knowledge (PRIMARY, not optional)
 
-**Goal:** decide whether the user wants a canned reference architecture, a custom component list, or a docs-driven pipeline resolution.
+Quality of the rendered diagram depends on having current Snowflake best-practice context BEFORE composition. Skip this step ONLY for trivial / one-off requests; for any production-quality diagram, do all three sub-steps.
 
-**Preferred path — docs-driven resolution (recommended for new diagrams):**
-
-```bash
-python3 "$COMPOSER_DIR/intent_router.py" --docs "<user's prompt verbatim>"
-```
-
-This queries SnowflakeProductDocs to determine current best-practice components for the pipeline type (medallion, streaming, IoT, batch, security). Returns a pipeline spec with Dynamic Tables for transformation/serving layers by default — aligned with Snowflake's latest guidance.
-
-```jsonc
-{"type": "docs_driven", "pipeline_type": "medallion",
- "spec": [{"stage": "source", "object_type": "S3", "label": "Cloud Storage", ...}, ...],
- "confidence": 0.8, "rationale": "..."}
-```
-
-**Alternative — legacy routing via the intent router (backward-compatible):**
+#### 1a. Detect pipeline type
 
 ```bash
-python3 "$COMPOSER_DIR/intent_router.py" "<user's prompt verbatim>"
+PIPELINE_TYPE=$(python3 "$COMPOSER_DIR/intent_router.py" --detect-type "<user prompt>" | python3 -c "import sys,json;print(json.load(sys.stdin)['pipeline_type'])")
 ```
 
-The router returns one of two decisions as JSON:
+`PIPELINE_TYPE` is one of: `medallion | streaming | iot | batch | security | generic`.
 
-```jsonc
-// Single-template path (clear, single-source prompt)
-{"type": "template", "template_id": "MEDALLION_LAKEHOUSE", "confidence": 0.6, "rationale": "..."}
+#### 1b. Run targeted documentation queries
 
-// Compose path (multi-source or ambiguous prompt)
-{"type": "compose", "block_ids": ["S3_BUCKET_BLOCK", "KAFKA_CONNECTOR_BLOCK", ...],
- "confidence": 0.66, "rationale": "...", "covered_terms": [...]}
+```bash
+python3 "$COMPOSER_DIR/intent_router.py" --queries-for "$PIPELINE_TYPE"
+# → 3 queries to feed cortex search docs
 ```
 
-The router automatically detects multi-source prompts (e.g. "S3 and Kafka", "Snowpipe and Iceberg") and falls into compose mode because no single canned template covers multiple source classes. It also handles all unambiguous single-template prompts. Use this in preference to manual keyword matching — it produces the right routing for prompts the keyword table alone would mis-fit.
+Then run each:
 
-**Manual fallback — keyword routing table (only if the router is unavailable):**
+```bash
+cortex search docs "<query 1>"
+cortex search docs "<query 2>"
+cortex search docs "<query 3>"
+```
 
-| Keywords (any) | Template ID |
+Collect URLs + titles + relevant excerpts.
+
+#### 1c. Invoke Snowflake-expert SME skills
+
+Always invoke `snowflake-best-practices`. Then invoke 1–2 type-specific skills based on `PIPELINE_TYPE`:
+
+| pipeline_type | Type-specific skills (max 2) |
 |---|---|
-| medallion, bronze/silver/gold (with Kafka/S3/external) | `MEDALLION_LAKEHOUSE` |
-| medallion, snowflake-only, no external | `MEDALLION_LAKEHOUSE_SNOWFLAKE_ONLY` |
-| streaming, kafka, dynamic tables, real-time | `STREAMING_DATA_STACK` |
-| security, SIEM, log analytics | `SECURITY_ANALYTICS` |
-| customer 360, CDP | `CUSTOMER_360` |
-| ML, machine learning, features, model registry | `ML_FEATURE_ENGINEERING` |
-| batch, ETL, data warehouse, star schema | `BATCH_DATA_WAREHOUSE` |
-| IoT, sensor, edge, MQTT | `REALTIME_IOT_PIPELINE` |
-| governance, masking, RLS | `DATA_GOVERNANCE_COMPLIANCE` |
-| embedded, dashboard analytics, hybrid tables | `EMBEDDED_ANALYTICS` |
-| data mesh, multi-cloud federated | `MULTI_CLOUD_DATA_MESH` |
-| serverless, lambda, functions | `SERVERLESS_DATA_STACK` |
-| financial, fraud, transactions | `REALTIME_FINANCIAL_TRANSACTIONS` |
-| iceberg, hybrid cloud, external catalog | `HYBRID_CLOUD_LAKEHOUSE` |
+| medallion / batch | `dynamic-tables`, `dbt-projects-on-snowflake` |
+| streaming / iot | `snowpipe-streaming`, `dynamic-tables` |
+| security / governance | `data-governance`, `network-security` |
+| ml / customer_360 | `machine-learning`, `cortex-ai-function-studio` |
+| iceberg / hybrid | `iceberg` |
+| serverless | `deploy-to-spcs` |
+| financial / fraud | `snowpipe-streaming`, `dynamic-tables` |
+| analytics_embedded | `snowflake-apps`, `snowflake-notebooks` |
+| generic | `snowflake-best-practices` only |
 
-If the prompt matches a template strongly: load `$SKILL_DIR/assets/templates/<id>.json` and use its `FULL_MERMAID_CODE` as the diagram source.
+Invoke each via the Skill tool. Read each skill's recommendations.
 
-If the prompt does NOT cleanly match a template (e.g. user lists specific components), use the **freeform composer**:
+#### 1d. Synthesize the knowledge pack
 
-```bash
-python3 $SKILL_DIR/assets/composer/composer.py <BLOCK_ID_1> <BLOCK_ID_2> ...
-```
+Write the gathered guidance into `/tmp/kp_<run-id>.json` matching this schema:
 
-To find BLOCK_IDs: read `$SKILL_DIR/assets/component_blocks.json` (42 blocks across categories: external, ingestion, bronze, silver, gold, transformation, security, compute, bi, storage). Use `$SKILL_DIR/assets/component_synonyms.json` (202 synonyms) for fuzzy term resolution — match the user's words against the `SYNONYM` column to find the corresponding `COMPONENT_TYPE`, then map to a block.
-
-**⚠️ STOP**: confirm the chosen template OR component list with the user before rendering.
-
-### Step 2: Enrich with documentation citations
-
-Run `cortex search docs` for each major component or pattern in the diagram. This works without a Snowflake connection and adds value to standalone mode:
-
-```bash
-cortex search docs "snowpipe streaming best practices"
-cortex search docs "dynamic tables refresh"
-cortex search docs "iceberg external catalog"
-```
-
-Collect up to 5 citations as `[{url, title, excerpt}]` objects.
-
-### Step 3: Write state.json + launch viewer
-
-```bash
-# Write state.json
-cat > $SKILL_DIR/assets/viewer/state.json <<EOF
+```jsonc
 {
-  "mermaid": "<the Mermaid code>",
-  "title": "<template name or freeform title>",
-  "source": "standalone:template:<TEMPLATE_ID>"  // or "standalone:freeform"
-  "citations": [...]
+  "pipeline_type": "medallion",
+  "doc_citations": [
+    {"url": "https://docs.snowflake.com/...", "title": "...", "excerpt": "..."}
+  ],
+  "best_practice_directives": [
+    "Prefer Dynamic Tables over Streams+Tasks for declarative refresh",
+    "TARGET_LAG = DOWNSTREAM for chained DTs",
+    "Separate WH per workload (load / transform / BI)"
+  ],
+  "component_overrides": {
+    "ingestion": "SNOWPIPE_STREAMING",
+    "transformation": "DYNAMIC_TABLE",
+    "serving": "DYNAMIC_TABLE"
+  },
+  "annotations": [
+    {"object_type": "DYNAMIC_TABLE", "note": "TARGET_LAG = DOWNSTREAM"}
+  ]
 }
+```
+
+Valid `component_overrides` keys: `source | ingestion | raw_storage | transformation | curated_storage | serving | consumption | security`.
+
+✋ **STOP**: confirm the knowledge pack with the user (or briefly summarize what you gathered) before rendering. This catches misinterpretation early and is much cheaper than re-rendering.
+
+### Step 2 — Render
+
+A single command does the rest: routing → baseline state → knowledge-pack overlay → prompt customization → self-contained HTML.
+
+**REQUIRED — invoke `diagram_from_prompt.py`. Do NOT write a state.json by hand. Do NOT generate Mermaid manually. Do NOT improvise an HTML file.** The script is the only correct path because it stamps `routing` metadata, populates `zone.node_ids`, applies the knowledge pack overlay, runs the prompt customizer, and embeds icons as data URIs. Hand-rolled state JSONs will render incorrectly (missing zone.node_ids → empty zones in the viewer).
+
+```bash
+python3 "$SCRIPTS_DIR/diagram_from_prompt.py" \
+    "<user prompt verbatim>" \
+    --knowledge-pack /tmp/kp_<run-id>.json \
+    --out <user-requested-path>.html
+```
+
+Add `--title "<override>"` to force a custom title. Add `--no-docs` to skip live `cortex search docs` enrichment in the from-scratch path (use cached/default specs only — much faster but less authoritative).
+
+The output is a self-contained ~3 MB HTML with the bundled viewer (custom orthogonal connector routing, line jumps, hover-traceable connections, zone categorization legend), all Snowflake icons baked as data URIs, and the rich state JSON embedded. No server, no internet required to view.
+
+### Step 3 — (Optional) Live viewer for iteration
+
+If the user says "show me / open the viewer / let me iterate live":
+
+```bash
+# Write state.json into the viewer's expected location
+cat > "$STATE_FILE" <<EOF
+$(diagram_from_prompt.py "<prompt>" --out - --knowledge-pack /tmp/kp.json | grep -oE '"state":[[:space:]]*\{.*\}' | sed 's/^"state":[[:space:]]*//')
 EOF
 
-# Launch
-$SKILL_DIR/assets/scripts/launch_viewer.sh
+# Or extract the state JSON another way that's convenient.
+# Then launch:
+"$SCRIPTS_DIR/launch_viewer.sh"
 ```
 
-The viewer opens at `http://localhost:<port>/`. User can download `.mmd`, `.svg`, `.png`.
+The viewer opens at `http://localhost:<port>/`. User can download `.mmd`, `.svg`, `.png` from the viewer header.
 
-### Step 4: Iteration
+## How `diagram_from_prompt.py` decides the path
+
+| Decision | Trigger | What gets rendered |
+|---|---|---|
+| `template` | Prompt scores ≥ 2 distinct keyword phrases for one template AND no tie | Template's `RICH_STATE` field, then knowledge-pack overlay, then prompt customizations |
+| `from_scratch` | Default — when no template scores ≥ 2 | `flow_builder.build_flow_from_docs()` produces fresh `{nodes, edges, zones}` for the detected pipeline_type, then overlay + customizations |
+| `compose` | Multi-source prompt (≥ 2 source classes) AND compose plan has ≥ 4 components | `flow_builder.build_flow_from_block_ids()` from the router-supplied list |
+
+Templates are NEVER emitted verbatim. Even on the template path, the knowledge pack and the prompt customizer get to add/swap nodes (e.g., user mentions "Tableau" → consumption swaps to Tableau; user mentions "Kafka" → Kafka source added; user mentions "PII / masking" → masking + RLS policy nodes added if missing).
+
+## Iteration
 
 If the user wants to refine ("add Kafka before Bronze", "swap to a different template"):
 
-- **Template swap**: re-run from Step 1 with new template
-- **Add/remove components**: re-run composer with modified BLOCK_ID list
-- **Swap mode**: route to `connected-cli` if user wants conversational refinement
-
-Always rewrite `state.json` and reload the viewer (the user can refresh the browser tab — no need to relaunch the server).
+- **Template swap**: re-run with `--prefer-template` to bias toward template path, or add the template's keyword phrases to the prompt
+- **Add components**: just include them in the prompt — the customizer will add them
+- **Best-practice overrides**: edit the `knowledge_pack.json`'s `component_overrides` and re-render
+- **Swap mode**: route to `connected-cli` if the user wants conversational refinement
 
 ## Tools
 
 | Tool | Used for |
 |---|---|
-| `python3 $SKILL_DIR/assets/composer/composer.py` | Compose Mermaid from BLOCK_IDs |
-| `$SKILL_DIR/assets/templates/<id>.json` | Pre-built template Mermaid |
-| `$SKILL_DIR/assets/component_blocks.json` | BLOCK_ID lookup |
-| `$SKILL_DIR/assets/component_synonyms.json` | Term -> component_type fuzzy match |
-| `cortex search docs "<query>"` | Documentation enrichment |
-| `$SKILL_DIR/assets/scripts/launch_viewer.sh` | Spawn viewer + open browser |
-| `$SKILL_DIR/assets/scripts/stop_viewer.sh` | Stop viewer |
+| `python3 $SCRIPTS_DIR/diagram_from_prompt.py "<prompt>" --out <out.html>` | **One-shot prompt → HTML.** Default tool. |
+| `python3 $COMPOSER_DIR/intent_router.py --detect-type "<prompt>"` | Pipeline-type detection (Step 1a) |
+| `python3 $COMPOSER_DIR/intent_router.py --queries-for <type>` | Docs queries to feed `cortex search docs` (Step 1b) |
+| `cortex search docs "<query>"` | Documentation enrichment (Step 1b) |
+| Skill tool → `snowflake-best-practices` + 1–2 type-specific | SME consultation (Step 1c) |
+| `$TEMPLATES_DIR/<id>.json` | 14 reference architectures (with `RICH_STATE` field) |
+| `python3 $COMPOSER_DIR/composer.py` | Lower-level Mermaid composer from BLOCK_IDs (rarely needed directly) |
+| `python3 $SCRIPTS_DIR/render_static.py --state <s.json> --out <out.html>` | Render an existing state.json (lower-level than `diagram_from_prompt.py`) |
+| `$SCRIPTS_DIR/launch_viewer.sh` | Spawn live viewer + open browser |
+| `$SCRIPTS_DIR/stop_viewer.sh` | Stop viewer |
 
 ## Stopping points
 
-- ✋ After Step 1: confirm template / component list
-- ✋ After Step 3: viewer launched, user reviews diagram
-- ✋ Before iteration: confirm direction (refine, swap, escape to connected mode)
+- ✋ After Step 1d: confirm knowledge pack with user
+- ✋ After Step 2 (render): user reviews the HTML
+- ✋ Before iteration: confirm direction (refine in place, swap, escape to connected mode)
 
 ## Output
 
-- Browser tab at `http://localhost:<port>/` showing the diagram
+- Self-contained `.html` (~3 MB): ships the bundled viewer + state + icons; works offline, no server
+- Or browser tab at `http://localhost:<port>/` if launched live
 - Downloadable artifacts via header buttons: `.mmd`, `.svg`, `.png`
-- Citations drawer showing relevant Snowflake documentation links
+- Citations panel showing `cortex search docs`-sourced URLs
+- Zone categorization legend (External / Ingestion / Snowflake / Business Outcome)
 
 ## Stale snapshot warning
 
-If `$SKILL_DIR/assets/_snapshot_meta.json` is older than 30 days OR the `source_sql_sha256` no longer matches the SQL files in the SnowGram repo, surface a one-line warning to the user:
+If `$SKILL_DIR/assets/_snapshot_meta.json` is older than 30 days OR the `source_sql_sha256` no longer matches the SQL files in the SnowGram repo, surface a one-line warning:
 
-> Snapshot is N days old. Run `python3 $SKILL_DIR/assets/scripts/snapshot.py -c <connection>` to refresh.
+> Snapshot is N days old. Run `python3 $SCRIPTS_DIR/snapshot.py -c <connection>` to refresh.
 
 Continue rendering anyway.

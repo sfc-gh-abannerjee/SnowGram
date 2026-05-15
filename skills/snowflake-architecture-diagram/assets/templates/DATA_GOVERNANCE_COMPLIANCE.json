@@ -9,5 +9,159 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2025-11-07T09:45:50.710000-08:00",
-  "UPDATED_AT": "2026-02-17T21:53:16.742000-08:00"
+  "UPDATED_AT": "2026-02-17T21:53:16.742000-08:00",
+  "RICH_STATE": {
+    "title": "Data Governance & Compliance",
+    "subtitle": "Tagged sensitive data \u2192 Masking + RLS \u2192 Secure views \u2192 Compliant access",
+    "nodes": [
+      {
+        "id": "src",
+        "label": "Source Tables",
+        "detail": "Customer / transaction data",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Raw Layer",
+        "object_type": "TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "tag",
+        "label": "Object Tags",
+        "detail": "PII / SENSITIVE classification",
+        "icon": "Snowflake_ICON_RA_Tag.svg",
+        "category": "snow",
+        "zone": "Security & Governance",
+        "object_type": "TAG",
+        "stage": "security",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/object-tagging"
+      },
+      {
+        "id": "mask",
+        "label": "Masking Policy",
+        "detail": "Column-level dynamic masking",
+        "icon": "Snowflake_ICON_RA_Policy_Masking.svg",
+        "category": "snow",
+        "zone": "Security & Governance",
+        "object_type": "MASKING_POLICY",
+        "stage": "security",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/security-column-ddm-intro"
+      },
+      {
+        "id": "rls",
+        "label": "Row Access Policy",
+        "detail": "Row-level security",
+        "icon": "Snowflake_ICON_RA_Policy_Row.svg",
+        "category": "snow",
+        "zone": "Security & Governance",
+        "object_type": "ROW_ACCESS_POLICY",
+        "stage": "security",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/security-row-intro"
+      },
+      {
+        "id": "roles",
+        "label": "Functional Roles",
+        "detail": "RBAC enforcement",
+        "icon": "Snowflake_ICON_RA_Role.svg",
+        "category": "snow",
+        "zone": "Security & Governance",
+        "object_type": "ROLE",
+        "stage": "security",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/security-access-control-overview"
+      },
+      {
+        "id": "secview",
+        "label": "Secure View",
+        "detail": "Policy-enforced access",
+        "icon": "Snowflake_ICON_RA_View_Secure.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "SECURE_VIEW",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/views-secure"
+      },
+      {
+        "id": "consumers",
+        "label": "Analysts & Apps",
+        "detail": "Role-scoped consumption",
+        "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "BI_TOOL",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+      }
+    ],
+    "edges": [
+      {
+        "source": "src",
+        "target": "tag"
+      },
+      {
+        "source": "tag",
+        "target": "mask"
+      },
+      {
+        "source": "mask",
+        "target": "rls"
+      },
+      {
+        "source": "rls",
+        "target": "roles"
+      },
+      {
+        "source": "roles",
+        "target": "secview"
+      },
+      {
+        "source": "secview",
+        "target": "consumers"
+      },
+      {
+        "source": "tag",
+        "target": "rls"
+      },
+      {
+        "source": "mask",
+        "target": "secview"
+      },
+      {
+        "source": "rls",
+        "target": "secview"
+      }
+    ],
+    "zones": [
+      {
+        "name": "Raw Layer",
+        "category": "snow",
+        "node_ids": [
+          "src"
+        ]
+      },
+      {
+        "name": "Security & Governance",
+        "category": "snow",
+        "node_ids": [
+          "tag",
+          "mask",
+          "rls",
+          "roles"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "snow",
+        "node_ids": [
+          "secview"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "consumers"
+        ]
+      }
+    ]
+  }
 }

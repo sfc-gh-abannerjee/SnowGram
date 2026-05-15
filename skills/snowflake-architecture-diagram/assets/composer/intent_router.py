@@ -389,6 +389,131 @@ def route(
 
 
 # --------------------------------------------------------------------------- #
+# CONFIDENCE-GATED ROUTING (route_v2 — preferred for prompt-driven generation)
+#
+# Per the standalone-skill design rule: templates are FALLBACKS, not the
+# default path. A template only wins when the prompt clearly matches its
+# pattern (≥ template_threshold distinct keyword phrases). Otherwise route
+# to from_scratch and let flow_builder.build_flow_from_docs() compose a
+# fresh rich-state diagram informed by SnowflakeProductDocs.
+# --------------------------------------------------------------------------- #
+
+DEFAULT_TEMPLATE_THRESHOLD = 2
+
+
+def _detect_pipeline_type_local(prompt_norm: str) -> str:
+    """
+    Lightweight pipeline-type detection that does not import docs_resolver
+    (kept dependency-free so route_v2 stays usable in restricted envs).
+    Mirrors docs_resolver._INTENT_SIGNALS.
+    """
+    signals: dict[str, list[str]] = {
+        "medallion": ["medallion", "bronze", "silver", "gold", "lakehouse", "multi-layer"],
+        "streaming": ["streaming", "real-time", "real time", "kafka", "kinesis", "event hub", "low latency"],
+        "iot":       ["iot", "sensor", "mqtt", "device", "telemetry", "edge"],
+        "batch":     ["batch", "etl", "star schema", "data warehouse", "scheduled", "nightly"],
+        "security":  ["security", "governance", "masking", "rls", "rbac", "compliance", "audit"],
+    }
+    scores: dict[str, int] = {pt: 0 for pt in signals}
+    for pt, keys in signals.items():
+        scores[pt] = sum(1 for k in keys if k in prompt_norm)
+    best = max(scores, key=scores.get)
+    return best if scores[best] > 0 else "generic"
+
+
+def route_v2(
+    prompt: str,
+    *,
+    knowledge_pack: Optional[dict[str, Any]] = None,
+    template_threshold: int = DEFAULT_TEMPLATE_THRESHOLD,
+    blocks_path: Optional[Path] = None,
+    synonyms_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    """
+    Confidence-gated routing.
+
+    Returns one of:
+        {"type": "template",    "template_id", "confidence", "score",
+         "matched_keywords", "rationale"}
+        {"type": "from_scratch","pipeline_type", "confidence", "rationale"}
+        {"type": "compose",     "block_ids", "covered_terms", "confidence",
+         "rationale"}
+
+    Template path requires score >= template_threshold AND no tie at the top.
+    A knowledge_pack with an explicit pipeline_type can override the template
+    path when the template's category disagrees with the pack.
+    """
+    prompt_norm = _normalize(prompt)
+    blocks = _load_blocks(blocks_path)
+    synonyms = _load_synonyms(synonyms_path)
+
+    detected_sources = _detect_sources(prompt_norm)
+
+    # Multi-source prompts → compose (no template covers ≥ 2 source classes).
+    # BUT only if compose can assemble a meaningfully populated pipeline (≥ 4
+    # components spanning source + downstream stages). For thinner prompts we
+    # fall through to from_scratch which always produces a full pipeline.
+    if len(detected_sources) >= 2:
+        block_ids, covered = _compose_plan_for_prompt(
+            prompt_norm, detected_sources, blocks, synonyms
+        )
+        if len(block_ids) >= 4:
+            return {
+                "type": "compose",
+                "block_ids": block_ids,
+                "confidence": min(1.0, len(detected_sources) / 3.0),
+                "rationale": (
+                    f"Prompt mentions {len(detected_sources)} distinct source "
+                    f"classes ({', '.join(detected_sources)}); composing from blocks."
+                ),
+                "covered_terms": covered,
+            }
+
+    # Score every template, capture matched keywords.
+    scored: list[tuple[int, str, list[str]]] = []
+    for tid, kws in TEMPLATE_KEYWORDS.items():
+        hits = [kw for kw in kws if kw in prompt_norm]
+        scored.append((len(hits), tid, hits))
+    scored.sort(reverse=True, key=lambda x: x[0])
+    best_score, best_template, best_hits = scored[0]
+    second_score = scored[1][0] if len(scored) > 1 else 0
+
+    pack_pipeline_type = (knowledge_pack or {}).get("pipeline_type")
+    detected_pipeline_type = pack_pipeline_type or _detect_pipeline_type_local(prompt_norm)
+
+    # Template path — only when score is decisive AND no tie at the top.
+    if best_score >= template_threshold and best_score > second_score:
+        return {
+            "type": "template",
+            "template_id": best_template,
+            "score": best_score,
+            "matched_keywords": best_hits,
+            "confidence": min(1.0, 0.5 + 0.15 * best_score),
+            "rationale": (
+                f"Matched {best_score} distinct keyword phrase(s) for "
+                f"{best_template}: {best_hits}. Template path."
+            ),
+        }
+
+    # Fall through to from-scratch — the default for ambiguous prompts.
+    return {
+        "type": "from_scratch",
+        "pipeline_type": detected_pipeline_type,
+        "confidence": 0.7,
+        "rationale": (
+            f"No template scored above the {template_threshold}-keyword threshold "
+            f"(best={best_score} for {best_template}). Composing fresh "
+            f"'{detected_pipeline_type}' pipeline from docs-driven flow_builder."
+        ),
+        "best_template_candidate": {
+            "template_id": best_template,
+            "score": best_score,
+            "matched_keywords": best_hits,
+        },
+    }
+
+
+# --------------------------------------------------------------------------- #
 # DOCS-DRIVEN ROUTING (preferred — uses SnowflakeProductDocs)
 # --------------------------------------------------------------------------- #
 def route_docs_driven(
@@ -429,22 +554,53 @@ def route_docs_driven(
 # --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
+def _load_docs_resolver():
+    """Side-load docs_resolver as a module without requiring package context."""
+    import importlib.util
+    spec_mod = importlib.util.spec_from_file_location(
+        "docs_resolver", Path(__file__).parent / "docs_resolver.py"
+    )
+    mod = importlib.util.module_from_spec(spec_mod)
+    spec_mod.loader.exec_module(mod)
+    return mod
+
+
 def _main() -> int:
-    if len(sys.argv) < 2:
-        print("Usage: intent_router.py \"<prompt>\"", file=sys.stderr)
-        print("       intent_router.py --docs \"<prompt>\"  (docs-driven mode)", file=sys.stderr)
+    argv = sys.argv[1:]
+    if not argv:
+        print(
+            "Usage: intent_router.py \"<prompt>\"                # confidence-gated route_v2 (default)\n"
+            "       intent_router.py --legacy \"<prompt>\"        # legacy route() for back-compat\n"
+            "       intent_router.py --docs \"<prompt>\"          # docs-driven full resolution\n"
+            "       intent_router.py --detect-type \"<prompt>\"   # print pipeline_type only\n"
+            "       intent_router.py --queries-for <pipeline_type>  # print docs queries to run",
+            file=sys.stderr,
+        )
         return 2
 
-    if sys.argv[1] == "--docs":
-        prompt = " ".join(sys.argv[2:])
-        # Use sys.path hack for CLI invocation (no package context)
-        import importlib.util
-        spec_mod = importlib.util.spec_from_file_location(
-            "docs_resolver", Path(__file__).parent / "docs_resolver.py"
-        )
-        docs_resolver = importlib.util.module_from_spec(spec_mod)
-        spec_mod.loader.exec_module(docs_resolver)
+    flag = argv[0]
 
+    if flag == "--detect-type":
+        prompt = " ".join(argv[1:])
+        ptype = _detect_pipeline_type_local(_normalize(prompt))
+        print(json.dumps({"pipeline_type": ptype}))
+        return 0
+
+    if flag == "--queries-for":
+        if len(argv) < 2:
+            print("ERROR: --queries-for requires a pipeline type", file=sys.stderr)
+            return 2
+        ptype = argv[1]
+        docs_resolver = _load_docs_resolver()
+        queries = docs_resolver._DOCS_QUERIES.get(
+            ptype, docs_resolver._DOCS_QUERIES["generic"]
+        )
+        print(json.dumps({"pipeline_type": ptype, "queries": list(queries)}))
+        return 0
+
+    if flag == "--docs":
+        prompt = " ".join(argv[1:])
+        docs_resolver = _load_docs_resolver()
         pipeline_type = docs_resolver.detect_pipeline_type(prompt.lower())
         pipeline_spec = docs_resolver.resolve_pipeline(prompt, use_docs=True)
         decision = {
@@ -454,8 +610,14 @@ def _main() -> int:
             "confidence": 0.8,
             "rationale": f"Docs-driven resolution for '{pipeline_type}' pipeline.",
         }
+        print(json.dumps(decision, indent=2))
+        return 0
+
+    if flag == "--legacy":
+        decision = route(" ".join(argv[1:]))
     else:
-        decision = route(" ".join(sys.argv[1:]))
+        # Default: route_v2 — confidence-gated, templates-as-fallback.
+        decision = route_v2(" ".join(argv))
 
     print(json.dumps(decision, indent=2))
     return 0

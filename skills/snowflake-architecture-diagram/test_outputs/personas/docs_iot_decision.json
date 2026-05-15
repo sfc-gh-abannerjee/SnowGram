@@ -7,7 +7,8 @@
       "object_type": "IOT",
       "label": "IoT Gateway",
       "detail": "MQTT / device telemetry",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
     },
     {
       "stage": "ingestion",
@@ -46,7 +47,8 @@
       "object_type": "WEB_APP",
       "label": "Monitoring App",
       "detail": "Operations dashboard",
-      "zone": "Consumption"
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/developer-guide/native-apps/connector-sdk/flow/ingestion-management/overview"
     }
   ]
 }

@@ -1,0 +1,149 @@
+{
+  "title": "Docs-Driven \u2014 Vague Prompt (Generic)",
+  "subtitle": "Tests fallback to generic pipeline pattern",
+  "source": "standalone:docs_driven",
+  "nodes": [
+    {
+      "id": "data_source",
+      "label": "Data Source",
+      "detail": "External system",
+      "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/multi-location-resilience-data-pipelines"
+    },
+    {
+      "id": "snowpipe",
+      "label": "Snowpipe",
+      "detail": "Automated ingestion",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-classic-overview"
+    },
+    {
+      "id": "landing_table",
+      "label": "Landing Table",
+      "detail": "Raw, unprocessed data",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
+    },
+    {
+      "id": "dynamic_table",
+      "label": "Dynamic Table",
+      "detail": "Declarative transformation",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
+    },
+    {
+      "id": "dynamic_table_4",
+      "label": "Dynamic Table",
+      "detail": "Consumption-ready output",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
+    },
+    {
+      "id": "analytics",
+      "label": "Analytics",
+      "detail": "Dashboards & reports",
+      "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+      "category": "outcome",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+    }
+  ],
+  "edges": [
+    {
+      "source": "data_source",
+      "target": "snowpipe"
+    },
+    {
+      "source": "snowpipe",
+      "target": "landing_table"
+    },
+    {
+      "source": "landing_table",
+      "target": "dynamic_table"
+    },
+    {
+      "source": "dynamic_table",
+      "target": "dynamic_table_4"
+    },
+    {
+      "source": "dynamic_table_4",
+      "target": "analytics"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "data_source"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe"
+      ]
+    },
+    {
+      "name": "Raw Layer",
+      "category": "snow",
+      "node_ids": [
+        "landing_table"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "dynamic_table"
+      ]
+    },
+    {
+      "name": "Serving Layer",
+      "category": "snow",
+      "node_ids": [
+        "dynamic_table_4"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "analytics"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/multi-location-resilience-data-pipelines",
+      "title": "Data Source",
+      "excerpt": "External system"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-classic-overview",
+      "title": "Snowpipe",
+      "excerpt": "Automated ingestion"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison",
+      "title": "Landing Table",
+      "excerpt": "Raw, unprocessed data"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
+      "title": "Analytics",
+      "excerpt": "Dashboards & reports"
+    }
+  ]
+}
