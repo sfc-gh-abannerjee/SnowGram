@@ -2388,9 +2388,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                     ...lastMsg,
                     completedTools: [...completedTools, toolName],
                     toolResults: [...toolResults, toolResult],
-                    // Store extracted artifacts if found
-                    jsonSpec: extractedJsonSpec || lastMsg.jsonSpec,
-                    mermaidCode: extractedMermaid || lastMsg.mermaidCode
+                    // NOTE: do not set jsonSpec/mermaidCode here. The bubble
+                    // expanders are meant to mirror what the agent says in
+                    // its text response (same timing as the JSON dropdown).
+                    // toolExtractedMermaid is still captured separately for
+                    // canvas rendering.
                   };
                 }
                 return updated;
@@ -2462,24 +2464,22 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 const updated = [...msgs];
                 const lastMsg = updated[updated.length - 1];
                 // Precedence (highest wins):
-                //   1. Complete fenced extraction from agent text
-                //      (streamingMermaidCode/JsonSpec) — authoritative
-                //   2. tool_result-extracted value (toolExtractedMermaid /
-                //      toolExtractedJsonSpec) — full payload, instant
-                //   3. Latest partial from agent text — grows char-by-char as
+                //   1. Complete fenced extraction from agent text — authoritative
+                //   2. Latest partial from agent text — grows char-by-char as
                 //      chunks stream in, gives users live feedback
-                //   4. Prior lastMsg value — preserve if nothing new
-                // Note: partial OVER lastMsg is intentional. Each chunk's
-                // partialMermaidCode is the cumulative streamed-so-far text,
-                // so it always grows; using lastMsg first would lock the
-                // dropdown to the first tiny fragment forever.
+                //   3. Prior lastMsg value — preserve if nothing new
+                // The dropdown intentionally mirrors what the agent has actually
+                // emitted in its text response so it lines up timing-wise with
+                // the JSON Specification dropdown. Tool-extracted mermaid is
+                // captured separately into toolExtractedMermaid (used only for
+                // canvas rendering) and never feeds the bubble's m.mermaidCode.
                 updated[updated.length - 1] = { 
                   ...lastMsg,
                   role: 'assistant', 
                   text: displayText || 'Thinking...',
                   timestamp: lastMsg.timestamp || new Date().toISOString(),
-                  jsonSpec: streamingJsonSpec || toolExtractedJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
-                  mermaidCode: streamingMermaidCode || toolExtractedMermaid || partialMermaidCode || lastMsg.mermaidCode,
+                  jsonSpec: streamingJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: streamingMermaidCode || partialMermaidCode || lastMsg.mermaidCode,
                 };
                 return updated;
               });
@@ -2744,7 +2744,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 if (!completedTools.includes(toolName)) {
                   updated[updated.length - 1] = { 
                     ...lastMsg, completedTools: [...completedTools, toolName], toolResults: [...toolResults, toolResult],
-                    mermaidCode: extractedMermaid || lastMsg.mermaidCode
+                    // Bubble's mermaidCode dropdown mirrors agent text only.
+                    // toolExtractedMermaid is captured separately for canvas.
                   };
                 }
                 return updated;
@@ -2795,8 +2796,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 updated[updated.length - 1] = {
                   ...lastMsg,
                   text: displayText || 'Thinking...',
-                  jsonSpec: streamingJsonSpec || toolExtractedJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
-                  mermaidCode: streamingMermaidCode || toolExtractedMermaid || partialMermaidCode || lastMsg.mermaidCode,
+                  jsonSpec: streamingJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: streamingMermaidCode || partialMermaidCode || lastMsg.mermaidCode,
                 };
                 return updated;
               });
@@ -2834,7 +2835,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         updated[updated.length - 1] = { 
           ...lastMsg, text: finalMessage,
           jsonSpec: specMatch ? specMatch[1].trim() : lastMsg.jsonSpec,
-          mermaidCode: mermaidMatch ? mermaidMatch[1].trim() : (toolExtractedMermaid || lastMsg.mermaidCode)
+          mermaidCode: mermaidMatch ? mermaidMatch[1].trim() : lastMsg.mermaidCode
         };
         return updated;
       });
