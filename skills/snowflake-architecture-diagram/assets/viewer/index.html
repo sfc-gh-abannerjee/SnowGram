@@ -403,29 +403,22 @@
   .zone .flow-node .label {
     font-size: clamp(9px, 1.2vw, 12.5px);
     margin-bottom: 2px;
-    overflow: hidden;
     /* Allow wrapping so labels in narrow sub-columns (intra-zone fan-out)
-       aren't truncated mid-word. Cap at 2 lines with line-clamp so cards
-       in adjacent zones still height-align reasonably. */
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    line-clamp: 2;
+       aren't truncated. No line clamp — let labels take whatever
+       vertical space they need so nothing is hidden. */
     white-space: normal;
     word-break: break-word;
+    overflow-wrap: anywhere;
   }
   .zone .flow-node .detail {
     font-size: clamp(8px, 1vw, 10.5px);
     line-height: 1.4;
-    overflow: hidden;
-    /* Allow up to 3 lines of detail text so descriptions don't get
-       truncated by ellipsis in narrow sub-columns. */
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    line-clamp: 3;
+    /* No line clamp — descriptions must show in full so users can read
+       the SQL / policy expressions / configuration the diagram is
+       documenting. Cards grow vertically as needed. */
     white-space: normal;
     word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   /* Per-category zone tinting */
