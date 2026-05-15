@@ -608,6 +608,12 @@ const App: React.FC = () => {
   // auto-expanded once. Prevents the auto-expand effect from re-opening a
   // dropdown the user has manually collapsed.
   const autoExpandedMsgRef = useRef<Set<number>>(new Set());
+  // Auto-scroll while the agent is streaming. The ref tracks whether the
+  // user is currently anchored at the bottom of the chat scroll region.
+  // We flip it false when the user manually scrolls up (so we stop fighting
+  // them), and back to true once they scroll back to the bottom themselves.
+  const chatMessagesRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollRef = useRef<boolean>(true);
   // Track closing animations
   const [closingThinking, setClosingThinking] = useState<Set<number>>(new Set());
   const [closingTools, setClosingTools] = useState<Set<string>>(new Set());
@@ -967,6 +973,25 @@ const App: React.FC = () => {
       }
     });
   }, [chatMessages]);
+
+  // Auto-scroll the chat panel to the latest content while the agent is
+  // streaming, but stop fighting the user the moment they scroll up
+  // manually. Re-engages once they scroll back to the bottom on their own.
+  // The ref-based gate avoids the race where setState inside a scroll
+  // handler would lag a frame behind the chunk events.
+  useEffect(() => {
+    const el = chatMessagesRef.current;
+    if (!el) return;
+    if (!autoScrollRef.current) return;
+    // requestAnimationFrame so React has flushed the new content before we
+    // measure scrollHeight; otherwise we'd snap to a stale bottom.
+    const id = requestAnimationFrame(() => {
+      const node = chatMessagesRef.current;
+      if (!node) return;
+      node.scrollTop = node.scrollHeight;
+    });
+    return () => cancelAnimationFrame(id);
+  }, [chatMessages, chatSending]);
 
   // Save chat position separately (not per-session)
   useEffect(() => {
@@ -2332,6 +2357,41 @@ const flattenToolResultContent = (raw: any): string => {
   return String(raw);
 };
 
+// ===========================================================================
+// Tool-name normalization for the chat-bubble tool chips.
+// ---------------------------------------------------------------------------
+// Cortex Agents emit a generic `server_skill` tool name for both
+// platform-internal skills (system_suggested_queries) and the user-defined
+// skills configured in the agent spec (clarify_ambiguous_request,
+// edit_existing_diagram). The actual skill name lives in tool.input.skill_name.
+// Hard-coding the chip to display "server_skill" is confusing — users see a
+// chip with no actionable info. Normalize it here:
+//
+//   - server_skill + skill_name=system_suggested_queries → null (HIDE — purely
+//     a platform follow-up generation pass; not user-relevant).
+//   - server_skill + skill_name=<user_skill> → return the skill name in a
+//     human-readable form so the chip says e.g. "Skill: Clarify request".
+//   - any other tool name → pass through.
+//
+// Returns null when the chip should be suppressed entirely.
+// ===========================================================================
+const HIDDEN_PLATFORM_SKILLS = new Set<string>([
+  'system_suggested_queries', // platform's automatic follow-up generator
+]);
+const SKILL_DISPLAY_NAMES: Record<string, string> = {
+  clarify_ambiguous_request: 'Clarify request',
+  edit_existing_diagram: 'Edit diagram',
+};
+const normalizeToolName = (rawName: string, skillName?: string): string | null => {
+  if (rawName === 'server_skill') {
+    if (!skillName) return null; // unknown server skill → suppress
+    if (HIDDEN_PLATFORM_SKILLS.has(skillName)) return null;
+    const friendly = SKILL_DISPLAY_NAMES[skillName] ?? skillName;
+    return `Skill: ${friendly}`;
+  }
+  return rawName;
+};
+
 const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => {
   // AGENT-FIRST: Trust the agent output completely
   // No forced nodes, no blocked edges, no ID remapping
@@ -2478,9 +2538,15 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               });
             } else if (data.type === 'tool_use' && data.tool) {
               // Track tool calls for visibility (CKE, web search, etc.)
-              const toolName = data.tool.name || data.tool.tool_name || 
+              const rawToolName = data.tool.name || data.tool.tool_name || 
                 (data.tool.tool_calls?.[0]?.name) || 'Tool';
-              debugLog('[Chat] Tool use:', toolName, data.tool);
+              const skillName = data.tool.input?.skill_name;
+              const toolName = normalizeToolName(rawToolName, skillName);
+              debugLog('[Chat] Tool use:', rawToolName, '→', toolName, data.tool);
+              if (toolName === null) {
+                // Suppressed (platform-internal skill). Skip entirely.
+                continue;
+              }
               setActiveToolCalls(prev => [...prev, toolName]);
               // Show tool execution in chat
               setChatMessages((msgs) => {
@@ -2497,7 +2563,25 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             } else if (data.type === 'tool_result' && data.result) {
               // Tool result received - store full result for expandable display
               debugLog('[Chat] Tool result:', data.result);
-              const toolName = data.result.name || 'search';
+              const rawResultName = data.result.name || 'search';
+              // For server_skill results the underlying skill name lives in
+              // content[*].json.skill_name. Pull it out so the result chip
+              // matches the normalized tool_use chip.
+              let resultSkillName: string | undefined;
+              try {
+                const items = Array.isArray(data.result.content) ? data.result.content : [];
+                for (const item of items) {
+                  if (item?.json?.skill_name) {
+                    resultSkillName = item.json.skill_name;
+                    break;
+                  }
+                }
+              } catch {}
+              const toolName = normalizeToolName(rawResultName, resultSkillName);
+              if (toolName === null) {
+                // Suppressed (platform-internal skill). Skip storing the result.
+                continue;
+              }
               const rawResult = data.result.result || data.result.content || data.result;
               // Flatten Cortex Agent content[] payloads into a usable string for
               // both display (toolResult.result) and downstream regex extraction.
@@ -2888,7 +2972,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 return updated;
               });
             } else if (data.type === 'tool_use' && data.tool) {
-              const toolName = data.tool.name || data.tool.tool_name || 'Tool';
+              const rawToolName = data.tool.name || data.tool.tool_name || 'Tool';
+              const skillName = data.tool.input?.skill_name;
+              const toolName = normalizeToolName(rawToolName, skillName);
+              if (toolName === null) {
+                continue;
+              }
               setActiveToolCalls(prev => [...prev, toolName]);
               setChatMessages((msgs) => {
                 const updated = [...msgs];
@@ -2899,7 +2988,21 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 return updated;
               });
             } else if (data.type === 'tool_result' && data.result) {
-              const toolName = data.result.name || 'search';
+              const rawResultName = data.result.name || 'search';
+              let resultSkillName: string | undefined;
+              try {
+                const items = Array.isArray(data.result.content) ? data.result.content : [];
+                for (const item of items) {
+                  if (item?.json?.skill_name) {
+                    resultSkillName = item.json.skill_name;
+                    break;
+                  }
+                }
+              } catch {}
+              const toolName = normalizeToolName(rawResultName, resultSkillName);
+              if (toolName === null) {
+                continue;
+              }
               const rawResult = data.result.result || data.result.content || data.result;
               // Flatten Cortex Agent content[] payloads so the bubble's RESULT
               // expander shows the actual text/JSON the tool returned, and so
@@ -4870,7 +4973,20 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               </div>
             )}
             
-            <div className={styles.chatMessages}>
+            <div
+              className={styles.chatMessages}
+              ref={chatMessagesRef}
+              onScroll={() => {
+                const el = chatMessagesRef.current;
+                if (!el) return;
+                // 32px tolerance — treat "near bottom" as "at bottom" so the
+                // auto-scroll doesn't lock off when the last node is just a
+                // few pixels above the visible region.
+                const atBottom =
+                  el.scrollHeight - (el.scrollTop + el.clientHeight) < 32;
+                autoScrollRef.current = atBottom;
+              }}
+            >
               {chatMessages.map((m, idx) => (
                 <div
                   key={idx}
