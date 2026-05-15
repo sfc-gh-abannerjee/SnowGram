@@ -132,6 +132,10 @@ skills:
     source:
       type: STAGE
       path: "@SNOWGRAM_DB.AGENTS.SKILLS_STAGE/skills/clarify"
+  - name: edit_existing_diagram
+    source:
+      type: STAGE
+      path: "@SNOWGRAM_DB.AGENTS.SKILLS_STAGE/skills/edit_existing"
 
 tools:
   - tool_spec:
