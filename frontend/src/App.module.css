@@ -3410,7 +3410,12 @@
   margin-left: 10px;
   vertical-align: baseline;
   position: relative;
-  top: -1px;
+  /* Container height + padding give the -3px translateY bounce vertical
+     headroom so overflow:hidden (needed for the max-width collapse on
+     dismiss) doesn't clip the dots at the top of their arc. */
+  height: 14px;
+  padding-top: 4px;
+  top: -2px;
   opacity: 0;
   transition: opacity 200ms ease, margin-left 200ms ease 100ms, max-width 200ms ease 100ms;
   max-width: 60px;
