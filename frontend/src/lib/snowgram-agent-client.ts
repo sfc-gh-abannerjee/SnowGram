@@ -126,7 +126,24 @@ Immediately followed by the complete Mermaid code in a fenced block:
 [PASTE THE FULL MERMAID CODE FROM TOOL RESULT HERE - DO NOT SUMMARIZE]
 \`\`\`
 
-NEVER skip this section. NEVER say 'Diagram updated' or 'Review the canvas'
+Immediately after the mermaid block's closing fence, emit a Graph Metadata
+sub-section with the structured JSON representation of the same diagram. The
+frontend's JSON Specification expander reads this and the round-trip JSON
+export depends on it. Both blocks are REQUIRED; mermaid first, then json.
+
+### Graph Metadata (JSON)
+\`\`\`json
+{
+  "nodes": [
+    {"id": "<id>", "label": "<label>", "componentType": "<type>", "boundary": "<boundary>"}
+  ],
+  "edges": [
+    {"from": "<source_id>", "to": "<target_id>", "label": "<edge_label>"}
+  ]
+}
+\`\`\`
+
+NEVER skip the mermaid block. NEVER say 'Diagram updated' or 'Review the canvas'
 without showing the actual code. The "Here is your..." line MUST appear
 immediately before the \`\`\`mermaid fence.
 

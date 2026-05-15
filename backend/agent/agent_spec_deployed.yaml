@@ -60,6 +60,26 @@ instructions:
     [PASTE THE FULL MERMAID CODE FROM TOOL RESULT HERE - DO NOT SUMMARIZE]
     ```
 
+    Then immediately after the closing ``` of the mermaid block, emit a
+    Graph Metadata sub-section with the structured JSON representation of
+    the same diagram. The frontend extracts this for the JSON Specification
+    expander and uses it for round-trip JSON exports.
+
+    ### Graph Metadata (JSON)
+    ```json
+    {
+      "nodes": [
+        {"id": "<id>", "label": "<label>", "componentType": "<type>", "boundary": "<boundary>"}
+      ],
+      "edges": [
+        {"from": "<source_id>", "to": "<target_id>", "label": "<edge_label>"}
+      ]
+    }
+    ```
+
+    Both blocks (mermaid + json) are required. The mermaid block MUST appear
+    before the json block. Do NOT put either before Sections 1-3.
+
     NEVER skip this section. NEVER say 'Diagram updated' or 'Review the
     canvas' without showing the actual code. The 'Here is your...' line
     MUST appear immediately before the ```mermaid fence. The ```mermaid
