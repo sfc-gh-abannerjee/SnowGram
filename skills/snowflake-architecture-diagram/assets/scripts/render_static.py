@@ -161,8 +161,20 @@ def render(state: dict) -> str:
         html,
     )
 
-    # Inline the two vendored libraries so the file is fully offline.
-    for lib_name in ("mermaid.min.js", "html-to-image.min.js"):
+    # Inline the vendored libraries so the file is fully offline.
+    #
+    # Mermaid is OPTIONAL: it's only used by the viewer's fallback path
+    # when state has a top-level `mermaid` field (the rich-state SVG
+    # connector renderer doesn't need it). Inlining mermaid.min.js
+    # unconditionally bloats every rendered HTML file by ~3.3 MB of
+    # dead minified JS that also leaks into raw text views (e.g.
+    # GitHub's blob viewer or "view source"). Skip it when the state
+    # doesn't actually use it.
+    state_uses_mermaid = bool(rewritten_state.get("mermaid"))
+    libs_to_inline = ["html-to-image.min.js"]
+    if state_uses_mermaid:
+        libs_to_inline.insert(0, "mermaid.min.js")
+    for lib_name in libs_to_inline:
         lib_path = VIEWER_DIR / "lib" / lib_name
         if not lib_path.exists():
             continue
@@ -170,6 +182,14 @@ def render(state: dict) -> str:
         html = html.replace(
             f'<script src="lib/{lib_name}"></script>',
             f'<script>\n/* {lib_name} (vendored) */\n{lib_src}\n</script>',
+            1,
+        )
+    # Drop any library script tag that we did NOT inline so the
+    # rendered file doesn't 404 when opened standalone.
+    if not state_uses_mermaid:
+        html = html.replace(
+            '<script src="lib/mermaid.min.js"></script>',
+            '<!-- mermaid.min.js omitted: state has no `mermaid` field -->',
             1,
         )
 
