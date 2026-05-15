@@ -404,15 +404,28 @@
     font-size: clamp(9px, 1.2vw, 12.5px);
     margin-bottom: 2px;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    /* Allow wrapping so labels in narrow sub-columns (intra-zone fan-out)
+       aren't truncated mid-word. Cap at 2 lines with line-clamp so cards
+       in adjacent zones still height-align reasonably. */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-clamp: 2;
+    white-space: normal;
+    word-break: break-word;
   }
   .zone .flow-node .detail {
     font-size: clamp(8px, 1vw, 10.5px);
     line-height: 1.4;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    /* Allow up to 3 lines of detail text so descriptions don't get
+       truncated by ellipsis in narrow sub-columns. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    line-clamp: 3;
+    white-space: normal;
+    word-break: break-word;
   }
 
   /* Per-category zone tinting */
@@ -1155,10 +1168,19 @@
           }
           y1 = (srcRect.top + srcRect.height / 2) - cardRect.top;
           y2 = (tgtRect.top + tgtRect.height / 2) - cardRect.top;
-          var midX = (x1 + x2) / 2;
-          // Stagger midX by edge index so multiple fan-out edges to the
-          // same column don't overlay their V segments.
-          midX += ((edgeIdx % 5) - 2) * 4;
+          // Bias the V-segment toward the SOURCE side so the L-turn
+          // happens shortly after the line exits the source — instead
+          // of approaching the target's left edge before turning, which
+          // visually crowds the target. 28-44px past the source's right
+          // edge, staggered per edge to avoid overlapping V segments.
+          var midX;
+          if (dirRight) {
+            midX = x1 + 28 + (edgeIdx % 4) * 5;
+            if (midX > x2 - 18) midX = x2 - 18; // safety: keep clear of target
+          } else {
+            midX = x1 - 28 - (edgeIdx % 4) * 5;
+            if (midX < x2 + 18) midX = x2 + 18;
+          }
           if (Math.abs(y2 - y1) < 1) {
             // Same row — straight horizontal.
             d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
