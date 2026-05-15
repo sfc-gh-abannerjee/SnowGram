@@ -101,6 +101,22 @@
     "icon": "Snowflake_ICON_RA_Volume.svg",
     "category": "snow"
   },
+  "FEATURE_STORE": {
+    "icon": "Snowflake_ICON_Cortex.svg",
+    "category": "snow"
+  },
+  "MODEL_REGISTRY": {
+    "icon": "Snowflake_ICON_Cortex.svg",
+    "category": "snow"
+  },
+  "SNOWPARK_ML": {
+    "icon": "Snowflake_ICON_Snowpark.svg",
+    "category": "snow"
+  },
+  "CLEANROOM": {
+    "icon": "Snowflake_ICON_Application_Collaboration.svg",
+    "category": "snow"
+  },
 
   "_external_systems": {
     "S3": {"icon": "Snowflake_ICON_Workloads_Data_Lake.svg", "category": "onprem"},
@@ -110,7 +126,9 @@
     "IOT": {"icon": "Snowflake_ICON_IoT.svg", "category": "onprem"},
     "DATA_SHARE": {"icon": "Snowflake_ICON_Sharing_Collaboration.svg", "category": "onprem"},
     "MARKETPLACE": {"icon": "Snowflake_ICON_Marketplace.svg", "category": "onprem"},
-    "NATIVE_APP": {"icon": "Snowflake_ICON_Native_App.svg", "category": "onprem"}
+    "NATIVE_APP": {"icon": "Snowflake_ICON_Native_App.svg", "category": "onprem"},
+    "SALESFORCE": {"icon": "Snowflake_ICON_Application.svg", "category": "onprem"},
+    "CONNECTOR": {"icon": "Snowflake_ICON_Architecture.svg", "category": "bridge"}
   },
 
   "_consumption": {

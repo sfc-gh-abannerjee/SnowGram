@@ -79,6 +79,22 @@ _DOCS_QUERIES: dict[str, list[str]] = {
         "data governance masking policy snowflake",
         "dynamic data masking column-level security",
     ],
+    "ml": [
+        "snowflake ml model registry",
+        "feature store snowflake",
+        "snowpark container services GPU inference",
+        "cortex AI complete summarize",
+    ],
+    "cleanroom": [
+        "snowflake data clean rooms overview",
+        "differential privacy clean room",
+        "row access policy clean room",
+    ],
+    "marketing": [
+        "dynamic tables event time join",
+        "snowflake connector for salesforce",
+        "clickstream analytics snowflake",
+    ],
     "generic": [
         "snowflake data pipeline recommended architecture",
         "dynamic tables vs streams and tasks comparison",
@@ -95,6 +111,20 @@ _INTENT_SIGNALS: dict[str, list[str]] = {
     "iot": ["iot", "sensor", "mqtt", "device", "telemetry", "edge"],
     "batch": ["batch", "etl", "star schema", "data warehouse", "scheduled", "nightly"],
     "security": ["security", "governance", "masking", "rls", "rbac", "compliance", "audit"],
+    "ml": [
+        "machine learning", "ml pipeline", "ml model", "feature store",
+        "model registry", "snowpark ml", "xgboost", "scikit", "spcs",
+        "snowpark container services", "cortex ml", "cortex ai", "model training",
+        "inference", "fraud scoring",
+    ],
+    "cleanroom": [
+        "clean room", "cleanroom", "data clean room", "differential privacy",
+        "second-party", "joint analysis", "cohort sharing",
+    ],
+    "marketing": [
+        "attribution", "clickstream", "marketing pipeline", "campaign",
+        "segment ", "salesforce", "hubspot", "crm sync", "growth team",
+    ],
 }
 
 
@@ -221,6 +251,36 @@ _DEFAULT_PIPELINE_SPECS: dict[str, list[dict[str, Any]]] = {
         {"stage": "serving", "object_type": "SECURE_VIEW", "label": "Secure View", "detail": "Policy-enforced access", "zone": "Access Layer"},
         {"stage": "consumption", "object_type": "BI_TOOL", "label": "Analytics", "detail": "Role-scoped dashboards", "zone": "Consumption"},
     ],
+    "ml": [
+        {"stage": "source", "object_type": "S3", "label": "Training Data", "detail": "Historical labeled examples", "zone": "External Sources"},
+        {"stage": "ingestion", "object_type": "PIPE", "label": "Snowpipe Streaming", "detail": "Live event ingest", "zone": "Ingestion"},
+        {"stage": "raw_storage", "object_type": "TABLE", "label": "Raw Events", "detail": "Append-only events", "zone": "Raw Layer"},
+        {"stage": "transformation", "object_type": "FEATURE_STORE", "label": "Feature Store", "detail": "Versioned feature views", "zone": "Feature Engineering"},
+        {"stage": "transformation", "object_type": "SNOWPARK_ML", "label": "Snowpark ML", "detail": "scikit-learn / XGBoost training", "zone": "Model Training"},
+        {"stage": "serving", "object_type": "MODEL_REGISTRY", "label": "Model Registry", "detail": "Versioned model artifacts", "zone": "Model Management"},
+        {"stage": "serving", "object_type": "SPCS", "label": "Inference Service", "detail": "Snowpark Container Services", "zone": "Serving Layer"},
+        {"stage": "consumption", "object_type": "STREAMLIT", "label": "ML App", "detail": "Predictions dashboard", "zone": "Consumption"},
+    ],
+    "cleanroom": [
+        {"stage": "source", "object_type": "DATA_SHARE", "label": "Provider Data", "detail": "Party A contribution", "zone": "Provider Sources"},
+        {"stage": "source", "object_type": "DATA_SHARE", "label": "Partner Data", "detail": "Party B contribution", "zone": "Provider Sources"},
+        {"stage": "transformation", "object_type": "CLEANROOM", "label": "Data Clean Room", "detail": "Cross-party joint analysis", "zone": "Clean Room"},
+        {"stage": "transformation", "object_type": "ROW_ACCESS_POLICY", "label": "Row Access Policy", "detail": "Per-party row scoping", "zone": "Security & Governance"},
+        {"stage": "transformation", "object_type": "MASKING_POLICY", "label": "Differential Privacy", "detail": "Noise on aggregations", "zone": "Security & Governance"},
+        {"stage": "serving", "object_type": "SECURE_VIEW", "label": "Approved Output", "detail": "Aggregate-only results", "zone": "Access Layer"},
+        {"stage": "consumption", "object_type": "STREAMLIT", "label": "Cohort Explorer", "detail": "Joint analytics app", "zone": "Consumption"},
+    ],
+    "marketing": [
+        {"stage": "source", "object_type": "WEB_APP", "label": "Clickstream", "detail": "Web / app events", "zone": "External Sources"},
+        {"stage": "source", "object_type": "SALESFORCE", "label": "CRM", "detail": "Salesforce contacts & opps", "zone": "External Sources"},
+        {"stage": "ingestion", "object_type": "PIPE", "label": "Snowpipe Streaming", "detail": "Event ingest", "zone": "Ingestion"},
+        {"stage": "ingestion", "object_type": "CONNECTOR", "label": "Salesforce Connector", "detail": "Native CRM sync", "zone": "Ingestion"},
+        {"stage": "raw_storage", "object_type": "TABLE", "label": "Events", "detail": "Raw clickstream", "zone": "Raw Layer"},
+        {"stage": "raw_storage", "object_type": "TABLE", "label": "Contacts", "detail": "CRM dimension", "zone": "Raw Layer"},
+        {"stage": "transformation", "object_type": "DYNAMIC_TABLE", "label": "Attribution DT", "detail": "Event-time join & scoring", "zone": "Transformation"},
+        {"stage": "serving", "object_type": "DYNAMIC_TABLE", "label": "Attribution Mart", "detail": "Per-customer scores", "zone": "Serving Layer"},
+        {"stage": "consumption", "object_type": "BI_TOOL", "label": "Marketing BI", "detail": "Growth team dashboards", "zone": "Consumption"},
+    ],
     "generic": [
         {"stage": "source", "object_type": "S3", "label": "Data Source", "detail": "External system", "zone": "External Sources"},
         {"stage": "ingestion", "object_type": "PIPE", "label": "Snowpipe", "detail": "Automated ingestion", "zone": "Ingestion"},
@@ -329,6 +389,15 @@ _CANONICAL_DOC_URLS: dict[str, str] = {
     "NATIVE_APP": "https://docs.snowflake.com/en/developer-guide/native-apps/native-apps-about",
     "DATA_SHARE": "https://docs.snowflake.com/en/user-guide/data-sharing-intro",
     "MARKETPLACE": "https://docs.snowflake.com/en/user-guide/data-marketplace",
+    # ML / AI
+    "FEATURE_STORE": "https://docs.snowflake.com/en/developer-guide/snowflake-ml/feature-store/overview",
+    "MODEL_REGISTRY": "https://docs.snowflake.com/en/developer-guide/snowflake-ml/model-registry/overview",
+    "SNOWPARK_ML": "https://docs.snowflake.com/en/developer-guide/snowflake-ml/overview",
+    # Clean rooms
+    "CLEANROOM": "https://docs.snowflake.com/en/user-guide/cleanrooms/introduction",
+    # Connectors
+    "SALESFORCE": "https://docs.snowflake.com/en/user-guide/connector-salesforce-data-cloud",
+    "CONNECTOR": "https://docs.snowflake.com/en/user-guide/snowflake-connectors/overview",
 }
 
 

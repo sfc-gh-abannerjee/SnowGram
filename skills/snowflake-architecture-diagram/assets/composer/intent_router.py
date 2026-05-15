@@ -413,6 +413,14 @@ def _detect_pipeline_type_local(prompt_norm: str) -> str:
         "iot":       ["iot", "sensor", "mqtt", "device", "telemetry", "edge"],
         "batch":     ["batch", "etl", "star schema", "data warehouse", "scheduled", "nightly"],
         "security":  ["security", "governance", "masking", "rls", "rbac", "compliance", "audit"],
+        "ml":        ["machine learning", "ml pipeline", "ml model", "feature store",
+                      "model registry", "snowpark ml", "xgboost", "scikit", "spcs",
+                      "snowpark container services", "cortex ml", "cortex ai",
+                      "model training", "inference", "fraud scoring"],
+        "cleanroom": ["clean room", "cleanroom", "data clean room", "differential privacy",
+                      "second-party", "joint analysis", "cohort sharing"],
+        "marketing": ["attribution", "clickstream", "marketing pipeline", "campaign",
+                      "segment ", "salesforce", "hubspot", "crm sync", "growth team"],
     }
     scores: dict[str, int] = {pt: 0 for pt in signals}
     for pt, keys in signals.items():
