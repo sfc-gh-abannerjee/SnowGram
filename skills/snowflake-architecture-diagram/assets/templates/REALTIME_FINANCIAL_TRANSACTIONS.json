@@ -60,14 +60,14 @@
       },
       {
         "id": "model",
-        "label": "Cortex ML Model",
+        "label": "Snowflake ML Model",
         "detail": "Anomaly classifier",
         "icon": "Snowflake_ICON_Cortex.svg",
         "category": "outcome",
         "zone": "Curated Layer",
         "object_type": "CORTEX",
         "stage": "transformation",
-        "doc_url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview"
+        "doc_url": "https://docs.snowflake.com/en/developer-guide/snowflake-ml/overview"
       },
       {
         "id": "alerts",

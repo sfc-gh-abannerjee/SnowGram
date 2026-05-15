@@ -1295,26 +1295,47 @@
           // Adjacent rows within a column = clean vertical line. Non-adjacent
           // = side-channel detour with side entry into target's right edge
           // (so it cannot be confused with an adjacent vertical edge).
-        x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
-        y1 = srcRect.bottom - cardRect.top;
-        x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
-        y2 = tgtRect.top - cardRect.top;
 
-        // Compute row indices of src and tgt within the shared zone.
+          // Compute row indices of src and tgt within the shared zone.
           // Restrict to nodes in the SAME sub-column for accurate row indexing.
           var sameColNodes = Array.prototype.filter.call(
             srcZone.querySelectorAll('.flow-node'),
             function(el) { return parseInt(el.getAttribute('data-zone-col') || '0', 10) === srcCol; }
           );
-        var srcRow = -1, tgtRow = -1;
+          var srcRow = -1, tgtRow = -1;
           for (var zi = 0; zi < sameColNodes.length; zi++) {
             if (sameColNodes[zi] === srcEl) srcRow = zi;
             if (sameColNodes[zi] === tgtEl) tgtRow = zi;
-        }
-        var rowGap = (srcRow >= 0 && tgtRow >= 0) ? Math.abs(tgtRow - srcRow) : 1;
-        var goingDownward = (srcRow >= 0 && tgtRow >= 0) ? (tgtRow > srcRow) : (y2 > y1);
+          }
+          var rowGap = (srcRow >= 0 && tgtRow >= 0) ? Math.abs(tgtRow - srcRow) : 1;
+          var goingDownward = (srcRow >= 0 && tgtRow >= 0)
+            ? (tgtRow > srcRow)
+            : (tgtRect.top > srcRect.top);
+
+          // Cardinal ports based on direction so the line stays in the gap
+          // between cards instead of crossing through their bodies.
+          x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
+          x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
+          if (goingDownward) {
+            y1 = srcRect.bottom - cardRect.top;   // exit src bottom port
+            y2 = tgtRect.top - cardRect.top;      // enter tgt top port
+          } else {
+            y1 = srcRect.top - cardRect.top;      // exit src top port
+            y2 = tgtRect.bottom - cardRect.top;   // enter tgt bottom port
+          }
 
         if (rowGap <= 1) {
+            // Detect a bidirectional pair (a reverse edge in the same column
+            // between the same two nodes). Offset each direction's vertical
+            // channel so the two arrows don't visually overlap.
+            var hasReverse = (state.edges || []).some(function(e2) {
+              return e2.source === edge.target && e2.target === edge.source;
+            });
+            if (hasReverse) {
+              var laneOffset = goingDownward ? -10 : 10; // down-left, up-right
+              x1 += laneOffset;
+              x2 += laneOffset;
+            }
           d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
         } else {
           var nextRow = goingDownward ? srcRow + 1 : srcRow - 1;
