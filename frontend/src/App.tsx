@@ -604,6 +604,10 @@ const App: React.FC = () => {
   const [expandedJsonSpec, setExpandedJsonSpec] = useState<Set<number>>(new Set());
   // Track which Mermaid sections are expanded (key: msgIdx)
   const [expandedMermaid, setExpandedMermaid] = useState<Set<number>>(new Set());
+  // One-shot guard: messages whose code expanders have already been
+  // auto-expanded once. Prevents the auto-expand effect from re-opening a
+  // dropdown the user has manually collapsed.
+  const autoExpandedMsgRef = useRef<Set<number>>(new Set());
   // Track closing animations
   const [closingThinking, setClosingThinking] = useState<Set<number>>(new Set());
   const [closingTools, setClosingTools] = useState<Set<string>>(new Set());
@@ -933,6 +937,36 @@ const App: React.FC = () => {
       saveSession(currentSessionId, chatMessages, conversationThreadId, lastMessageId);
     }
   }, [chatMessages, conversationThreadId, lastMessageId, currentSessionId, saveSession]);
+
+  // Auto-expand the JSON Specification and Mermaid Diagram dropdowns the
+  // first time a message accumulates that content. The user can still
+  // collapse — the autoExpandedMsgRef one-shot guard prevents re-opening
+  // a dropdown the user manually closed.
+  useEffect(() => {
+    chatMessages.forEach((m, idx) => {
+      if (autoExpandedMsgRef.current.has(idx)) return;
+      const hasJson = !!m.jsonSpec;
+      const hasMermaid = !!m.mermaidCode;
+      if (!hasJson && !hasMermaid) return;
+      autoExpandedMsgRef.current.add(idx);
+      if (hasJson) {
+        setExpandedJsonSpec((prev) => {
+          if (prev.has(idx)) return prev;
+          const next = new Set(prev);
+          next.add(idx);
+          return next;
+        });
+      }
+      if (hasMermaid) {
+        setExpandedMermaid((prev) => {
+          if (prev.has(idx)) return prev;
+          const next = new Set(prev);
+          next.add(idx);
+          return next;
+        });
+      }
+    });
+  }, [chatMessages]);
 
   // Save chat position separately (not per-session)
   useEffect(() => {
@@ -2387,7 +2421,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
 
     try {
       // Add placeholder for streaming response
-      setChatMessages((msgs) => [...msgs, { role: 'assistant', text: '...', timestamp: new Date().toISOString() }]);
+      setChatMessages((msgs) => [...msgs, { role: 'assistant', text: '', timestamp: new Date().toISOString() }]);
       
       const response = await fetch('/api/agent/stream', {
         method: 'POST',
@@ -2802,7 +2836,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     const enrichedPrompt = `You are the SnowGram Cortex Agent. First review the existing canvas before making changes. Here is the current diagram in Mermaid (derived from the live canvas):\n\n${currentMermaid}\n\nThen continue the conversation below and apply updates based on the user's new request. If needed, adjust or refine the existing layout rather than recreating from scratch.\n\nConversation:\n${transcript}\nAgent:`;
 
     try {
-      setChatMessages((msgs) => [...msgs, { role: 'assistant', text: '...', timestamp: new Date().toISOString() }]);
+      setChatMessages((msgs) => [...msgs, { role: 'assistant', text: '', timestamp: new Date().toISOString() }]);
       
       const response = await fetch('/api/agent/stream', {
         method: 'POST',
@@ -4972,10 +5006,29 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                     
                     {/* Narrative response text — rendered BEFORE the code-block
                         expanders so users read the description first, then
-                        click into the code blocks if they want the raw output. */}
-                    <div className={styles.chatMarkdown}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
-                    </div>
+                        click into the code blocks if they want the raw output.
+                        While the bubble is empty AND streaming, show animated
+                        typing dots instead of an empty box (replaces the old
+                        '...' placeholder). */}
+                    {(() => {
+                      const isLast = idx === chatMessages.length - 1;
+                      const hasContent = !!(m.text && m.text.trim()) ||
+                        !!(m.thinking && m.thinking.trim()) ||
+                        !!(m.toolCalls && m.toolCalls.length) ||
+                        !!m.mermaidCode || !!m.jsonSpec;
+                      if (m.role === 'assistant' && isLast && chatSending && !hasContent) {
+                        return (
+                          <div className={styles.typingIndicator} aria-label="thinking">
+                            <span /><span /><span />
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className={styles.chatMarkdown}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                        </div>
+                      );
+                    })()}
 
                     {/* JSON Specification - expandable with copy button */}
                     {m.jsonSpec && (() => {
