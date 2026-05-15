@@ -101,6 +101,18 @@ instructions:
     2. Build diagram manually
     3. VALIDATE_MERMAID_SYNTAX
 
+# Skills are referenced from a Snowflake stage. The agent evaluates each
+# skill's name + description on every query and may invoke one if the
+# user's request matches its trigger conditions. The clarify_ambiguous_request
+# skill instructs the agent to ask 2-4 clarifying questions instead of
+# generating immediately when the user's prompt is too vague to pick a
+# template confidently. SKILL.md source: backend/agent/skills/clarify/.
+skills:
+  - name: clarify_ambiguous_request
+    source:
+      type: STAGE
+      path: "@SNOWGRAM_DB.AGENTS.SKILLS_STAGE/skills/clarify"
+
 tools:
   - tool_spec:
       type: cortex_analyst_text_to_sql
