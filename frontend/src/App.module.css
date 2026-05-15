@@ -3396,25 +3396,38 @@
 }
 
 /* =========================================================================
-   Typing indicator (3 bouncing dots) shown in the assistant chat bubble
-   while the message is empty and chatSending is true. Replaces the old
-   "..." text placeholder so empty bubbles never appear.
+   Typing indicator (3 bouncing dots) shown next to the assistant role
+   label while the agent is working. Stays visible across thinking + tool
+   call phases — only fades out when actual narrative text arrives.
 
-   Sits inline with the "SnowGram:" header label. Sized to align with the
-   header's text baseline and spaced out so it doesn't crowd the colon.
+   data-active=true → visible & animating
+   data-active=false → fade out, then collapse (width:0, no spacing)
    ========================================================================= */
 .typingIndicator {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   margin-left: 10px;
   vertical-align: baseline;
   position: relative;
-  top: -1px; /* nudge up so dots optically center on the cap height */
+  top: -1px;
+  opacity: 0;
+  transition: opacity 200ms ease, margin-left 200ms ease 100ms, max-width 200ms ease 100ms;
+  max-width: 60px;
+  overflow: hidden;
+}
+.typingIndicator[data-active="true"] {
+  opacity: 1;
+}
+.typingIndicator[data-active="false"] {
+  opacity: 0;
+  margin-left: 0;
+  max-width: 0;
+  pointer-events: none;
 }
 .typingIndicator > span {
-  width: 7px;
-  height: 7px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: currentColor;
   opacity: 0.55;
@@ -3426,5 +3439,5 @@
 .typingIndicator > span:nth-child(3) { animation-delay: 0.36s; }
 @keyframes typingDot {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30%           { transform: translateY(-4px); opacity: 1; }
+  30%           { transform: translateY(-3px); opacity: 1; }
 }

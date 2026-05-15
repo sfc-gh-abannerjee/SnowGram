@@ -4875,6 +4875,20 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 >
                   <div className={styles.chatBubble}>
                     <strong>{m.role === 'user' ? 'You' : 'SnowGram'}:</strong>
+                    {/* Typing indicator: sits inline with the role label and
+                        stays visible until the agent emits actual narrative
+                        text. Tool chips appearing below don't dismiss it —
+                        the model is still working. Dismisses (with a fade)
+                        the moment text arrives. Only on the live message. */}
+                    {m.role === 'assistant' && idx === chatMessages.length - 1 && (
+                      <span
+                        className={styles.typingIndicator}
+                        aria-label="thinking"
+                        data-active={chatSending && !(m.text && m.text.trim())}
+                      >
+                        <span /><span /><span />
+                      </span>
+                    )}
                     
                     {/* Thinking section - collapsible */}
                     {m.thinking && (
@@ -5006,29 +5020,10 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                     
                     {/* Narrative response text — rendered BEFORE the code-block
                         expanders so users read the description first, then
-                        click into the code blocks if they want the raw output.
-                        While the bubble is empty AND streaming, show animated
-                        typing dots instead of an empty box (replaces the old
-                        '...' placeholder). */}
-                    {(() => {
-                      const isLast = idx === chatMessages.length - 1;
-                      const hasContent = !!(m.text && m.text.trim()) ||
-                        !!(m.thinking && m.thinking.trim()) ||
-                        !!(m.toolCalls && m.toolCalls.length) ||
-                        !!m.mermaidCode || !!m.jsonSpec;
-                      if (m.role === 'assistant' && isLast && chatSending && !hasContent) {
-                        return (
-                          <div className={styles.typingIndicator} aria-label="thinking">
-                            <span /><span /><span />
-                          </div>
-                        );
-                      }
-                      return (
-                        <div className={styles.chatMarkdown}>
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
-                        </div>
-                      );
-                    })()}
+                        click into the code blocks if they want the raw output. */}
+                    <div className={styles.chatMarkdown}>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                    </div>
 
                     {/* JSON Specification - expandable with copy button */}
                     {m.jsonSpec && (() => {
