@@ -2645,10 +2645,13 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               // Show progress indicator when code is streaming into dropdown
               if (!displayText && (currentJsonSpec || currentMermaidCode)) {
                 displayText = currentMermaidCode ? 'Generating diagram...' : 'Generating specification...';
-              } else if (displayText.length > 2000) {
-                // Only truncate very long responses for UI performance
-                displayText = displayText.substring(0, 2000) + '...';
               }
+              // NOTE: removed mid-stream length truncation. Narrative responses
+              // routinely exceed 2K chars (overview + table + best-practices
+              // bullets + transition line), and truncating mid-sentence with
+              // '...' made it look like the agent had stalled. ReactMarkdown
+              // handles full responses fine; the bottleneck was visual, not
+              // performance.
               
               setChatMessages((msgs) => {
                 const updated = [...msgs];
