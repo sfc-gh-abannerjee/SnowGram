@@ -2396,6 +2396,25 @@
           var tgtFanIn = nodeInCount[edge.target] || 1;
           var fanInStubX = (dx >= 0) ? (x2 - 24) : (x2 + 24);
 
+          // Fan-out divergence (symmetric to fan-in): when the SOURCE
+          // has multiple outgoing edges that need an L-turn (i.e. the
+          // targets are at different rows), every connector should
+          // exit the source's cardinal port and travel a SHARED
+          // horizontal stub before diverging at a single V column.
+          // Without this, each outgoing edge picks its own V column
+          // and the source visually has multiple parallel exit lines
+          // instead of one trunk that splits. Anchored a fixed offset
+          // from the source so all of its outgoing edges agree.
+          var srcFanOut = nodeOutCount[edge.source] || 1;
+          var fanOutStubX = (dx >= 0) ? (x1 + 24) : (x1 - 24);
+
+          // When BOTH ends have fan-in/fan-out, prefer the fan-in
+          // stub (target-anchored) since convergence is visually more
+          // important for arrowhead clarity. Fan-out only kicks in
+          // when the source has fan-out AND the target does NOT have
+          // fan-in (otherwise we'd have a single shared V channel
+          // for both sides which doesn't reduce ink).
+
           if (rowDiff === 0 && Math.abs(y1 - y2) < 1) {
             // Same row AND same exact y. For adjacent zones a clean
             // straight horizontal; for skip-edges, routeOrthogonal sweeps
@@ -2422,6 +2441,8 @@
             var stubX;
             if (tgtFanIn > 1) {
               stubX = fanInStubX;
+            } else if (srcFanOut > 1) {
+              stubX = fanOutStubX;
             } else if (stubMaxX > stubMinX) {
               stubX = stubMinX + (stubMaxX - stubMinX) * (vIdx + 1) / (vTotal + 1);
               stubX = snapToGap(stubX, x1, x2);
@@ -2441,6 +2462,8 @@
             var trackX;
             if (tgtFanIn > 1) {
               trackX = fanInStubX;
+            } else if (srcFanOut > 1) {
+              trackX = fanOutStubX;
             } else if (trackMaxX > trackMinX) {
               trackX = trackMinX + (trackMaxX - trackMinX) * (vIdx2 + 1) / (vTotal2 + 1);
               trackX = snapToGap(trackX, x1, x2);
