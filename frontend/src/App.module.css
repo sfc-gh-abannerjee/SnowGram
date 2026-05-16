@@ -1,13 +1,6 @@
-/* PERF: when the tab isn't visible, pause every CSS animation in the app
-   at once. The body-level class is toggled from a visibilitychange
-   handler in App.tsx. !important is required because individual rules
-   already declare animation: <name> ...; we override at the same
-   specificity. */
-:global(body.snowgram-tab-hidden) *,
-:global(body.snowgram-tab-hidden) *::before,
-:global(body.snowgram-tab-hidden) *::after {
-  animation-play-state: paused !important;
-}
+/* PERF: tab-hidden animation pause is moved to globals.css since CSS Modules
+   requires "pure" selectors (every selector must contain at least one local
+   class). Body-level + descendant universal-only rules can't live here. */
 
 .chatAnchor {
   position: fixed;
