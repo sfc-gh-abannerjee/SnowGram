@@ -37,12 +37,6 @@ import { calculateNodeDimensions, NODE_SIZE_CONSTRAINTS } from './lib/textMeasur
 import remarkGfm from 'remark-gfm';
 // PERF: Lazy load heavy markdown/syntax dependencies (~150KB bundle savings)
 const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
-// Streamdown: DOM-stable streaming markdown renderer (smooth char-by-char appearance).
-// Used for live-streaming text/thinking; ReactMarkdown kept for static content elsewhere.
-const Streamdown = dynamic(
-  () => import('streamdown').then((mod) => mod.Streamdown),
-  { ssr: false }
-);
 const SyntaxHighlighter = dynamic(
   () => import('react-syntax-highlighter').then(mod => mod.Prism),
   { ssr: false }
@@ -5270,7 +5264,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         expanders so users read the description first, then
                         click into the code blocks if they want the raw output. */}
                     <div className={styles.chatMarkdown}>
-                      <Streamdown>{displayedText[idx] ?? m.text ?? ''}</Streamdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayedText[idx] ?? m.text ?? ''}</ReactMarkdown>
                     </div>
 
                     {/* Mermaid Diagram - expandable with copy button.
