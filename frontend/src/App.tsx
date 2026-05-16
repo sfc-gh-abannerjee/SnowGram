@@ -1170,6 +1170,37 @@ const App: React.FC = () => {
 
   const currentMermaid = React.useMemo(() => generateMermaidFromDiagram(nodes, edges), [nodes, edges]);
 
+  // PERF: Memoize the per-render edge transformation that ReactFlow consumes.
+  // Without this, the inline `edges.map(...)` in the JSX rebuilt the entire
+  // edges array — with new style objects, drop-shadow filter strings, and
+  // className strings — on EVERY parent re-render. Since the parent re-renders
+  // on every chat chunk during streaming (chatMessages updates trigger a
+  // re-render of the whole App), ReactFlow was getting a brand new edges array
+  // 30+ times per second, forcing a full edge reconcile + repaint on each.
+  // Memoizing on [edges, selectedEdges, isDarkMode] cuts this work to "only
+  // when something visibly changes about the edges themselves."
+  const displayedEdges = React.useMemo(() => {
+    return edges.map((edge) => {
+      const isSelected = selectedEdges.some((e) => e.id === edge.id);
+      const isReversed = edge.data?.animationDirection === 'reverse';
+      const baseStroke = edge.style?.stroke || (isDarkMode ? '#FFFFFF' : '#29B5E8');
+      const glowColor = isDarkMode ? '255,255,255' : '41,181,232';
+      return {
+        ...edge,
+        selected: isSelected,
+        className: isReversed ? 'edge-reversed' : '',
+        style: {
+          ...edge.style,
+          stroke: isSelected ? (isDarkMode ? '#FFFFFF' : '#29B5E8') : baseStroke,
+          strokeWidth: isSelected ? 4 : 2,
+          filter: isSelected
+            ? `drop-shadow(0 0 4px rgba(${glowColor},0.85)) drop-shadow(0 0 10px rgba(${glowColor},0.65)) drop-shadow(0 0 16px rgba(${glowColor},0.5))`
+            : `drop-shadow(0 0 3px rgba(${glowColor},0.55)) drop-shadow(0 0 8px rgba(${glowColor},0.35))`,
+        },
+      };
+    });
+  }, [edges, selectedEdges, isDarkMode]);
+
   // History tracking for undo
   useEffect(() => {
     if (skipHistoryRef.current) {
@@ -4525,26 +4556,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           <ReactFlow
           style={{ background: isDarkMode ? '#0F172A' : '#F8FAFC' }}
           nodes={nodes}
-          edges={edges.map(edge => {
-            const isSelected = selectedEdges.some(e => e.id === edge.id);
-            const isReversed = edge.data?.animationDirection === 'reverse';
-            const baseStroke = edge.style?.stroke || (isDarkMode ? '#FFFFFF' : '#29B5E8');
-            const glowColor = isDarkMode ? '255,255,255' : '41,181,232';
-            return {
-              ...edge,
-              // Highlight selected edges with strong yellow/orange glow
-              selected: isSelected,
-              className: isReversed ? 'edge-reversed' : '',
-              style: {
-                ...edge.style,
-                stroke: isSelected ? (isDarkMode ? '#FFFFFF' : '#29B5E8') : baseStroke,
-                strokeWidth: isSelected ? 4 : 2, // Thicker for more visibility
-                filter: isSelected 
-                  ? `drop-shadow(0 0 4px rgba(${glowColor},0.85)) drop-shadow(0 0 10px rgba(${glowColor},0.65)) drop-shadow(0 0 16px rgba(${glowColor},0.5))`
-                  : `drop-shadow(0 0 3px rgba(${glowColor},0.55)) drop-shadow(0 0 8px rgba(${glowColor},0.35))`,
-              }
-            };
-          })}
+          edges={displayedEdges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
