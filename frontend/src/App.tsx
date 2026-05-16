@@ -1300,6 +1300,42 @@ const App: React.FC = () => {
     });
   }, [edges, selectedEdges, isDarkMode]);
 
+  // PERF: Memoize ReactFlow's inline props.
+  //
+  // ReactFlow performs internal memoization keyed on prop reference equality.
+  // Inline objects/functions in JSX (style={{...}}, isValidConnection={()=>true},
+  // defaultEdgeOptions={{...}}, snapGrid={[16,16]}, proOptions={{...}}, plus
+  // Background/MiniMap nodeColor / maskColor / style) get fresh references on
+  // every parent re-render. During chat streaming, App.tsx re-renders dozens
+  // of times per second, and each render handed ReactFlow brand-new props —
+  // forcing it to re-evaluate edge defaults, snap grid, mini-map color
+  // resolvers, etc. Stable refs let ReactFlow short-circuit those paths.
+  const reactFlowStyle = React.useMemo(
+    () => ({ background: isDarkMode ? '#0F172A' : '#F8FAFC' }),
+    [isDarkMode],
+  );
+  const reactFlowProOptions = React.useMemo(() => ({ hideAttribution: true }), []);
+  const reactFlowSnapGrid = React.useMemo<[number, number]>(() => [16, 16], []);
+  const reactFlowIsValidConnection = useCallback(() => true, []);
+  const reactFlowDefaultEdgeOptions = React.useMemo(
+    () => ({
+      type: 'smoothstep',
+      animated: true,
+      style: { stroke: isDarkMode ? '#FFFFFF' : '#29B5E8', strokeWidth: 2.5 },
+      deletable: true,
+    }),
+    [isDarkMode],
+  );
+  const backgroundStyle = React.useMemo(
+    () => ({ backgroundColor: isDarkMode ? '#1f2937' : '#ffffff' }),
+    [isDarkMode],
+  );
+  const minimapStyle = React.useMemo(
+    () => ({ backgroundColor: isDarkMode ? '#374151' : '#f9fafb' }),
+    [isDarkMode],
+  );
+  const minimapNodeColor = useCallback(() => '#29B5E8', []);
+
   // History tracking for undo.
   //
   // PERF: Debounced to 200ms. Previously this snapshot fired on every
@@ -4688,7 +4724,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
         {/* Canvas - Diagram Builder with ReactFlow */}
         <div className={styles.canvas} ref={reactFlowWrapper}>
           <ReactFlow
-          style={{ background: isDarkMode ? '#0F172A' : '#F8FAFC' }}
+          style={reactFlowStyle}
           nodes={nodes}
           edges={displayedEdges}
           onNodesChange={onNodesChange}
@@ -4707,33 +4743,28 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
           connectionMode={ConnectionMode.Loose}
-          isValidConnection={() => true}
+          isValidConnection={reactFlowIsValidConnection}
           fitView
           snapToGrid={snapEnabled}
-          snapGrid={[16, 16]}
-        proOptions={{ hideAttribution: true }}
+          snapGrid={reactFlowSnapGrid}
+          proOptions={reactFlowProOptions}
           deleteKeyCode={null}
           selectNodesOnDrag={false}
           multiSelectionKeyCode="Shift"
-          defaultEdgeOptions={{
-        type: 'smoothstep',  // Orthogonal routing with rounded corners
-            animated: true,
-        style: { stroke: isDarkMode ? '#FFFFFF' : '#29B5E8', strokeWidth: 2.5 },  // Phase 3: Increased strokeWidth,
-            deletable: true,
-          }}
+          defaultEdgeOptions={reactFlowDefaultEdgeOptions}
           onMove={onMove}
         >
           <Background 
             color={isDarkMode ? '#374151' : '#e5e7eb'} 
             gap={16}
-            style={{ backgroundColor: isDarkMode ? '#1f2937' : '#ffffff' }}
+            style={backgroundStyle}
           />
           <Controls className={styles.controls} />
           <MiniMap
             className={styles.minimap}
-            nodeColor={(node) => '#29B5E8'}
+            nodeColor={minimapNodeColor}
             maskColor={isDarkMode ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.1)'}
-            style={{ backgroundColor: isDarkMode ? '#374151' : '#f9fafb' }}
+            style={minimapStyle}
           />
           
           {/* Top Panel with Actions */}
