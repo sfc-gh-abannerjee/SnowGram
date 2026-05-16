@@ -1293,6 +1293,16 @@
 
         // External / non-snow columns render directly
         col.forEach(function(z) { colEl.appendChild(buildZoneEl(z)); });
+        // When there is a platform-boundary, columns rendered OUTSIDE
+        // the boundary (e.g. External Sources) start at the rank-row
+        // top while columns INSIDE the boundary start 28px lower
+        // (the boundary's `padding-top`). That 28px offset misaligns
+        // cards row-by-row across boundary / non-boundary zones —
+        // every cross-boundary connector becomes a small L-turn.
+        // Match the boundary's top padding here so zone tops line up.
+        if (snowStart >= 0) {
+          colEl.style.paddingTop = '28px';
+        }
         flow.appendChild(colEl);
       });
 
