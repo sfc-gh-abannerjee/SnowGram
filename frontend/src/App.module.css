@@ -2097,6 +2097,64 @@
 .chatMarkdown {
   margin-top: 2px;
 }
+
+/* Streaming fade-in: each newly-mounted markdown element (paragraphs, list items,
+   inline spans, etc.) fades in over ~180ms. Streamdown is DOM-stable, so existing
+   nodes are not re-rendered — only fresh tokens animate. The animation only fires
+   once on mount, so we get a smooth char-by-char appearance without re-flashing
+   already-rendered text. */
+@keyframes streamFadeIn {
+  from {
+    opacity: 0;
+    filter: blur(0.5px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+.chatMarkdown p,
+.chatMarkdown li,
+.chatMarkdown h1,
+.chatMarkdown h2,
+.chatMarkdown h3,
+.chatMarkdown strong,
+.chatMarkdown em,
+.chatMarkdown code,
+.chatMarkdown a,
+.chatMarkdown span,
+.chatMarkdown td,
+.chatMarkdown th,
+.thinkingContent p,
+.thinkingContent li,
+.thinkingContent strong,
+.thinkingContent em,
+.thinkingContent code,
+.thinkingContent span {
+  animation: streamFadeIn 180ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .chatMarkdown p,
+  .chatMarkdown li,
+  .chatMarkdown h1,
+  .chatMarkdown h2,
+  .chatMarkdown h3,
+  .chatMarkdown strong,
+  .chatMarkdown em,
+  .chatMarkdown code,
+  .chatMarkdown a,
+  .chatMarkdown span,
+  .chatMarkdown td,
+  .chatMarkdown th,
+  .thinkingContent p,
+  .thinkingContent li,
+  .thinkingContent strong,
+  .thinkingContent em,
+  .thinkingContent code,
+  .thinkingContent span {
+    animation: none;
+  }
+}
 .chatMarkdown p {
   margin: 0 0 0.5em 0;
   line-height: 1.5;
