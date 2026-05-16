@@ -1927,7 +1927,11 @@
       // obstacle cards. We deliberately do NOT call snapToGap here —
       // snapping into an inter-zone gap can place enterX/exitX on the
       // far side of an obstacle, which makes the stub H pass through it.
-      var clearanceX = 4;
+      // 12px visual breathing room between V columns and adjacent
+      // cards. 4px would be technically clear but visually reads as
+      // the line "hugging" the card edge — 12px puts the V close to
+      // the inter-card gap midpoint.
+      var clearanceX = 12;
       var obsLeft = Infinity, obsRight = -Infinity;
       for (var oi = 0; oi < allZoneHits.length; oi++) {
         if (allZoneHits[oi].left  < obsLeft)  obsLeft  = allZoneHits[oi].left;
