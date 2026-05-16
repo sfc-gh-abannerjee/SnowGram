@@ -1775,14 +1775,76 @@
       var aboveY = minTop - clearance;
       var belowY = maxBottom + clearance;
 
+      // Inter-row channels: clear horizontal bands BETWEEN rows of cards.
+      // These are the architect-style "lane gaps" — wider than the
+      // 24px above/below buffer and entirely INSIDE the layout's
+      // content area, so a detour rail placed in one doesn't run on
+      // top of the platform-boundary border. Cluster cards by their
+      // vertical center, then between adjacent clusters compute the
+      // gap [maxBottomOfClusterI, minTopOfClusterI+1] and use the
+      // center as a candidate rail.
+      function buildRowChannels() {
+        if (!nodeRects.length) return [];
+        var rows = nodeRects.map(function(nr) { return { top: nr.top, bottom: nr.bottom, cy: (nr.top + nr.bottom) / 2 }; });
+        rows.sort(function(a, b) { return a.cy - b.cy; });
+        // Cluster: any cards within 20px center-y are the "same row"
+        var clusters = [];
+        rows.forEach(function(r) {
+          if (!clusters.length || (r.cy - clusters[clusters.length - 1].cy > 20)) {
+            clusters.push({ top: r.top, bottom: r.bottom, cy: r.cy });
+          } else {
+            var last = clusters[clusters.length - 1];
+            if (r.top    < last.top)    last.top    = r.top;
+            if (r.bottom > last.bottom) last.bottom = r.bottom;
+            last.cy = (last.top + last.bottom) / 2;
+          }
+        });
+        var channels = [];
+        for (var ci = 0; ci < clusters.length - 1; ci++) {
+          var top = clusters[ci].bottom;
+          var bot = clusters[ci + 1].top;
+          if (bot - top >= 12) channels.push((top + bot) / 2);
+        }
+        return channels;
+      }
+      var rowChannels = buildRowChannels();
+
       function railClearOfZones(railY) {
         return zonesOnH(loX, hiX, railY).length === 0;
       }
+      // For inter-row channels, the rail sits INSIDE a zone's vertical
+      // span (between rows of cards) so zonesOnH always reports a hit.
+      // Use a card-level check instead: the rail at railY is clear if
+      // it doesn't intersect any card's body in the path's x range
+      // (excluding source/target cards, which the path's stub Hs cross).
+      function railClearOfCards(railY) {
+        for (var i = 0; i < nodeRects.length; i++) {
+          var nr = nodeRects[i];
+          if (nr.id === srcId || nr.id === tgtId) continue;
+          if (railY <= nr.top + 2 || railY >= nr.bottom - 2) continue;
+          if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
+          return false;
+        }
+        return true;
+      }
       var detourY;
-      var belowOK = belowY > 0 && railClearOfZones(belowY);
-      var aboveOK = aboveY > 0 && railClearOfZones(aboveY);
       var refY = (y1 + y2) / 2;
-      if (belowOK && aboveOK) {
+      // First preference: an inter-row channel that is clear of CARDS
+      // — this keeps the detour cleanly INSIDE the content area between
+      // rows of cards, never running along the platform-boundary edge.
+      var bestChannelY = null, bestChannelDist = Infinity;
+      for (var rc = 0; rc < rowChannels.length; rc++) {
+        var ry = rowChannels[rc];
+        if (!railClearOfCards(ry)) continue;
+        var d = Math.abs(ry - refY);
+        if (d < bestChannelDist) { bestChannelDist = d; bestChannelY = ry; }
+      }
+      if (bestChannelY !== null) {
+        detourY = bestChannelY;
+      } else {
+        var belowOK = belowY > 0 && railClearOfZones(belowY);
+        var aboveOK = aboveY > 0 && railClearOfZones(aboveY);
+        if (belowOK && aboveOK) {
         // Both rails are clear of zones — pick the one closer to the
         // path's natural y to minimize the V-segment lengths.
         detourY = (Math.abs(belowY - refY) <= Math.abs(aboveY - refY)) ? belowY : aboveY;
@@ -1798,6 +1860,7 @@
           detourY = maxBottom + clearance + step * 28;
         }
       }
+      } // end of inter-row-channel else branch
 
       // Stubs: deliberate exit/entry from cardinal ports before turning.
       // For the U-shape detour, the V columns must sit in clear x-space
