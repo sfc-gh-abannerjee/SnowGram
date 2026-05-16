@@ -978,6 +978,97 @@ const App: React.FC = () => {
     });
   }, [chatMessages]);
 
+  // ============================================================================
+  // Streaming-text typewriter
+  // ----------------------------------------------------------------------------
+  // The agent's chunks arrive in bursts of varying size — sometimes a single
+  // character, sometimes 30+ at once — which made the on-screen text appear
+  // to "snap" forward in jolts. Buffer the target text per message and reveal
+  // characters at a steady, configurable rate so the on-screen reading speed
+  // is decoupled from the network's chunking. Applied to m.text (narrative)
+  // and m.thinking (reasoning panel). Code-block expanders intentionally
+  // bypass this — their syntax-highlighted content is meant for inspection,
+  // not for reading at typewriter speed.
+  //
+  // Speed: ~3 chars per ~16ms frame ≈ 180 chars/sec — comfortable reading
+  // pace, comparable to ChatGPT's UI. Drops to "snap to target" the moment
+  // the user closes the stream (chatSending=false) so completed messages
+  // never lag behind their final state.
+  // ============================================================================
+  const TYPEWRITER_CHARS_PER_FRAME = 3;
+  const [displayedText, setDisplayedText] = useState<Record<number, string>>({});
+  const [displayedThinking, setDisplayedThinking] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    // When the stream ends, snap all displayed values to their targets so
+    // completed messages aren't permanently truncated.
+    if (!chatSending) {
+      setDisplayedText((prev) => {
+        const next: Record<number, string> = {};
+        let changed = false;
+        chatMessages.forEach((m, idx) => {
+          const target = m.text || '';
+          if (prev[idx] !== target) changed = true;
+          next[idx] = target;
+        });
+        return changed ? next : prev;
+      });
+      setDisplayedThinking((prev) => {
+        const next: Record<number, string> = {};
+        let changed = false;
+        chatMessages.forEach((m, idx) => {
+          const target = m.thinking || '';
+          if (prev[idx] !== target) changed = true;
+          next[idx] = target;
+        });
+        return changed ? next : prev;
+      });
+      return;
+    }
+
+    let cancelled = false;
+    const tick = () => {
+      if (cancelled) return;
+      // Advance both maps in a single frame so they stay in sync.
+      const advance = (
+        prev: Record<number, string>,
+        key: 'text' | 'thinking',
+      ): Record<number, string> => {
+        const next = { ...prev };
+        let changed = false;
+        chatMessages.forEach((m, idx) => {
+          const target = (key === 'text' ? m.text : m.thinking) || '';
+          const cur = prev[idx] ?? '';
+          if (cur === target) return;
+          // If the source text was rewritten (e.g., final-handler replaced
+          // streamed prose with a different finalMessage, or chunk handler
+          // collapsed code blocks differently), the cursor would be invalid.
+          // Snap to target in that case.
+          if (cur.length > target.length || !target.startsWith(cur)) {
+            next[idx] = target;
+            changed = true;
+            return;
+          }
+          const advanceBy = Math.min(
+            target.length - cur.length,
+            TYPEWRITER_CHARS_PER_FRAME,
+          );
+          next[idx] = target.slice(0, cur.length + advanceBy);
+          changed = true;
+        });
+        return changed ? next : prev;
+      };
+      setDisplayedText((p) => advance(p, 'text'));
+      setDisplayedThinking((p) => advance(p, 'thinking'));
+      requestAnimationFrame(tick);
+    };
+    const id = requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [chatMessages, chatSending]);
+
   // Auto-scroll the chat panel to the latest content while the agent is
   // streaming, but stop fighting the user the moment they scroll up
   // manually. Re-engages once they scroll back to the bottom on their own.
@@ -995,7 +1086,7 @@ const App: React.FC = () => {
       node.scrollTop = node.scrollHeight;
     });
     return () => cancelAnimationFrame(id);
-  }, [chatMessages, chatSending]);
+  }, [chatMessages, chatSending, displayedText, displayedThinking]);
 
   // Auto-scroll the inner streaming containers (Mermaid Diagram + JSON
   // Specification code blocks AND the Thinking expander) while content
@@ -1023,7 +1114,7 @@ const App: React.FC = () => {
       });
     });
     return () => cancelAnimationFrame(id);
-  }, [chatMessages, chatSending]);
+  }, [chatMessages, chatSending, displayedText, displayedThinking]);
 
   // Save chat position separately (not per-session)
   useEffect(() => {
@@ -5069,7 +5160,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         </button>
                         {expandedThinking.has(idx) && (
                           <div className={`${styles.thinkingContent} ${closingThinking.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.thinking}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayedThinking[idx] ?? m.thinking ?? ''}</ReactMarkdown>
                           </div>
                         )}
                       </div>
@@ -5173,7 +5264,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         expanders so users read the description first, then
                         click into the code blocks if they want the raw output. */}
                     <div className={styles.chatMarkdown}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayedText[idx] ?? m.text ?? ''}</ReactMarkdown>
                     </div>
 
                     {/* Mermaid Diagram - expandable with copy button.
