@@ -2426,8 +2426,21 @@
           } else if (rowDiff === 0) {
             // Same row index, slightly different y — H-V-H through a
             // mid-channel that's cardinal-port aligned.
-            var sameRowStubX = (tgtFanIn > 1) ? fanInStubX : (x1 + x2) / 2;
-            if (tgtFanIn <= 1) sameRowStubX = snapToGap(sameRowStubX, x1, x2);
+            // When the source has fan-out OR the target has fan-in,
+            // use the trunk stub-X so this edge shares a divergence /
+            // convergence column with its siblings — even if THIS
+            // particular edge happens to be same-row. (Without this,
+            // a fan-out source with one same-row target and one
+            // adjacent-row target would split into two stub-Xs and
+            // visibly fail to merge.)
+            var sameRowStubX;
+            if (tgtFanIn > 1) {
+              sameRowStubX = fanInStubX;
+            } else if (srcFanOut > 1) {
+              sameRowStubX = fanOutStubX;
+            } else {
+              sameRowStubX = snapToGap((x1 + x2) / 2, x1, x2);
+            }
             d = pointsToD(routeOrthogonal(x1, y1, x2, y2, sameRowStubX,
                                            edge.source, edge.target));
           } else if (rowDiff === 1) {
