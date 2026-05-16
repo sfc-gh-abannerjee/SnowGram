@@ -2415,6 +2415,54 @@
           // fan-in (otherwise we'd have a single shared V channel
           // for both sides which doesn't reduce ink).
 
+          // When BOTH ends have fan-in/fan-out, the single-stub L-route
+          // would force a precedence choice that sacrifices either
+          // source-side divergence or target-side convergence. Build
+          // a 5-segment BRIDGED route instead so siblings on BOTH ends
+          // share their respective trunks:
+          //   H(x1 → fanOutStubX)      ← shared by source's outgoing
+          //   V(y1 → midY)
+          //   H(fanOutStubX → fanInStubX)
+          //   V(midY → y2)
+          //   H(fanInStubX → x2)        ← shared by target's incoming
+          // The middle H rides at midY = (y1+y2)/2. For ADJACENT-zone
+          // edges that midY is inside the inter-zone gap and clear by
+          // construction. For SKIP-zone edges the H bridge can be long
+          // and cross intermediate cards — in that case we fall back
+          // to the single-stub L-route (fan-in precedence) which is
+          // safer than a guaranteed-crossing bridge.
+          function bridgedRoute(x1, y1, x2, y2, stubSrc, stubTgt) {
+            var midY = (y1 + y2) / 2;
+            return 'M' + x1 + ',' + y1 +
+                   ' L' + stubSrc + ',' + y1 +
+                   ' L' + stubSrc + ',' + midY +
+                   ' L' + stubTgt + ',' + midY +
+                   ' L' + stubTgt + ',' + y2 +
+                   ' L' + x2 + ',' + y2;
+          }
+          // Bridge collision check: does the H rail at midY cross
+          // any non-endpoint card between fanOutStubX and fanInStubX,
+          // OR run within an 8px halo of any such card's top/bottom
+          // edge? The halo prevents the rail from visually "hugging"
+          // a card edge (matches the railClearOfZones halo used by
+          // U-shape detour selection).
+          function bridgeCollides(stubSrc, stubTgt, midY) {
+            var lo = Math.min(stubSrc, stubTgt);
+            var hi = Math.max(stubSrc, stubTgt);
+            var halo = 8;
+            for (var i = 0; i < nodeRects.length; i++) {
+              var nr = nodeRects[i];
+              if (nr.id === edge.source || nr.id === edge.target) continue;
+              if (nr.right < lo + 2 || nr.left > hi - 2) continue;
+              if (midY > nr.top - halo && midY < nr.bottom + halo) return true;
+            }
+            return false;
+          }
+          var useBridged = (srcFanOut > 1 && tgtFanIn > 1 &&
+                            Math.abs(fanOutStubX - fanInStubX) > 8 &&
+                            !bridgeCollides(fanOutStubX, fanInStubX,
+                                            (y1 + y2) / 2));
+
           if (rowDiff === 0 && Math.abs(y1 - y2) < 1) {
             // Same row AND same exact y. For adjacent zones a clean
             // straight horizontal; for skip-edges, routeOrthogonal sweeps
@@ -2423,6 +2471,10 @@
             // collapses to the straight horizontal (same y, same trackX).
             d = pointsToD(routeOrthogonal(x1, y1, x2, y2, (x1 + x2) / 2,
                                            edge.source, edge.target));
+          } else if (useBridged) {
+            // Bridged H-V-H-V-H — preserves source divergence AND
+            // target convergence simultaneously.
+            d = bridgedRoute(x1, y1, x2, y2, fanOutStubX, fanInStubX);
           } else if (rowDiff === 0) {
             // Same row index, slightly different y — H-V-H through a
             // mid-channel that's cardinal-port aligned.
