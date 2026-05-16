@@ -1723,7 +1723,26 @@
       // visually overlays unrelated componentry.
       var zHits1 = zonesOnH(x1, trackX, y1);
       var zHits2 = zonesOnH(trackX, x2, y2);
-      if (!zHits1.length && !zHits2.length) {
+      // Also detect CARD-level obstacles on the H stubs. The src zone is
+      // excluded from `zonesOnH`, but cards INSIDE the src/tgt zone that
+      // sit between the source/target node and trackX still need to be
+      // detected (e.g. Polaris and External Spark sitting between S3
+      // and the inter-zone V column for s3->pipe).
+      function cardsOnH(xa, xb, y) {
+        var lo = Math.min(xa, xb), hi = Math.max(xa, xb);
+        var hits = [];
+        for (var i = 0; i < nodeRects.length; i++) {
+          var nr = nodeRects[i];
+          if (nr.id === srcId || nr.id === tgtId) continue;
+          if (y <= nr.top + 2 || y >= nr.bottom - 2) continue;
+          if (nr.right < lo + 2 || nr.left > hi - 2) continue;
+          hits.push(nr);
+        }
+        return hits;
+      }
+      var cHits1 = cardsOnH(x1, trackX, y1);
+      var cHits2 = cardsOnH(trackX, x2, y2);
+      if (!zHits1.length && !zHits2.length && !cHits1.length && !cHits2.length) {
         // Clean H-V-H. Two corners. Adjacent zones, no zones between.
         return [
           [x1, y1],
@@ -1775,6 +1794,16 @@
         zHits1.forEach(function(z) { allZoneHits.push(z); });
         zHits2.forEach(function(z) {
           if (allZoneHits.indexOf(z) < 0) allZoneHits.push(z);
+        });
+      }
+      // If still empty (only CARD-level obstacles triggered the detour
+      // — e.g. cards inside src/tgt zone between source and the
+      // inter-zone V column), seed from card hits so that maxBottom
+      // and obsLeft/obsRight have a basis.
+      if (!allZoneHits.length) {
+        var seedCards = cHits1.concat(cHits2);
+        seedCards.forEach(function(c) {
+          if (allZoneHits.indexOf(c) < 0) allZoneHits.push(c);
         });
       }
 
@@ -1904,17 +1933,28 @@
         if (allZoneHits[oi].left  < obsLeft)  obsLeft  = allZoneHits[oi].left;
         if (allZoneHits[oi].right > obsRight) obsRight = allZoneHits[oi].right;
       }
-      // Source/target zone bounds: when the V column enters the detour
-      // rail, it must EXIT the source zone first (and re-enter target
-      // zone last) — otherwise the V runs through the source/target
-      // zone's empty interior space (e.g. the bottom of External
-      // Sources zone when only the top rows are populated). Find the
-      // src zone's right edge and tgt zone's left edge so we can
-      // constrain enterX/exitX accordingly.
-      var srcZoneRect = null, tgtZoneRect = null;
-      for (var zzi = 0; zzi < zoneRects.length; zzi++) {
-        if (zoneRects[zzi].name === srcZoneName) srcZoneRect = zoneRects[zzi];
-        if (zoneRects[zzi].name === tgtZoneName) tgtZoneRect = zoneRects[zzi];
+      // ALSO include card-level obstacles for cards that the V column at
+      // enterX/exitX could cross. A card blocks a V column if its
+      // y-range overlaps the V column's y-range (between the card's
+      // row and the detour rail), AND it sits between source and
+      // target horizontally. This catches cards INSIDE the source or
+      // target zone (which are excluded from allZoneHits) — e.g.
+      // External Spark sitting between Polaris and the inter-zone gap.
+      var vYTop = Math.min(y1, y2, detourY);
+      var vYBot = Math.max(y1, y2, detourY);
+      for (var ni = 0; ni < nodeRects.length; ni++) {
+        var ncard = nodeRects[ni];
+        if (ncard.id === srcId || ncard.id === tgtId) continue;
+        // Card must overlap the V column's y-range
+        if (ncard.bottom < vYTop || ncard.top > vYBot) continue;
+        // Card must be horizontally between source and target
+        if (goingRight) {
+          if (ncard.right <= x1 || ncard.left >= x2) continue;
+        } else {
+          if (ncard.left >= x1 || ncard.right <= x2) continue;
+        }
+        if (ncard.left  < obsLeft)  obsLeft  = ncard.left;
+        if (ncard.right > obsRight) obsRight = ncard.right;
       }
       var stubMin = 2;
       // Squeeze detection on TARGET only: when target.left is within
@@ -1934,39 +1974,26 @@
       }
       var enterX, exitX;
       if (goingRight) {
-        // Place enterX just past source zone's RIGHT edge (so the V
-        // column doesn't run through the source zone's empty interior),
-        // but no further than just before the first obstacle.
-        var minEnterX = x1 + stubMin;
-        if (srcZoneRect) minEnterX = Math.max(minEnterX, srcZoneRect.right + clearanceX);
-        enterX = Math.max(minEnterX, Math.min(x1 + 28, obsLeft - clearanceX));
-        // If srcZoneRect.right is past obsLeft, fall back to placing
-        // enterX between source and obstacle as best we can.
-        if (enterX > obsLeft - clearanceX && srcZoneRect && srcZoneRect.right < obsLeft - clearanceX) {
-          enterX = srcZoneRect.right + clearanceX;
-        }
+        // Place enterX just past source, but no further than just before
+        // the leftmost obstacle (zone OR card). With card obstacles
+        // included, this naturally lands enterX in the inter-card
+        // column gap when there are cards in source zone to the right
+        // of the source node (e.g. External Spark sitting between
+        // Polaris and the inter-zone gap).
+        enterX = Math.max(x1 + stubMin, Math.min(x1 + 28, obsLeft - clearanceX));
         if (tgtSqueezed) {
           exitX = (tgtRect.left + tgtRect.right) / 2;
         } else {
-          // exitX should be PAST last obstacle but BEFORE entering tgt zone.
-          var maxExitX = x2 - stubMin;
-          if (tgtZoneRect) maxExitX = Math.min(maxExitX, tgtZoneRect.left - clearanceX);
-          exitX = Math.min(maxExitX, Math.max(x2 - 28, obsRight + clearanceX));
-          if (exitX < obsRight + clearanceX && tgtZoneRect && tgtZoneRect.left > obsRight + clearanceX) {
-            exitX = tgtZoneRect.left - clearanceX;
-          }
+          // exitX should be PAST last obstacle but before target.
+          exitX = Math.min(x2 - stubMin, Math.max(x2 - 28, obsRight + clearanceX));
         }
         if (enterX > exitX) { enterX = x1 + stubMin; exitX = (tgtSqueezed ? exitX : x2 - stubMin); }
       } else {
-        var maxEnterX = x1 - stubMin;
-        if (srcZoneRect) maxEnterX = Math.min(maxEnterX, srcZoneRect.left - clearanceX);
-        enterX = Math.min(maxEnterX, Math.max(x1 - 28, obsRight + clearanceX));
+        enterX = Math.min(x1 - stubMin, Math.max(x1 - 28, obsRight + clearanceX));
         if (tgtSqueezed) {
           exitX = (tgtRect.left + tgtRect.right) / 2;
         } else {
-          var minExitX = x2 + stubMin;
-          if (tgtZoneRect) minExitX = Math.max(minExitX, tgtZoneRect.right + clearanceX);
-          exitX = Math.max(minExitX, Math.min(x2 + 28, obsLeft - clearanceX));
+          exitX = Math.max(x2 + stubMin, Math.min(x2 + 28, obsLeft - clearanceX));
         }
         if (enterX < exitX) { enterX = x1 - stubMin; exitX = (tgtSqueezed ? exitX : x2 + stubMin); }
       }
