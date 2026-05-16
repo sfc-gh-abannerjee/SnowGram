@@ -995,7 +995,7 @@ const App: React.FC = () => {
   // the user closes the stream (chatSending=false) so completed messages
   // never lag behind their final state.
   // ============================================================================
-  const TYPEWRITER_CHARS_PER_FRAME = 3;
+  const TYPEWRITER_CHARS_PER_FRAME = 2;
   const [displayedText, setDisplayedText] = useState<Record<number, string>>({});
   const [displayedThinking, setDisplayedThinking] = useState<Record<number, string>>({});
 
