@@ -1452,7 +1452,11 @@
     });
     // Quick lookup: node id → zone name
     var nodeIdToZoneName = {};
-    nodeRects.forEach(function(nr) { nodeIdToZoneName[nr.id] = nr.zoneName; });
+    var nodeRectsById = {};
+    nodeRects.forEach(function(nr) {
+      nodeIdToZoneName[nr.id] = nr.zoneName;
+      nodeRectsById[nr.id] = nr;
+    });
 
     // ── Sub-column geometry ──
     // Consolidated zones (e.g. "Ingestion" with AWS / AZURE sub-columns)
@@ -1462,19 +1466,36 @@
     // sub-columns of the same parent zone. Cache sub-column rects with
     // their parent-zone name and the set of node ids they contain.
     var subColRects = Array.prototype.map.call(card.querySelectorAll('.sub-group-col'), function(sgEl) {
-      var r = sgEl.getBoundingClientRect();
       var parentZ = sgEl.closest('.zone');
       var pName = parentZ ? (parentZ.querySelector('.zone-name') || {}).textContent : '';
-      var nodeIds = Array.prototype.map.call(sgEl.querySelectorAll('.flow-node'),
-        function(n) { return n.getAttribute('data-node-id'); });
+      // Use the bounding box of the contained .flow-node cards as the
+      // obstacle rect (NOT the wrapper sgEl's box). The wrapper can be
+      // a few px narrower than its cards depending on flex/min-width
+      // resolution, which causes routing to think the right edge is
+      // clear when a card actually still extends past it.
+      var nodeEls = sgEl.querySelectorAll('.flow-node');
+      var nodeIds = Array.prototype.map.call(nodeEls, function(n) { return n.getAttribute('data-node-id'); });
+      var minLeft = Infinity, maxRight = -Infinity, minTop = Infinity, maxBottom = -Infinity;
+      for (var i = 0; i < nodeEls.length; i++) {
+        var nr = nodeEls[i].getBoundingClientRect();
+        if (nr.left   < minLeft)   minLeft   = nr.left;
+        if (nr.right  > maxRight)  maxRight  = nr.right;
+        if (nr.top    < minTop)    minTop    = nr.top;
+        if (nr.bottom > maxBottom) maxBottom = nr.bottom;
+      }
+      // Fallback to sgEl rect if there are no cards inside (defensive)
+      if (!isFinite(minLeft)) {
+        var sr = sgEl.getBoundingClientRect();
+        minLeft = sr.left; maxRight = sr.right; minTop = sr.top; maxBottom = sr.bottom;
+      }
       return {
         el: sgEl,
         parentZoneName: (pName || '').trim(),
         nodeIds: nodeIds,
-        left: r.left - cardRect.left,
-        right: r.right - cardRect.left,
-        top: r.top - cardRect.top,
-        bottom: r.bottom - cardRect.top
+        left: minLeft - cardRect.left,
+        right: maxRight - cardRect.left,
+        top: minTop - cardRect.top,
+        bottom: maxBottom - cardRect.top
       };
     });
     // Quick lookup: node id → sub-column index in subColRects
@@ -1779,20 +1800,69 @@
       }
 
       // Stubs: deliberate exit/entry from cardinal ports before turning.
-      // Then snap each V-segment x to the nearest inter-zone gap CENTER so
-      // the V doesn't run on top of (or 1-2px from) a zone border. Without
-      // this snap, a stub of 28px from x1 lands inside the source's
-      // immediate gap which often visually merges with the boundary line.
-      var stub = Math.min(28, Math.abs(x2 - x1) / 4);
-      var enterX = goingRight ? x1 + stub : x1 - stub;
-      var exitX  = goingRight ? x2 - stub : x2 + stub;
-      // Push enter/exit V-segments into clear inter-zone gaps when they'd
-      // otherwise land on or near a zone border.
-      enterX = snapToGap(enterX, x1, x2);
-      exitX  = snapToGap(exitX,  x1, x2);
-      if (goingRight && enterX > exitX) { enterX = x1; exitX = x2; }
-      if (!goingRight && enterX < exitX) { enterX = x1; exitX = x2; }
+      // For the U-shape detour, the V columns must sit in clear x-space
+      // BEFORE the first obstacle (entry) and AFTER the last obstacle
+      // (exit) so the source-stub H and target-stub H don't cut through
+      // obstacle cards. We deliberately do NOT call snapToGap here —
+      // snapping into an inter-zone gap can place enterX/exitX on the
+      // far side of an obstacle, which makes the stub H pass through it.
+      var clearanceX = 4;
+      var obsLeft = Infinity, obsRight = -Infinity;
+      for (var oi = 0; oi < allZoneHits.length; oi++) {
+        if (allZoneHits[oi].left  < obsLeft)  obsLeft  = allZoneHits[oi].left;
+        if (allZoneHits[oi].right > obsRight) obsRight = allZoneHits[oi].right;
+      }
+      var stubMin = 2;
+      // Squeeze detection on TARGET only: when target.left is within
+      // (stubMin + clearanceX) of obstacle.right, there is no x-room for
+      // a clean V column to land outside the obstacle and stub right
+      // into target's LEFT port. In that case enter via TOP/BOTTOM port:
+      // place V over target.center_x and terminate the path on
+      // target.top or target.bottom (whichever the detour rail is on).
+      var tgtRect = nodeRectsById[tgtId];
+      var tgtSqueezed = false;
+      if (tgtRect) {
+        if (goingRight) {
+          tgtSqueezed = (x2 - obsRight) < (stubMin + clearanceX);
+        } else {
+          tgtSqueezed = (obsLeft - x2) < (stubMin + clearanceX);
+        }
+      }
+      var enterX, exitX;
+      if (goingRight) {
+        // Place enterX just past source, but no further than just before obstacle.
+        // If obstacle is so close that there's < stubMin gap, enterX collapses
+        // to a tiny stub and the V will visually overlap the obstacle border —
+        // that's a much smaller violation than crossing a card.
+        enterX = Math.max(x1 + stubMin, Math.min(x1 + 28, obsLeft - clearanceX));
+        if (tgtSqueezed) {
+          exitX = (tgtRect.left + tgtRect.right) / 2;
+        } else {
+          exitX = Math.min(x2 - stubMin, Math.max(x2 - 28, obsRight + clearanceX));
+        }
+        if (enterX > exitX) { enterX = x1 + stubMin; exitX = (tgtSqueezed ? exitX : x2 - stubMin); }
+      } else {
+        enterX = Math.min(x1 - stubMin, Math.max(x1 - 28, obsRight + clearanceX));
+        if (tgtSqueezed) {
+          exitX = (tgtRect.left + tgtRect.right) / 2;
+        } else {
+          exitX = Math.max(x2 + stubMin, Math.min(x2 + 28, obsLeft - clearanceX));
+        }
+        if (enterX < exitX) { enterX = x1 - stubMin; exitX = (tgtSqueezed ? exitX : x2 + stubMin); }
+      }
 
+      if (tgtSqueezed && tgtRect) {
+        // TOP/BOTTOM port entry: terminate path at target's nearest
+        // horizontal edge over its center (no final stub H).
+        var endY = (detourY < y2) ? tgtRect.top : tgtRect.bottom;
+        return [
+          [x1,     y1],
+          [enterX, y1],
+          [enterX, detourY],
+          [exitX,  detourY],
+          [exitX,  endY]
+        ];
+      }
       return [
         [x1,     y1],
         [enterX, y1],
