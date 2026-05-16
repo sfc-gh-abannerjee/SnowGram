@@ -63,6 +63,36 @@ const SyntaxHighlighter = dynamic(
   { ssr: false }
 );
 import { oneDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+// Memoized SyntaxHighlighter wrapper. The Prism-based highlighter re-tokenizes
+// its input on every render — which during chat streaming means every expanded
+// dropdown re-tokenizes its (unchanged) mermaid/json content on every parent
+// re-render. Wrapping in React.memo with a string-equality comparator on the
+// `code` prop short-circuits all those redundant tokenizations. Also avoids
+// the expensive re-paint when the chat panel toggles open/closed.
+type MemoSHProps = {
+  code: string;
+  language: string;
+  customStyle?: React.CSSProperties;
+  showLineNumbers?: boolean;
+};
+const MemoSyntaxHighlighter = memo(
+  function MemoSyntaxHighlighter({ code, language, customStyle, showLineNumbers }: MemoSHProps) {
+    return (
+      <SyntaxHighlighter
+        language={language}
+        style={oneDark}
+        customStyle={customStyle}
+        showLineNumbers={showLineNumbers}
+      >
+        {code}
+      </SyntaxHighlighter>
+    );
+  },
+  (prev, next) =>
+    prev.code === next.code &&
+    prev.language === next.language &&
+    prev.showLineNumbers === next.showLineNumbers,
+);
 import { useSessionStorage, type ChatMessage, type SavedSession, type ToolResult } from './hooks/useSessionStorage';
 // Material Icons for professional UI
 import PsychologyIcon from '@mui/icons-material/Psychology';
@@ -5287,13 +5317,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                                           {copiedKey === `input-${toolKey}` ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
                                         </button>
                                       </div>
-                                      <SyntaxHighlighter 
-                                        language="json" 
-                                        style={oneDark}
+                                      <MemoSyntaxHighlighter
+                                        language="json"
+                                        code={JSON.stringify(toolResult.input, null, 2)}
                                         customStyle={{ margin: '4px 0', borderRadius: '4px', fontSize: '11px' }}
-                                      >
-                                        {JSON.stringify(toolResult.input, null, 2)}
-                                      </SyntaxHighlighter>
+                                      />
                                     </div>
                                   )}
                                   <div className={styles.toolResultOutput}>
@@ -5312,15 +5340,13 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                                         {copiedKey === `result-${toolKey}` ? <CheckIcon fontSize="small" /> : <ContentCopyIcon fontSize="small" />}
                                       </button>
                                     </div>
-                                    <SyntaxHighlighter 
-                                      language="json" 
-                                      style={oneDark}
-                                      customStyle={{ margin: '4px 0', borderRadius: '4px', fontSize: '11px', maxHeight: '300px', overflow: 'auto' }}
-                                    >
-                                      {typeof toolResult.result === 'string' 
-                                        ? toolResult.result 
+                                    <MemoSyntaxHighlighter
+                                      language="json"
+                                      code={typeof toolResult.result === 'string'
+                                        ? toolResult.result
                                         : JSON.stringify(toolResult.result, null, 2)}
-                                    </SyntaxHighlighter>
+                                      customStyle={{ margin: '4px 0', borderRadius: '4px', fontSize: '11px', maxHeight: '300px', overflow: 'auto' }}
+                                    />
                                   </div>
                                 </div>
                               )}
@@ -5380,14 +5406,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         </div>
                         {expandedMermaid.has(idx) && (
                           <div className={`${styles.codeArtifactContent} ${closingMermaid.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
-                            <SyntaxHighlighter 
-                              language="markdown" 
-                              style={oneDark}
+                            <MemoSyntaxHighlighter
+                              language="markdown"
+                              code={m.mermaidCode}
                               customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', fontSize: '12px', maxHeight: '400px' }}
                               showLineNumbers
-                            >
-                              {m.mermaidCode}
-                            </SyntaxHighlighter>
+                            />
                           </div>
                         )}
                       </div>
@@ -5434,14 +5458,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         </div>
                         {expandedJsonSpec.has(idx) && (
                           <div className={`${styles.codeArtifactContent} ${closingJsonSpec.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
-                            <SyntaxHighlighter 
-                              language="json" 
-                              style={oneDark}
+                            <MemoSyntaxHighlighter
+                              language="json"
+                              code={m.jsonSpec}
                               customStyle={{ margin: 0, borderRadius: '0 0 8px 8px', fontSize: '12px', maxHeight: '400px' }}
                               showLineNumbers
-                            >
-                              {m.jsonSpec}
-                            </SyntaxHighlighter>
+                            />
                           </div>
                         )}
                       </div>
