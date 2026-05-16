@@ -5166,7 +5166,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         </button>
                         {expandedThinking.has(idx) && (
                           <div className={`${styles.thinkingContent} ${closingThinking.has(idx) ? styles.expandableContentClosing : styles.expandableContent}`}>
-                            <Streamdown>{displayedThinking[idx] ?? m.thinking ?? ''}</Streamdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayedThinking[idx] ?? m.thinking ?? ''}</ReactMarkdown>
                           </div>
                         )}
                       </div>
