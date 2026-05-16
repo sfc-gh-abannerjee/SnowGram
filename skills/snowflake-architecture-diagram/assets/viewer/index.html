@@ -1851,7 +1851,22 @@
       var rowChannels = buildRowChannels();
 
       function railClearOfZones(railY) {
-        return zonesOnH(loX, hiX, railY).length === 0;
+        if (zonesOnH(loX, hiX, railY).length !== 0) return false;
+        // ALSO require that the rail clears all non-endpoint cards by
+        // at least 12px (so the H rail doesn't run flush against a
+        // card's top or bottom edge — e.g. a "below Spark" rail at
+        // y=Spark.bottom+24 lining up with Trino.top would be
+        // visually flush against Trino).
+        var pad = 12;
+        for (var i = 0; i < nodeRects.length; i++) {
+          var nr = nodeRects[i];
+          if (nr.id === srcId || nr.id === tgtId) continue;
+          if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
+          // Reject if rail is within `pad` of card's top or bottom,
+          // or inside the card's body.
+          if (railY > nr.top - pad && railY < nr.bottom + pad) return false;
+        }
+        return true;
       }
       // For inter-row channels, the rail sits INSIDE a zone's vertical
       // span (between rows of cards) so zonesOnH always reports a hit.
