@@ -958,11 +958,33 @@ const App: React.FC = () => {
     }
   }, [clampChatPos, initializeSessions]);
 
-  // Auto-save session when messages or thread change
+  // Auto-save session when messages or thread change.
+  //
+  // PERF: Debounced to 600ms. The previous implementation called saveSession
+  // synchronously on every chatMessages change, which during streaming meant
+  // dozens of JSON.stringify(entire chat history) + localStorage.setItem calls
+  // per second — all blocking the main thread (localStorage is synchronous).
+  // The cost grew linearly with chat history, which is why the app slowed
+  // down progressively the more turns the user generated.
+  //
+  // 600ms is short enough that a session refresh after streaming ends still
+  // captures the final state (the last scheduled timer fires 600ms after the
+  // final chunk), and long enough that mid-stream chunks coalesce into a
+  // single write.
+  const sessionSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (currentSessionId && !isLoadingSession.current) {
-      saveSession(currentSessionId, chatMessages, conversationThreadId, lastMessageId);
+    if (!currentSessionId || isLoadingSession.current) return;
+    if (sessionSaveTimerRef.current) {
+      clearTimeout(sessionSaveTimerRef.current);
     }
+    sessionSaveTimerRef.current = setTimeout(() => {
+      saveSession(currentSessionId, chatMessages, conversationThreadId, lastMessageId);
+      sessionSaveTimerRef.current = null;
+    }, 600);
+    // No cleanup-flush: cleanup fires on every dep change, which would
+    // re-write on every chunk and defeat the debounce. Worst case the user
+    // closes the tab inside the 600ms window and loses the final delta;
+    // acceptable trade for a quiet main thread during streaming.
   }, [chatMessages, conversationThreadId, lastMessageId, currentSessionId, saveSession]);
 
   // Auto-expand the Thinking, JSON Specification, and Mermaid Diagram
