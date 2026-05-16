@@ -5218,10 +5218,19 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 autoScrollRef.current = atBottom;
               }}
             >
-              {chatMessages.map((m, idx) => (
+              {chatMessages.map((m, idx) => {
+                // PERF: tag only the latest assistant message so the
+                // perpetual `assistantGlow` background-position animation
+                // runs on a single bubble at a time. Older bubbles render
+                // the same gradient statically (frozen at default position),
+                // eliminating the per-bubble continuous repaint cost that
+                // scaled linearly with chat history.
+                const isLatestAssistant =
+                  m.role === 'assistant' && idx === chatMessages.length - 1;
+                return (
                 <div
                   key={idx}
-                  className={m.role === 'user' ? styles.chatMessageUser : styles.chatMessageAssistant}
+                  className={`${m.role === 'user' ? styles.chatMessageUser : styles.chatMessageAssistant} ${isLatestAssistant ? styles.chatMessageAssistantLatest : ''}`}
                 >
                   <div className={styles.chatBubble}>
                     <strong>{m.role === 'user' ? 'You' : 'SnowGram'}:</strong>
@@ -5479,7 +5488,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                     })()}
                   </div>
                 </div>
-              ))}
+              );
+              })}
 
               {/* Starter prompts - compact chips inside the scrollable area to avoid
                   overflowing into the chat input row when the panel is short. */}
