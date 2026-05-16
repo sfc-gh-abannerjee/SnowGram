@@ -418,20 +418,11 @@
   .zone-body.cols-2 { grid-template-columns: repeat(2, 1fr); min-width: 280px; }
 
   /* Sub-group label (consolidated zones with AWS/Azure/etc. sub-columns) */
+  /* Hidden — these sub-column header badges (e.g. "AWS", "AZURE")
+     add visual noise without much information value. Sub-columns
+     still group their cards visually via spacing. */
   .sub-group-label {
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--text-muted);
-    padding: 4px 8px;
-    border-radius: 4px;
-    background: rgba(255,255,255,0.03);
-    text-align: center;
-    margin-bottom: 2px;
-  }
-  [data-theme="dark"] .sub-group-label {
-    background: rgba(255,255,255,0.04);
+    display: none;
   }
 
   /* Compact node variant when inside a zone */
