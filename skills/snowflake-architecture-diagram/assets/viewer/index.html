@@ -2179,6 +2179,54 @@
       });
     });
 
+    // ── H-track allocation for BRIDGED routes ─────────────────────
+    // Each bridged H-V-H-V-H route's middle H rail rides at midY in
+    // the inter-zone gap between source and target. When N bridged
+    // edges share the same (source-zone → target-zone) pair, they
+    // would all compute midY = (y1+y2)/2 and stack on top of each
+    // other — causing the visible "rail clutter" in dense sections.
+    //
+    // Mirror the V-column allocator: group candidate-bridged edges
+    // by zone-pair key, distribute their midY values across the
+    // available y band so each rail gets a unique track. The actual
+    // bridge-vs-fallback decision still happens at routing time
+    // (bridgeCollides may force a fallback for any specific edge);
+    // here we only PRE-ASSIGN tracks for the candidates so siblings
+    // that DO bridge come out evenly spaced.
+    var hTrackKey = {};      // edgeIdx → "src_zone|tgt_zone"
+    var hTrackIndex = {};    // edgeIdx → assigned slot (0..N-1)
+    var hTrackCounts = {};   // key → N
+    var hTrackEdges = {};    // key → [{idx, srcY, tgtY}]
+    edges.forEach(function(edge, idx) {
+      if ((nodeOutCount[edge.source] || 0) <= 1) return;
+      if ((nodeInCount[edge.target] || 0) <= 1) return;
+      var s = card.querySelector('[data-node-id="' + edge.source + '"]');
+      var t = card.querySelector('[data-node-id="' + edge.target + '"]');
+      if (!s || !t) return;
+      var sz = s.closest('.zone'), tz = t.closest('.zone');
+      if (!sz || !tz || sz === tz) return;
+      var key = (sz.querySelector('.zone-name') || {}).textContent + '|' +
+                (tz.querySelector('.zone-name') || {}).textContent;
+      if (!hTrackEdges[key]) hTrackEdges[key] = [];
+      var srcCy = s.getBoundingClientRect().top + s.getBoundingClientRect().height / 2;
+      var tgtCy = t.getBoundingClientRect().top + t.getBoundingClientRect().height / 2;
+      hTrackEdges[key].push({ idx: idx, srcY: srcCy, tgtY: tgtCy });
+      hTrackKey[idx] = key;
+    });
+    Object.keys(hTrackEdges).forEach(function(key) {
+      var group = hTrackEdges[key];
+      // Sort by source Y first, then target Y — this groups edges
+      // that flow in the same direction together so adjacent tracks
+      // also have similar trajectories.
+      group.sort(function(a, b) {
+        return (a.srcY - b.srcY) || (a.tgtY - b.tgtY);
+      });
+      hTrackCounts[key] = group.length;
+      group.forEach(function(item, sortedIdx) {
+        hTrackIndex[item.idx] = sortedIdx;
+      });
+    });
+
     edges.forEach(function(edge, edgeIdx) {
       const srcEl = card.querySelector('[data-node-id="' + edge.source + '"]');
       const tgtEl = card.querySelector('[data-node-id="' + edge.target + '"]');
@@ -2432,7 +2480,30 @@
           // to the single-stub L-route (fan-in precedence) which is
           // safer than a guaranteed-crossing bridge.
           function bridgedRoute(x1, y1, x2, y2, stubSrc, stubTgt) {
-            var midY = (y1 + y2) / 2;
+            // Distribute midY across the (y1, y2) band so siblings
+            // sharing the same source/target zone-pair don't all
+            // stack at one midY. Use the pre-assigned hTrackIndex /
+            // hTrackCounts pool. Falls back to (y1+y2)/2 when the
+            // edge isn't in any pool (shouldn't happen for bridged
+            // edges, but defensive).
+            var midY;
+            var hKey = hTrackKey[edgeIdx];
+            var hTotal = hKey ? (hTrackCounts[hKey] || 1) : 1;
+            var hIdx = hTrackIndex[edgeIdx] !== undefined ? hTrackIndex[edgeIdx] : 0;
+            if (hTotal > 1) {
+              // Distribute across the [min(y1,y2)+pad, max(y1,y2)-pad]
+              // band so each track gets its own slot. Pad keeps tracks
+              // away from the V stubs' endpoints.
+              var bandTop = Math.min(y1, y2) + 16;
+              var bandBot = Math.max(y1, y2) - 16;
+              if (bandBot > bandTop) {
+                midY = bandTop + (bandBot - bandTop) * (hIdx + 1) / (hTotal + 1);
+              } else {
+                midY = (y1 + y2) / 2;
+              }
+            } else {
+              midY = (y1 + y2) / 2;
+            }
             return 'M' + x1 + ',' + y1 +
                    ' L' + stubSrc + ',' + y1 +
                    ' L' + stubSrc + ',' + midY +
@@ -2458,10 +2529,27 @@
             }
             return false;
           }
+          // Compute the candidate midY here so useBridged check uses
+          // the same value the route will actually be drawn at.
+          var candidateMidY;
+          (function() {
+            var hKey = hTrackKey[edgeIdx];
+            var hTotal = hKey ? (hTrackCounts[hKey] || 1) : 1;
+            var hIdx = hTrackIndex[edgeIdx] !== undefined ? hTrackIndex[edgeIdx] : 0;
+            if (hTotal > 1) {
+              var bandTop = Math.min(y1, y2) + 16;
+              var bandBot = Math.max(y1, y2) - 16;
+              candidateMidY = (bandBot > bandTop)
+                ? bandTop + (bandBot - bandTop) * (hIdx + 1) / (hTotal + 1)
+                : (y1 + y2) / 2;
+            } else {
+              candidateMidY = (y1 + y2) / 2;
+            }
+          })();
           var useBridged = (srcFanOut > 1 && tgtFanIn > 1 &&
                             Math.abs(fanOutStubX - fanInStubX) > 8 &&
                             !bridgeCollides(fanOutStubX, fanInStubX,
-                                            (y1 + y2) / 2));
+                                            candidateMidY));
 
           if (rowDiff === 0 && Math.abs(y1 - y2) < 1) {
             // Same row AND same exact y. For adjacent zones a clean
