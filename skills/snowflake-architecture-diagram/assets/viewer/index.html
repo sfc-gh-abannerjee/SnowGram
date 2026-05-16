@@ -2511,21 +2511,49 @@
                    ' L' + stubTgt + ',' + y2 +
                    ' L' + x2 + ',' + y2;
           }
-          // Bridge collision check: does the H rail at midY cross
-          // any non-endpoint card between fanOutStubX and fanInStubX,
-          // OR run within an 8px halo of any such card's top/bottom
-          // edge? The halo prevents the rail from visually "hugging"
-          // a card edge (matches the railClearOfZones halo used by
-          // U-shape detour selection).
+          // Bridge collision check: a bridged H-V-H-V-H route has 5
+          // segments. Reject the bridge if ANY segment crosses or
+          // hugs (within 8px halo) a non-endpoint card:
+          //   - segment 3 (middle H rail at midY between fanOutStubX
+          //     and fanInStubX) — long, exposed across the inter-
+          //     zone gap and any intermediate zones
+          //   - segment 2 (V at fanOutStubX from y1 to midY) — runs
+          //     along the source-zone right border; could clip a
+          //     same-zone neighbor card if the stub-X falls inside
+          //     a card's bounding box (e.g., when zone widths force
+          //     the stub-X to land on a card edge)
+          //   - segment 4 (V at fanInStubX from midY to y2) — same
+          //     consideration on the target side
+          // Halo matches railClearOfZones (12px halo for the side V's,
+          // tighter 8px halo for the bridge H so we don't reject too
+          // aggressively when the bridge is in a wide inter-zone gap).
           function bridgeCollides(stubSrc, stubTgt, midY) {
             var lo = Math.min(stubSrc, stubTgt);
             var hi = Math.max(stubSrc, stubTgt);
-            var halo = 8;
+            var hHalo = 8;
+            var vHalo = 12;
+            var vTopSrc = Math.min(y1, midY);
+            var vBotSrc = Math.max(y1, midY);
+            var vTopTgt = Math.min(y2, midY);
+            var vBotTgt = Math.max(y2, midY);
             for (var i = 0; i < nodeRects.length; i++) {
               var nr = nodeRects[i];
               if (nr.id === edge.source || nr.id === edge.target) continue;
-              if (nr.right < lo + 2 || nr.left > hi - 2) continue;
-              if (midY > nr.top - halo && midY < nr.bottom + halo) return true;
+              // 1. Middle H rail at midY between [lo, hi]
+              if (nr.right >= lo + 2 && nr.left <= hi - 2 &&
+                  midY > nr.top - hHalo && midY < nr.bottom + hHalo) {
+                return true;
+              }
+              // 2. Source-side V at stubSrc from y1 to midY
+              if (stubSrc > nr.left - vHalo && stubSrc < nr.right + vHalo &&
+                  vBotSrc > nr.top + 2 && vTopSrc < nr.bottom - 2) {
+                return true;
+              }
+              // 3. Target-side V at stubTgt from midY to y2
+              if (stubTgt > nr.left - vHalo && stubTgt < nr.right + vHalo &&
+                  vBotTgt > nr.top + 2 && vTopTgt < nr.bottom - 2) {
+                return true;
+              }
             }
             return false;
           }
