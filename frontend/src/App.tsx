@@ -1209,6 +1209,13 @@ const App: React.FC = () => {
   // 30+ times per second, forcing a full edge reconcile + repaint on each.
   // Memoizing on [edges, selectedEdges, isDarkMode] cuts this work to "only
   // when something visibly changes about the edges themselves."
+  //
+  // Visual: only SELECTED edges get the drop-shadow halo. Non-selected edges
+  // render as clean strokes. Drop-shadow is an SVG paint-property filter — the
+  // browser repaints the filter region on every frame the edge animates
+  // (animated: true sets stroke-dashoffset on a continuous loop). With 17+
+  // edges each having 2 drop-shadows, the canvas was perpetually compositing
+  // dozens of filter regions even when idle.
   const displayedEdges = React.useMemo(() => {
     return edges.map((edge) => {
       const isSelected = selectedEdges.some((e) => e.id === edge.id);
@@ -1223,9 +1230,10 @@ const App: React.FC = () => {
           ...edge.style,
           stroke: isSelected ? (isDarkMode ? '#FFFFFF' : '#29B5E8') : baseStroke,
           strokeWidth: isSelected ? 4 : 2,
+          // Glow only on selected edges. Non-selected stay clean for perf.
           filter: isSelected
             ? `drop-shadow(0 0 4px rgba(${glowColor},0.85)) drop-shadow(0 0 10px rgba(${glowColor},0.65)) drop-shadow(0 0 16px rgba(${glowColor},0.5))`
-            : `drop-shadow(0 0 3px rgba(${glowColor},0.55)) drop-shadow(0 0 8px rgba(${glowColor},0.35))`,
+            : undefined,
         },
       };
     });
