@@ -1938,7 +1938,15 @@ const App: React.FC = () => {
     setMenuPosition(null);
   }, [selectedEdges, setEdges]);
   
-  // Handle keyboard Delete for selected edges and nodes
+  // Handle keyboard Delete for selected edges and nodes.
+  //
+  // PERF: previously had `nodes` (and `selectedEdges`) in the dep array,
+  // which made this effect tear down + re-register the global keydown
+  // listener on every drag tick and every chat chunk. We now register the
+  // listener ONCE and read latest state from a ref synced on each render —
+  // no re-registration, no closure churn.
+  const keyboardLatestStateRef = useRef({ nodes, selectedEdges, deleteSelectedEdges, setNodes, setEdges });
+  keyboardLatestStateRef.current = { nodes, selectedEdges, deleteSelectedEdges, setNodes, setEdges };
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Check if user is not typing in an input field
@@ -1949,6 +1957,7 @@ const App: React.FC = () => {
       
       if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
+        const { nodes, selectedEdges, deleteSelectedEdges, setNodes, setEdges } = keyboardLatestStateRef.current;
         
         // Delete selected edges
         if (selectedEdges.length > 0) {
@@ -1970,7 +1979,7 @@ const App: React.FC = () => {
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedEdges, nodes, deleteSelectedEdges, setNodes, setEdges]);
+  }, []);
 
   // Note: Edge reconnection handlers removed - not supported in this ReactFlow version
 
