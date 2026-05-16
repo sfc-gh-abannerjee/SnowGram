@@ -753,6 +753,34 @@ const App: React.FC = () => {
     setIsHydrated(true);
   }, []);
 
+  // PERF: pause CSS animations when this tab isn't visible.
+  //
+  // Browsers throttle rAF and setTimeout in background tabs (rAF -> ~1Hz,
+  // setTimeout -> 1s minimum), but CSS animations technically keep
+  // ticking — the compositor still allocates frames for them. Toggling a
+  // body-level class lets us suspend ALL CSS animations at once via a
+  // single `animation-play-state: paused !important;` rule (in App.module.css).
+  // Net effect: hidden tab spends ~zero time animating, freeing GPU /
+  // compositor budget for other tabs (and the tab the user is in). When
+  // the user comes back, the visibilitychange handler clears the class
+  // and animations resume.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        document.body.classList.add('snowgram-tab-hidden');
+      } else {
+        document.body.classList.remove('snowgram-tab-hidden');
+      }
+    };
+    onVis(); // sync at mount
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      document.body.classList.remove('snowgram-tab-hidden');
+    };
+  }, []);
+
   // Patch the global console so log output also lands in the in-app panel.
   // PERF: writes go to logEntriesRef (a refbacked ringbuffer), NOT React state.
   // A separate effect below polls the ref into React state ONLY when the
