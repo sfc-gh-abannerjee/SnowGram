@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars, @next/next/no-img-element */
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, memo } from 'react';
 import dynamic from 'next/dynamic';
 import ReactFlow, {
   Node,
@@ -44,6 +44,19 @@ const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
 const Streamdown = dynamic(
   () => import('streamdown').then((mod) => mod.Streamdown),
   { ssr: false }
+);
+// Memoized wrapper: re-renders ONLY when the `text` prop changes. Without this,
+// every parent re-render (chatSending toggling, autoscroll effects, sibling
+// state updates, etc.) would re-run Streamdown's full markdown parse + Shiki
+// highlight pipeline, blocking the main thread and starving auto-scroll /
+// auto-expand effects. Memoizing on the text content alone cuts spurious
+// re-renders to zero — Streamdown only does work when new tokens actually
+// arrive on the wire.
+const StreamdownText = memo(
+  function StreamdownText({ text }: { text: string }) {
+    return <Streamdown>{text}</Streamdown>;
+  },
+  (prev, next) => prev.text === next.text,
 );
 const SyntaxHighlighter = dynamic(
   () => import('react-syntax-highlighter').then(mod => mod.Prism),
@@ -5272,7 +5285,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         expanders so users read the description first, then
                         click into the code blocks if they want the raw output. */}
                     <div className={styles.chatMarkdown}>
-                      <Streamdown>{displayedText[idx] ?? m.text ?? ''}</Streamdown>
+                      <StreamdownText text={displayedText[idx] ?? m.text ?? ''} />
                     </div>
 
                     {/* Mermaid Diagram - expandable with copy button.
