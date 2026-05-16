@@ -1201,25 +1201,40 @@ const App: React.FC = () => {
     });
   }, [edges, selectedEdges, isDarkMode]);
 
-  // History tracking for undo
+  // History tracking for undo.
+  //
+  // PERF: Debounced to 200ms. Previously this snapshot fired on every
+  // [nodes, edges] change, which during a drag means 60 frames/sec each
+  // doing JSON.stringify({nodes, edges}) + JSON.parse the result. For a
+  // 21-node 17-edge diagram that was ~5KB of serialization work per frame
+  // — visibly stuttering the drag. Debouncing collapses an entire drag
+  // into a single end-of-motion snapshot. Undo still works correctly:
+  // the user could only have meant to undo the entire move anyway.
+  const historyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (skipHistoryRef.current) {
       skipHistoryRef.current = false;
       return;
     }
-    const snapshot = JSON.stringify({ nodes, edges });
-    if (lastSnapshotRef.current === snapshot) return;
+    if (historyTimerRef.current) {
+      clearTimeout(historyTimerRef.current);
+    }
+    historyTimerRef.current = setTimeout(() => {
+      historyTimerRef.current = null;
+      const snapshot = JSON.stringify({ nodes, edges });
+      if (lastSnapshotRef.current === snapshot) return;
 
-    const hist = historyRef.current;
-    if (historyIndexRef.current < hist.length - 1) {
-      hist.splice(historyIndexRef.current + 1);
-    }
-    hist.push(JSON.parse(snapshot));
-    if (hist.length > historyLimit) {
-      hist.shift();
-    }
-    historyIndexRef.current = hist.length - 1;
-    lastSnapshotRef.current = snapshot;
+      const hist = historyRef.current;
+      if (historyIndexRef.current < hist.length - 1) {
+        hist.splice(historyIndexRef.current + 1);
+      }
+      hist.push(JSON.parse(snapshot));
+      if (hist.length > historyLimit) {
+        hist.shift();
+      }
+      historyIndexRef.current = hist.length - 1;
+      lastSnapshotRef.current = snapshot;
+    }, 200);
   }, [nodes, edges]);
 
   // Global undo hotkey (Cmd/Ctrl + Z)
