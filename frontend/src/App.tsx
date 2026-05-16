@@ -687,6 +687,13 @@ const App: React.FC = () => {
   type LogLevel = 'log' | 'warn' | 'error' | 'info' | 'debug';
   interface LogEntry { ts: number; level: LogLevel; message: string }
   const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  // PERF: All console writes accumulate into a ref-backed ringbuffer instead
+  // of React state, so logs don't trigger app-wide re-renders. The React
+  // state above is only refreshed (from the ref) when the debug panel is
+  // actually visible. This stops the gradual tab slowdown caused by every
+  // debugLog firing setState on a 1000-entry list during streaming.
+  const logEntriesRef = useRef<LogEntry[]>([]);
+  const LOG_RINGBUFFER_CAP = 200;
   const [logPanelOpen, setLogPanelOpen] = useState(false);
   const [logPanelHeight, setLogPanelHeight] = useState(220);
   const [logPanelResizing, setLogPanelResizing] = useState(false);
@@ -742,8 +749,10 @@ const App: React.FC = () => {
   }, []);
 
   // Patch the global console so log output also lands in the in-app panel.
-  // Each entry is normalized to a single line (whitespace collapsed) so users
-  // can copy/paste the panel contents without ragged formatting.
+  // PERF: writes go to logEntriesRef (a refbacked ringbuffer), NOT React state.
+  // A separate effect below polls the ref into React state ONLY when the
+  // debug panel is open. This keeps debugLog calls during streaming from
+  // triggering app-wide re-renders.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const original = {
@@ -760,14 +769,19 @@ const App: React.FC = () => {
       try { return JSON.stringify(a); } catch { return String(a); }
     }).join(' ').replace(/\s+/g, ' ').trim();
 
+    const pushLog = (entry: LogEntry) => {
+      const buf = logEntriesRef.current;
+      buf.push(entry);
+      if (buf.length > LOG_RINGBUFFER_CAP) {
+        buf.splice(0, buf.length - LOG_RINGBUFFER_CAP);
+      }
+    };
+
     const wrap = (level: LogLevel) => (...args: any[]) => {
       try { (original[level] as any)(...args); } catch {}
       const msg = formatArgs(args);
       if (!msg) return;
-      setLogEntries(prev => {
-        const next = [...prev, { ts: Date.now(), level, message: msg }];
-        return next.length > 1000 ? next.slice(-1000) : next;
-      });
+      pushLog({ ts: Date.now(), level, message: msg });
     };
 
     console.log = wrap('log');
@@ -777,21 +791,21 @@ const App: React.FC = () => {
     console.debug = wrap('debug');
 
     const onError = (e: ErrorEvent) => {
-      setLogEntries(prev => [...prev, {
+      pushLog({
         ts: Date.now(),
         level: 'error',
         message: `[window.error] ${e.message} @ ${e.filename}:${e.lineno}:${e.colno}`,
-      }]);
+      });
     };
     const onRejection = (e: PromiseRejectionEvent) => {
       const reason = e.reason instanceof Error
         ? `${e.reason.name}: ${e.reason.message}`
         : (typeof e.reason === 'string' ? e.reason : JSON.stringify(e.reason));
-      setLogEntries(prev => [...prev, {
+      pushLog({
         ts: Date.now(),
         level: 'error',
         message: `[unhandledrejection] ${reason}`,
-      }]);
+      });
     };
     window.addEventListener('error', onError);
     window.addEventListener('unhandledrejection', onRejection);
@@ -802,6 +816,20 @@ const App: React.FC = () => {
       window.removeEventListener('unhandledrejection', onRejection);
     };
   }, []);
+
+  // PERF: Mirror logEntriesRef → logEntries React state ONLY while the debug
+  // panel is visible. This keeps log capture O(0) for re-renders when the
+  // panel is closed (the common case) — the log ringbuffer keeps filling
+  // silently in a ref without touching React. When the user opens the panel,
+  // the state syncs at 4Hz so the panel feels live.
+  useEffect(() => {
+    if (!showDebug) return;
+    setLogEntries([...logEntriesRef.current]);
+    const id = setInterval(() => {
+      setLogEntries([...logEntriesRef.current]);
+    }, 250);
+    return () => clearInterval(id);
+  }, [showDebug]);
 
   // Resize handler for the log panel — drag the top edge to set height
   useEffect(() => {
@@ -5838,7 +5866,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
             </button>
             <button
               className={styles.logPanelButton}
-              onClick={() => setLogEntries([])}
+                onClick={() => { logEntriesRef.current = []; setLogEntries([]); }}
               title="Clear log buffer"
             >
               Clear
