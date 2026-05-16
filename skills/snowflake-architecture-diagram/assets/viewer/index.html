@@ -900,13 +900,21 @@
           subGroups.forEach(function(sg) {
             sg.node_ids.forEach(function(id) { allNodeIds.push(id); });
           });
+          // Flatten: stack all merged cards as a single column instead
+          // of creating per-qualifier sub-columns. Sub-columns add
+          // visual noise (sub-headers) and force connectors into
+          // multi-step routes. Stacking keeps the L→R flow clean.
+          // (Set state.consolidate_sub_groups = true to re-enable
+          // the sub-column rendering for layouts that genuinely need
+          // it — e.g. wide fan-outs that won't fit in one column.)
+          var useSubGroups = state.consolidate_sub_groups === true;
           consolidated.push({
             name: prefixName,
             category: group[0].category,
             description: group.map(function(g) { return g.description || ''; })
                               .filter(Boolean).join(' / '),
             node_ids: allNodeIds,
-            sub_groups: subGroups
+            sub_groups: useSubGroups ? subGroups : null
           });
           // Update nodeToZone-style mapping later — for now just have node.zone
           // reflect the consolidated name so backfill logic stays consistent.
@@ -1387,6 +1395,34 @@
       var rj = rowOf[j];
       var target = Math.ceil(maxByRow[rj]);
       cards[j].style.minHeight = target + 'px';
+    }
+
+    // Third pass — equalize zone-body heights and distribute cards
+    // using `align-content: space-around` so a source zone with 2
+    // cards lining up to a downstream zone with 4 cards positions
+    // its cards at row centroids 0.5 and 2.5 of the larger zone.
+    // This eliminates the L-shaped turns that would otherwise be
+    // forced by source.center_y misaligned with target.center_y.
+    var bodies = document.querySelectorAll('.zone .zone-body');
+    var maxBodyH = 0;
+    bodies.forEach(function(b) {
+      // Reset any prior min-height before measuring (idempotent re-layout).
+      b.style.minHeight = '';
+      var h = b.getBoundingClientRect().height;
+      if (h > maxBodyH) maxBodyH = h;
+    });
+    if (maxBodyH > 0) {
+      bodies.forEach(function(b) {
+        // Skip consolidated zones with sub-groups (sub-columns) since
+        // they manage their own internal grid. Skip zones already at
+        // max height — `space-around` would re-distribute their cards
+        // and break the row-aligned baseline established in pass 2.
+        if (b.getAttribute('data-sub-groups')) return;
+        var bodyH = b.getBoundingClientRect().height;
+        if (Math.abs(bodyH - maxBodyH) < 2) return;
+        b.style.minHeight = Math.ceil(maxBodyH) + 'px';
+        b.style.alignContent = 'space-around';
+      });
     }
   }
 
