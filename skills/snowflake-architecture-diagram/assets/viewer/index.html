@@ -327,7 +327,7 @@
   .platform-boundary {
     border: 2px dashed var(--sf-blue);
     border-radius: 16px;
-    padding: 28px 24px 24px;
+    padding: 28px 24px 64px;
     position: relative;
     background: rgba(41,181,232,0.015);
   }
@@ -1428,11 +1428,23 @@
     var zoneRects = Array.prototype.map.call(card.querySelectorAll('.zone'), function(zEl) {
       var r = zEl.getBoundingClientRect();
       var nameEl = zEl.querySelector('.zone-name');
+      // Some zone wrappers (flex/grid containers with min-width:0) can
+      // be a few px narrower than the cards inside. Use the bounding
+      // box of the contained cards as the canonical x extent so
+      // routing's "is this rail inside src/tgt zone" check uses the
+      // ACTUAL visible right/left edge of the zone.
+      var nodeEls = zEl.querySelectorAll('.flow-node');
+      var minLeft = r.left, maxRight = r.right;
+      for (var i = 0; i < nodeEls.length; i++) {
+        var nr = nodeEls[i].getBoundingClientRect();
+        if (nr.left  < minLeft)  minLeft  = nr.left;
+        if (nr.right > maxRight) maxRight = nr.right;
+      }
       return {
         el: zEl,
         name: nameEl ? nameEl.textContent.trim() : '',
-        left: r.left - cardRect.left,
-        right: r.right - cardRect.left,
+        left: minLeft - cardRect.left,
+        right: maxRight - cardRect.left,
         top: r.top - cardRect.top,
         bottom: r.bottom - cardRect.top
       };
@@ -1829,38 +1841,55 @@
       }
       var detourY;
       var refY = (y1 + y2) / 2;
-      // First preference: an inter-row channel that is clear of CARDS
-      // — this keeps the detour cleanly INSIDE the content area between
-      // rows of cards, never running along the platform-boundary edge.
-      var bestChannelY = null, bestChannelDist = Infinity;
-      for (var rc = 0; rc < rowChannels.length; rc++) {
-        var ry = rowChannels[rc];
-        if (!railClearOfCards(ry)) continue;
-        var d = Math.abs(ry - refY);
-        if (d < bestChannelDist) { bestChannelDist = d; bestChannelY = ry; }
+      // Priority order:
+      //   1. Rail BELOW all zones (clears every zone box, but stays
+      //      inside the platform-boundary because the boundary
+      //      extends past zone bottoms by the boundary's own bottom
+      //      padding). This is architect-style "go under" routing.
+      //   2. Rail ABOVE all zones (similar but rare — usually outside
+      //      the boundary because zone tops are grid-aligned to the
+      //      boundary header band).
+      //   3. Inter-row channel — last resort because it crosses zone
+      //      borders. Only used when above/below would push the rail
+      //      outside the platform-boundary.
+      function railInsideBoundary(railY) {
+        var pb = card.querySelector('.platform-boundary');
+        if (!pb) return true;
+        var pbR = pb.getBoundingClientRect();
+        var bTop = pbR.top - cardRect.top;
+        var bBot = pbR.bottom - cardRect.top;
+        return railY > bTop + 8 && railY < bBot - 8;
       }
-      if (bestChannelY !== null) {
-        detourY = bestChannelY;
-      } else {
-        var belowOK = belowY > 0 && railClearOfZones(belowY);
-        var aboveOK = aboveY > 0 && railClearOfZones(aboveY);
-        if (belowOK && aboveOK) {
-        // Both rails are clear of zones — pick the one closer to the
-        // path's natural y to minimize the V-segment lengths.
+      var belowOK = belowY > 0 && railClearOfZones(belowY) && railInsideBoundary(belowY);
+      var aboveOK = aboveY > 0 && railClearOfZones(aboveY) && railInsideBoundary(aboveY);
+      // First preference: above/below ALL zones (clean routing around
+      // every zone). Pick whichever is closer to refY.
+      if (belowOK && aboveOK) {
         detourY = (Math.abs(belowY - refY) <= Math.abs(aboveY - refY)) ? belowY : aboveY;
       } else if (belowOK) {
         detourY = belowY;
       } else if (aboveOK) {
         detourY = aboveY;
       } else {
-        // Neither rail is immediately clear — push outward (preferring
-        // below since these layouts flow top-to-bottom).
+        // Fallback: inter-row channel (crosses zone borders but doesn't
+        // cut cards). Better than running outside the boundary.
+        var bestChannelY = null, bestChannelDist = Infinity;
+        for (var rc = 0; rc < rowChannels.length; rc++) {
+          var ry = rowChannels[rc];
+          if (!railClearOfCards(ry)) continue;
+          var d = Math.abs(ry - refY);
+          if (d < bestChannelDist) { bestChannelDist = d; bestChannelY = ry; }
+        }
+        if (bestChannelY !== null) {
+          detourY = bestChannelY;
+        } else {
+        // Final fallback — push outward (preferring below).
         detourY = belowY;
         for (var step = 1; step <= 8 && !railClearOfZones(detourY); step++) {
           detourY = maxBottom + clearance + step * 28;
         }
+        }
       }
-      } // end of inter-row-channel else branch
 
       // Stubs: deliberate exit/entry from cardinal ports before turning.
       // For the U-shape detour, the V columns must sit in clear x-space
@@ -1874,6 +1903,18 @@
       for (var oi = 0; oi < allZoneHits.length; oi++) {
         if (allZoneHits[oi].left  < obsLeft)  obsLeft  = allZoneHits[oi].left;
         if (allZoneHits[oi].right > obsRight) obsRight = allZoneHits[oi].right;
+      }
+      // Source/target zone bounds: when the V column enters the detour
+      // rail, it must EXIT the source zone first (and re-enter target
+      // zone last) — otherwise the V runs through the source/target
+      // zone's empty interior space (e.g. the bottom of External
+      // Sources zone when only the top rows are populated). Find the
+      // src zone's right edge and tgt zone's left edge so we can
+      // constrain enterX/exitX accordingly.
+      var srcZoneRect = null, tgtZoneRect = null;
+      for (var zzi = 0; zzi < zoneRects.length; zzi++) {
+        if (zoneRects[zzi].name === srcZoneName) srcZoneRect = zoneRects[zzi];
+        if (zoneRects[zzi].name === tgtZoneName) tgtZoneRect = zoneRects[zzi];
       }
       var stubMin = 2;
       // Squeeze detection on TARGET only: when target.left is within
@@ -1893,23 +1934,39 @@
       }
       var enterX, exitX;
       if (goingRight) {
-        // Place enterX just past source, but no further than just before obstacle.
-        // If obstacle is so close that there's < stubMin gap, enterX collapses
-        // to a tiny stub and the V will visually overlap the obstacle border —
-        // that's a much smaller violation than crossing a card.
-        enterX = Math.max(x1 + stubMin, Math.min(x1 + 28, obsLeft - clearanceX));
+        // Place enterX just past source zone's RIGHT edge (so the V
+        // column doesn't run through the source zone's empty interior),
+        // but no further than just before the first obstacle.
+        var minEnterX = x1 + stubMin;
+        if (srcZoneRect) minEnterX = Math.max(minEnterX, srcZoneRect.right + clearanceX);
+        enterX = Math.max(minEnterX, Math.min(x1 + 28, obsLeft - clearanceX));
+        // If srcZoneRect.right is past obsLeft, fall back to placing
+        // enterX between source and obstacle as best we can.
+        if (enterX > obsLeft - clearanceX && srcZoneRect && srcZoneRect.right < obsLeft - clearanceX) {
+          enterX = srcZoneRect.right + clearanceX;
+        }
         if (tgtSqueezed) {
           exitX = (tgtRect.left + tgtRect.right) / 2;
         } else {
-          exitX = Math.min(x2 - stubMin, Math.max(x2 - 28, obsRight + clearanceX));
+          // exitX should be PAST last obstacle but BEFORE entering tgt zone.
+          var maxExitX = x2 - stubMin;
+          if (tgtZoneRect) maxExitX = Math.min(maxExitX, tgtZoneRect.left - clearanceX);
+          exitX = Math.min(maxExitX, Math.max(x2 - 28, obsRight + clearanceX));
+          if (exitX < obsRight + clearanceX && tgtZoneRect && tgtZoneRect.left > obsRight + clearanceX) {
+            exitX = tgtZoneRect.left - clearanceX;
+          }
         }
         if (enterX > exitX) { enterX = x1 + stubMin; exitX = (tgtSqueezed ? exitX : x2 - stubMin); }
       } else {
-        enterX = Math.min(x1 - stubMin, Math.max(x1 - 28, obsRight + clearanceX));
+        var maxEnterX = x1 - stubMin;
+        if (srcZoneRect) maxEnterX = Math.min(maxEnterX, srcZoneRect.left - clearanceX);
+        enterX = Math.min(maxEnterX, Math.max(x1 - 28, obsRight + clearanceX));
         if (tgtSqueezed) {
           exitX = (tgtRect.left + tgtRect.right) / 2;
         } else {
-          exitX = Math.max(x2 + stubMin, Math.min(x2 + 28, obsLeft - clearanceX));
+          var minExitX = x2 + stubMin;
+          if (tgtZoneRect) minExitX = Math.max(minExitX, tgtZoneRect.right + clearanceX);
+          exitX = Math.max(minExitX, Math.min(x2 + 28, obsLeft - clearanceX));
         }
         if (enterX < exitX) { enterX = x1 - stubMin; exitX = (tgtSqueezed ? exitX : x2 + stubMin); }
       }
