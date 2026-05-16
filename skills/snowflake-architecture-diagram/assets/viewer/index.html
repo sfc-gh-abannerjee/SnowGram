@@ -2282,8 +2282,19 @@
         // V segment with bumps: insert arcs at each crossing
         if (Math.abs(p1[0] - p2[0]) < 0.5 && segBumps.length > 0) {
           var goingDown = p2[1] > p1[1];
-          // Sort bumps in order of travel along the V
+          // Deduplicate bumps that fall within `r` of each other so two
+          // crossings at (effectively) the same Y don't produce a pair of
+          // arcs that backtrack. We collapse near-coincident bumps to a
+          // single hop. Iterate bumps in travel order along the V, drop
+          // any whose Y is within 2*r of the previously kept Y.
           segBumps.sort(function(a, b) { return goingDown ? a - b : b - a; });
+          var dedup = [];
+          for (var bi = 0; bi < segBumps.length; bi++) {
+            if (!dedup.length || Math.abs(segBumps[bi] - dedup[dedup.length - 1]) > r * 2) {
+              dedup.push(segBumps[bi]);
+            }
+          }
+          segBumps = dedup;
           var x = p1[0];
           var sweep = goingDown ? 1 : 0; // bump to the RIGHT of travel direction
           segBumps.forEach(function(by) {
