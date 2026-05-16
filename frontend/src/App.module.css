@@ -1641,7 +1641,10 @@
   flex-direction: column;
   z-index: 20;
   transform-origin: top left;
-  transition: transform 1.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 1.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s ease, visibility 0.2s ease;
+  /* Snappier toggle: 1.2s was perceived as a "delay" by users — typical UI
+     animations are 150–300ms. 240ms keeps the spring feel via the easeOut
+     curve without making the user wait for the panel to open/close. */
+  transition: transform 240ms cubic-bezier(0.16, 1, 0.3, 1), opacity 240ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 200ms ease, visibility 0ms ease;
   overflow: hidden;
   /* Custom resize handles instead of native resize: both */
 }
