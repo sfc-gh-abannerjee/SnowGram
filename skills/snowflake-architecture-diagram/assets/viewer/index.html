@@ -1229,11 +1229,25 @@
         return zoneEl;
       }
 
-      // Determine which columns are "inside Snowflake" (snow or outcome categories)
+      // Determine which columns are "inside Snowflake".
+      //
+      // Categories considered INSIDE the Snowflake Data Cloud boundary:
+      //   • 'snow'    — core Snowflake objects (tables, DTs, warehouses)
+      //   • 'outcome' — Snowflake-native consumers (BI, apps, agents)
+      //   • 'bridge'  — Snowflake-managed ingestion layer (Snowpipe,
+      //                 Openflow, Snowpipe Streaming, Snowpark connectors)
+      //                 — these are services running INSIDE the customer's
+      //                 Snowflake account, NOT external systems. Bridge
+      //                 zones with non-Snowflake connectors should use
+      //                 'onprem' instead.
+      //
+      // Only 'onprem' stays OUTSIDE the boundary.
       var snowCols = {};
       columns.forEach(function(col, ci) {
         col.forEach(function(z) {
-          if (z.category === 'snow' || z.category === 'outcome') snowCols[ci] = true;
+          if (z.category === 'snow' || z.category === 'outcome' || z.category === 'bridge') {
+            snowCols[ci] = true;
+          }
         });
       });
       var snowColIndices = Object.keys(snowCols).map(Number).sort(function(a,b){return a-b;});
@@ -1439,6 +1453,35 @@
     // Quick lookup: node id → zone name
     var nodeIdToZoneName = {};
     nodeRects.forEach(function(nr) { nodeIdToZoneName[nr.id] = nr.zoneName; });
+
+    // ── Sub-column geometry ──
+    // Consolidated zones (e.g. "Ingestion" with AWS / AZURE sub-columns)
+    // contain multiple .sub-group-col children. For routing purposes,
+    // each sub-column acts like a mini-zone — a connector targeting a
+    // node in one sub-column must NOT slice through siblings in other
+    // sub-columns of the same parent zone. Cache sub-column rects with
+    // their parent-zone name and the set of node ids they contain.
+    var subColRects = Array.prototype.map.call(card.querySelectorAll('.sub-group-col'), function(sgEl) {
+      var r = sgEl.getBoundingClientRect();
+      var parentZ = sgEl.closest('.zone');
+      var pName = parentZ ? (parentZ.querySelector('.zone-name') || {}).textContent : '';
+      var nodeIds = Array.prototype.map.call(sgEl.querySelectorAll('.flow-node'),
+        function(n) { return n.getAttribute('data-node-id'); });
+      return {
+        el: sgEl,
+        parentZoneName: (pName || '').trim(),
+        nodeIds: nodeIds,
+        left: r.left - cardRect.left,
+        right: r.right - cardRect.left,
+        top: r.top - cardRect.top,
+        bottom: r.bottom - cardRect.top
+      };
+    });
+    // Quick lookup: node id → sub-column index in subColRects
+    var nodeIdToSubColIdx = {};
+    subColRects.forEach(function(sc, idx) {
+      sc.nodeIds.forEach(function(id) { nodeIdToSubColIdx[id] = idx; });
+    });
     // Compute inter-zone gap rects (clear vertical channels between zones).
     var zoneGaps = [];
     for (var zi = 0; zi < zoneRects.length - 1; zi++) {
@@ -1605,18 +1648,37 @@
       // its own endpoint zones (briefly, near the cardinal port).
       var srcZoneName = nodeIdToZoneName[srcId] || '';
       var tgtZoneName = nodeIdToZoneName[tgtId] || '';
+      var srcSubIdx = nodeIdToSubColIdx[srcId];
+      var tgtSubIdx = nodeIdToSubColIdx[tgtId];
 
-      // Returns zones whose bounding rect is crossed by an H segment from
-      // (xa, y) to (xb, y), excluding the source/target zones themselves.
+      // Returns "obstacle rects" the H segment from (xa,y)→(xb,y) crosses.
+      // Treats both top-level zones AND sub-columns within consolidated
+      // zones as obstacles. A connector targeting node N in sub-column S
+      // of zone Z must NOT cross other sub-columns of Z — those siblings
+      // (e.g. AWS sub-col when target is in AZURE sub-col) are obstacles
+      // even though they share the same parent zone. Endpoint zones and
+      // each endpoint's own sub-column are excluded.
       function zonesOnH(xa, xb, y) {
         var loX = Math.min(xa, xb), hiX = Math.max(xa, xb);
         var hits = [];
+        // Top-level zones (excluding source / target zones).
         for (var i = 0; i < zoneRects.length; i++) {
           var zr = zoneRects[i];
           if (zr.name === srcZoneName || zr.name === tgtZoneName) continue;
           if (y <= zr.top + 2 || y >= zr.bottom - 2) continue;
           if (zr.right < loX + 2 || zr.left > hiX - 2) continue;
           hits.push(zr);
+        }
+        // Sub-columns within consolidated zones. Skip the sub-column that
+        // contains the source or target node. All other sub-columns of
+        // the source/target zone (and any sub-columns of intermediate
+        // zones) count as obstacles.
+        for (var s = 0; s < subColRects.length; s++) {
+          if (s === srcSubIdx || s === tgtSubIdx) continue;
+          var sc = subColRects[s];
+          if (y <= sc.top + 2 || y >= sc.bottom - 2) continue;
+          if (sc.right < loX + 2 || sc.left > hiX - 2) continue;
+          hits.push(sc);
         }
         return hits;
       }
@@ -1646,6 +1708,8 @@
       var goingRight = (x2 > x1);
       var loX = Math.min(x1, x2), hiX = Math.max(x1, x2);
       var allZoneHits = [];
+      var pathTopBand = Math.min(y1, y2);
+      var pathBotBand = Math.max(y1, y2);
       for (var zi = 0; zi < zoneRects.length; zi++) {
         var zr2 = zoneRects[zi];
         if (zr2.name === srcZoneName || zr2.name === tgtZoneName) continue;
@@ -1653,13 +1717,24 @@
         // Only zones whose vertical range overlaps the bounding band of
         // the path. A path between two y's only encounters zones whose
         // y-range intersects [min(y1,y2), max(y1,y2)] OR encloses one.
-        var pathTop = Math.min(y1, y2);
-        var pathBot = Math.max(y1, y2);
-        var overlaps = !(zr2.bottom < pathTop || zr2.top > pathBot);
+        var overlaps = !(zr2.bottom < pathTopBand || zr2.top > pathBotBand);
         var enclosesY1 = zr2.top < y1 && zr2.bottom > y1;
         var enclosesY2 = zr2.top < y2 && zr2.bottom > y2;
         if (!overlaps && !enclosesY1 && !enclosesY2) continue;
         allZoneHits.push(zr2);
+      }
+      // Also include non-endpoint sub-columns whose path-band overlaps —
+      // a connector targeting Snowpipe(Azure) inside the AZURE sub-col
+      // must detour around the AWS sub-col of the same parent zone.
+      for (var sci = 0; sci < subColRects.length; sci++) {
+        if (sci === srcSubIdx || sci === tgtSubIdx) continue;
+        var sc2 = subColRects[sci];
+        if (sc2.right < loX + 2 || sc2.left > hiX - 2) continue;
+        var scOverlaps = !(sc2.bottom < pathTopBand || sc2.top > pathBotBand);
+        var scEnclosesY1 = sc2.top < y1 && sc2.bottom > y1;
+        var scEnclosesY2 = sc2.top < y2 && sc2.bottom > y2;
+        if (!scOverlaps && !scEnclosesY1 && !scEnclosesY2) continue;
+        allZoneHits.push(sc2);
       }
       // If after path-band filtering there are no zone hits but we got
       // here from zHits1/zHits2 (at exact y1/y2), use those instead.
