@@ -1253,6 +1253,80 @@
       var snowStart = snowColIndices.length ? snowColIndices[0] : -1;
       var snowEnd = snowColIndices.length ? snowColIndices[snowColIndices.length - 1] : -1;
 
+      // ── Pre-compute bridge density per zone-pair ────────────────
+      // We don't know exact node positions yet (DOM hasn't rendered),
+      // but we DO know fan-out / fan-in counts and zone membership
+      // from `state` alone. That's enough to estimate how many
+      // bridged H-V-H-V-H routes will land in each inter-zone gap.
+      // The h-track allocator already distributes them across the
+      // y-band, but each bridge also consumes some HORIZONTAL space
+      // in the gap (V stub at fanOutStubX, H bridge at midY, V stub
+      // at fanInStubX). Wide gaps give the H-track allocator more
+      // breathing room and keep the source / target V stubs from
+      // overlapping each other when many bridges share a pair.
+      //
+      // Map node → zone-name for the bridge-pair counter.
+      var nodeZoneMap = {};
+      (state.nodes || []).forEach(function(n) {
+        // Some nodes may have been re-assigned to a consolidated zone
+        // earlier in this render pass; that already overwrites n.zone.
+        if (n && n.id != null) nodeZoneMap[n.id] = n.zone;
+      });
+      var preFanOut = {}, preFanIn = {};
+      (state.edges || []).forEach(function(e) {
+        if (!e || !e.source || !e.target) return;
+        preFanOut[e.source] = (preFanOut[e.source] || 0) + 1;
+        preFanIn[e.target] = (preFanIn[e.target] || 0) + 1;
+      });
+      var bridgesPerPair = {};
+      var bridgesPerRankGap = {};  // gap index = rank of left side
+      (state.edges || []).forEach(function(e) {
+        if (!e || !e.source || !e.target) return;
+        if ((preFanOut[e.source] || 0) <= 1) return;
+        if ((preFanIn[e.target] || 0) <= 1) return;
+        var sz = nodeZoneMap[e.source];
+        var tz = nodeZoneMap[e.target];
+        if (!sz || !tz || sz === tz) return;
+        var key = sz + '|' + tz;
+        bridgesPerPair[key] = (bridgesPerPair[key] || 0) + 1;
+        // Count this bridge against EVERY inter-rank gap it crosses.
+        // Skip-zone bridges (e.g. rank 0 → rank 3) consume horizontal
+        // space in three gaps (0-1, 1-2, 2-3), so each of those gaps
+        // should reflect that pressure when widening.
+        var sr = rank[sz], tr = rank[tz];
+        if (sr == null || tr == null) return;
+        var lo = Math.min(sr, tr), hi = Math.max(sr, tr);
+        for (var g = lo; g < hi; g++) {
+          bridgesPerRankGap[g] = (bridgesPerRankGap[g] || 0) + 1;
+        }
+      });
+      var maxBridgesPerPair = 0;
+      Object.keys(bridgesPerPair).forEach(function(k) {
+        if (bridgesPerPair[k] > maxBridgesPerPair) maxBridgesPerPair = bridgesPerPair[k];
+      });
+      var maxBridgesPerGap = 0;
+      Object.keys(bridgesPerRankGap).forEach(function(g) {
+        if (bridgesPerRankGap[g] > maxBridgesPerGap) maxBridgesPerGap = bridgesPerRankGap[g];
+      });
+      // Use the worst gap (any rank-pair gap) to size the column gap.
+      // This widens gaps even when no single zone-pair has many
+      // bridges, but multiple skip-zone bridges still pile up in the
+      // same inter-rank slot.
+      var bridgeDensity = Math.max(maxBridgesPerPair, maxBridgesPerGap);
+      // Dynamic gap: baseline 48px, add 14px per extra bridge beyond
+      // the first, capped at 96px so wide layouts don't blow up.
+      // 1 bridge → 48 (baseline)
+      // 2 bridges → 62
+      // 3 bridges → 76
+      // 4+ bridges → 90 / 96 (cap)
+      var DYNAMIC_GAP_BASE = 48;
+      var DYNAMIC_GAP_STEP = 14;
+      var DYNAMIC_GAP_CAP  = 96;
+      var dynamicInnerGap = Math.min(
+        DYNAMIC_GAP_CAP,
+        DYNAMIC_GAP_BASE + DYNAMIC_GAP_STEP * Math.max(0, bridgeDensity - 1)
+      );
+
       // Render columns
       columns.forEach(function(col, ci) {
         if (!col.length) return;
@@ -1273,7 +1347,7 @@
           // multiple sub-columns) can expand its track instead of being
           // clipped by 1fr's default min:0 sizing.
           innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', minmax(min-content, 1fr))';
-          innerGrid.style.gap = '48px';
+          innerGrid.style.gap = dynamicInnerGap + 'px';
           innerGrid.style.alignItems = 'start';
           innerGrid.style.overflow = 'hidden';
 
