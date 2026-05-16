@@ -37,6 +37,14 @@ import { calculateNodeDimensions, NODE_SIZE_CONSTRAINTS } from './lib/textMeasur
 import remarkGfm from 'remark-gfm';
 // PERF: Lazy load heavy markdown/syntax dependencies (~150KB bundle savings)
 const ReactMarkdown = dynamic(() => import('react-markdown'), { ssr: false });
+// Streamdown: DOM-stable streaming markdown. Used ONLY for the narrative text
+// (m.text) right now — thinking, tool results, and code-block expanders stay
+// on their existing rendering paths. Smallest blast radius for an incremental
+// rollout; revert this single import + the JSX swap if it misbehaves.
+const Streamdown = dynamic(
+  () => import('streamdown').then((mod) => mod.Streamdown),
+  { ssr: false }
+);
 const SyntaxHighlighter = dynamic(
   () => import('react-syntax-highlighter').then(mod => mod.Prism),
   { ssr: false }
@@ -5264,7 +5272,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                         expanders so users read the description first, then
                         click into the code blocks if they want the raw output. */}
                     <div className={styles.chatMarkdown}>
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayedText[idx] ?? m.text ?? ''}</ReactMarkdown>
+                      <Streamdown>{displayedText[idx] ?? m.text ?? ''}</Streamdown>
                     </div>
 
                     {/* Mermaid Diagram - expandable with copy button.
