@@ -718,6 +718,11 @@ const App: React.FC = () => {
   
   // BUG-007 FIX: Abort controller for parseMermaidAndCreateDiagram race condition
   const parseAbortControllerRef = useRef<AbortController | null>(null);
+  // Aborts any in-flight chat SSE stream when a new one starts (or on
+  // unmount). Without this, a previous fetch's reader keeps consuming
+  // response bytes — accumulating streamedText/fullText/decoder buffers
+  // — when the user starts another generation before the first finishes.
+  const chatStreamAbortControllerRef = useRef<AbortController | null>(null);
 
   // ============================================
   // MULTI-TAB STATE MANAGEMENT
@@ -2709,6 +2714,9 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     setLastMessageId(null);
     setShowSessionList(false);
     setActiveToolCalls([]);
+    // Reset auto-expand ringbuffer so it doesn't accumulate keys across
+    // sessions over the lifetime of the tab.
+    autoExpandedMsgRef.current = new Set();
     debugLog('[Session] Started new session');
   }, [createNewSession]);
 
@@ -2729,6 +2737,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     }
     setShowSessionList(false);
     setActiveToolCalls([]);
+    // Reset auto-expand ringbuffer on session switch (mirror of handleNewSession).
+    autoExpandedMsgRef.current = new Set();
     debugLog('[Session] Switched to session:', sessionId);
   }, [loadSession]);
 
@@ -2758,6 +2768,13 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     const enrichedPrompt = `You are the SnowGram Cortex Agent. First review the existing canvas before making changes. Here is the current diagram in Mermaid (derived from the live canvas):\n\n${currentMermaid}\n\nThen continue the conversation below and apply updates based on the user's new request. If needed, adjust or refine the existing layout rather than recreating from scratch.\n\nConversation:\n${transcript}\nAgent:`;
 
     try {
+      // Abort any prior in-flight chat stream so its reader stops consuming
+      // bytes (would otherwise accumulate streamedText/fullText buffers).
+      if (chatStreamAbortControllerRef.current) {
+        chatStreamAbortControllerRef.current.abort();
+      }
+      const streamController = new AbortController();
+      chatStreamAbortControllerRef.current = streamController;
       // Add placeholder for streaming response
       setChatMessages((msgs) => [...msgs, { role: 'assistant', text: '', timestamp: new Date().toISOString() }]);
       
@@ -2769,6 +2786,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           threadId: conversationThreadId,
           parentMessageId: lastMessageId || 0
         }),
+        signal: streamController.signal,
       });
 
       if (!response.ok) {
@@ -3201,6 +3219,12 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
     const enrichedPrompt = `You are the SnowGram Cortex Agent. First review the existing canvas before making changes. Here is the current diagram in Mermaid (derived from the live canvas):\n\n${currentMermaid}\n\nThen continue the conversation below and apply updates based on the user's new request. If needed, adjust or refine the existing layout rather than recreating from scratch.\n\nConversation:\n${transcript}\nAgent:`;
 
     try {
+      // Abort any prior in-flight chat stream (mirror of handleSendChat).
+      if (chatStreamAbortControllerRef.current) {
+        chatStreamAbortControllerRef.current.abort();
+      }
+      const streamController = new AbortController();
+      chatStreamAbortControllerRef.current = streamController;
       setChatMessages((msgs) => [...msgs, { role: 'assistant', text: '', timestamp: new Date().toISOString() }]);
       
       const response = await fetch('/api/agent/stream', {
@@ -3211,6 +3235,7 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
           threadId: conversationThreadId,
           parentMessageId: lastMessageId || 0
         }),
+        signal: streamController.signal,
       });
 
       if (!response.ok) {
