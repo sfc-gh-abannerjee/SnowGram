@@ -2785,16 +2785,11 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                     ...lastMsg,
                     completedTools: [...completedTools, toolName],
                     toolResults: [...toolResults, toolResult],
-                    // Populate the bubble's code-block expanders from the tool
-                    // payload as soon as the tool returns. The chunk handler
-                    // (below) will only OVERWRITE these if it sees a complete
-                    // fenced block in agent text, OR a partial that's strictly
-                    // longer than what we already have. That keeps the dropdown
-                    // useful mid-stream (when the agent hasn't reached Section 4
-                    // yet) without re-introducing the "partial 'flow' locks the
-                    // dropdown forever" bug.
-                    mermaidCode: lastMsg.mermaidCode || extractedMermaid,
-                    jsonSpec: lastMsg.jsonSpec || extractedJsonSpec,
+                    // NOTE: do not set jsonSpec/mermaidCode here. The bubble
+                    // expanders are meant to mirror what the agent says in
+                    // its text response (same timing as the JSON dropdown).
+                    // toolExtractedMermaid is still captured separately for
+                    // canvas rendering.
                   };
                 }
                 return updated;
@@ -2869,28 +2864,22 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 const updated = [...msgs];
                 const lastMsg = updated[updated.length - 1];
                 // Precedence (highest wins):
-                //   1. Complete fenced block from agent text — authoritative
-                //   2. Partial fragment — but ONLY if strictly longer than what
-                //      we already have. This stops a 4-char "flow" partial from
-                //      clobbering a complete 2KB tool-extracted payload, while
-                //      still letting the agent's eventual full block win once
-                //      it actually streams in.
-                //   3. Prior lastMsg value (set by tool_result above)
-                const prevLen = (lastMsg.mermaidCode || '').length;
-                const partialBetter = partialMermaidCode && partialMermaidCode.length > prevLen;
-                const newMermaid = streamingMermaidCode
-                  || (partialBetter ? partialMermaidCode : lastMsg.mermaidCode);
-                const prevJsonLen = (lastMsg.jsonSpec || '').length;
-                const partialJsonBetter = partialJsonSpec && partialJsonSpec.length > prevJsonLen;
-                const newJsonSpec = streamingJsonSpec
-                  || (partialJsonBetter ? partialJsonSpec : lastMsg.jsonSpec);
+                //   1. Complete fenced extraction from agent text — authoritative
+                //   2. Latest partial from agent text — grows char-by-char as
+                //      chunks stream in, gives users live feedback
+                //   3. Prior lastMsg value — preserve if nothing new
+                // The dropdown intentionally mirrors what the agent has actually
+                // emitted in its text response so it lines up timing-wise with
+                // the JSON Specification dropdown. Tool-extracted mermaid is
+                // captured separately into toolExtractedMermaid (used only for
+                // canvas rendering) and never feeds the bubble's m.mermaidCode.
                 updated[updated.length - 1] = { 
                   ...lastMsg,
                   role: 'assistant', 
                   text: displayText || 'Thinking...',
                   timestamp: lastMsg.timestamp || new Date().toISOString(),
-                  jsonSpec: newJsonSpec,
-                  mermaidCode: newMermaid,
+                  jsonSpec: streamingJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: streamingMermaidCode || partialMermaidCode || lastMsg.mermaidCode,
                 };
                 return updated;
               });
@@ -3174,12 +3163,8 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
                 if (!completedTools.includes(toolName)) {
                   updated[updated.length - 1] = { 
                     ...lastMsg, completedTools: [...completedTools, toolName], toolResults: [...toolResults, toolResult],
-                    // Mirror handler #1: populate the bubble dropdowns from the
-                    // tool payload immediately. Chunk handler below will only
-                    // overwrite with a complete fenced block, or a partial that
-                    // is strictly longer than what we already have.
-                    mermaidCode: lastMsg.mermaidCode || extractedMermaid,
-                    jsonSpec: lastMsg.jsonSpec || extractedJsonSpec,
+                    // Bubble's mermaidCode dropdown mirrors agent text only.
+                    // toolExtractedMermaid is captured separately for canvas.
                   };
                 }
                 return updated;
@@ -3222,20 +3207,16 @@ const ensureMedallionCompleteness = (inputNodes: Node[], inputEdges: Edge[]) => 
               setChatMessages((msgs) => {
                 const updated = [...msgs];
                 const lastMsg = updated[updated.length - 1];
-                // Length-aware precedence (mirror of handler #1).
-                const prevLen = (lastMsg.mermaidCode || '').length;
-                const partialBetter = partialMermaidCode && partialMermaidCode.length > prevLen;
-                const newMermaid = streamingMermaidCode
-                  || (partialBetter ? partialMermaidCode : lastMsg.mermaidCode);
-                const prevJsonLen = (lastMsg.jsonSpec || '').length;
-                const partialJsonBetter = partialJsonSpec && partialJsonSpec.length > prevJsonLen;
-                const newJsonSpec = streamingJsonSpec
-                  || (partialJsonBetter ? partialJsonSpec : lastMsg.jsonSpec);
+                // Precedence (highest wins):
+                //   1. Complete fenced extraction from agent text (authoritative)
+                //   2. tool_result-extracted value (full payload, instant)
+                //   3. Latest partial — grows char-by-char as chunks stream
+                //   4. Prior lastMsg value
                 updated[updated.length - 1] = {
                   ...lastMsg,
                   text: displayText || 'Thinking...',
-                  jsonSpec: newJsonSpec,
-                  mermaidCode: newMermaid,
+                  jsonSpec: streamingJsonSpec || partialJsonSpec || lastMsg.jsonSpec,
+                  mermaidCode: streamingMermaidCode || partialMermaidCode || lastMsg.mermaidCode,
                 };
                 return updated;
               });
