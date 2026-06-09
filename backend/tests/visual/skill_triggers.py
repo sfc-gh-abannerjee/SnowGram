@@ -113,21 +113,45 @@ class SkillTrigger:
         self.template_path = template_path
         self.actions: List[FixAction] = []
         
-    async def determine_actions(self) -> List[FixAction]:
+    async def determine_actions(self, target_score: float = 95.0) -> List[FixAction]:
         """
         Analyze evaluation result and determine required fix actions.
+        
+        Args:
+            target_score: Overall target score (default 95%). Used for bottleneck detection.
         
         Returns:
             List of FixAction objects sorted by priority
         """
         self.actions = []
         
+        # First, check for passes below their individual thresholds
         for pass_name, pass_result in self.eval_result.pass_results.items():
             threshold = self.THRESHOLDS.get(pass_name, 80)
             
             if pass_result.score < threshold:
                 action = self._create_action_for_pass(pass_name, pass_result)
                 if action:
+                    self.actions.append(action)
+        
+        # If no failing passes but overall score < target, find bottleneck
+        if not self.actions and self.eval_result.overall_score < target_score:
+            # Find pass with most room for improvement
+            bottleneck_pass = None
+            bottleneck_gap = 0
+            bottleneck_result = None
+            
+            for pass_name, pass_result in self.eval_result.pass_results.items():
+                gap = 100 - pass_result.score
+                if gap > bottleneck_gap:
+                    bottleneck_gap = gap
+                    bottleneck_pass = pass_name
+                    bottleneck_result = pass_result
+            
+            if bottleneck_pass and bottleneck_result:
+                action = self._create_action_for_pass(bottleneck_pass, bottleneck_result, is_bottleneck=True)
+                if action:
+                    action.description = f"BOTTLENECK: {action.description} ({bottleneck_gap:.0f}% improvement potential)"
                     self.actions.append(action)
         
         # Sort by priority (lowest score = highest priority)
@@ -138,7 +162,8 @@ class SkillTrigger:
     def _create_action_for_pass(
         self, 
         pass_name: str, 
-        pass_result: PassResult
+        pass_result: PassResult,
+        is_bottleneck: bool = False
     ) -> Optional[FixAction]:
         """Create appropriate fix action for a failing pass"""
         
@@ -149,7 +174,39 @@ class SkillTrigger:
         # Priority based on score (lower score = higher priority)
         priority = int((100 - pass_result.score) / 10) + 1
         
-        # Determine action type
+        # CHECK FOR VISUAL/FRONTEND DEFECTS FIRST
+        # These need frontend code fixes, not docs search
+        frontend_keywords = ['truncation', 'truncated', 'cut off', 'artifact', 
+                            'ui element', 'selection highlight', 'overlap', 
+                            'tangled', 'boundary overlap', 'visual']
+        
+        has_visual_defect = False
+        visual_defect_desc = None
+        for defect in pass_result.defects:
+            defect_lower = defect.lower()
+            if any(kw in defect_lower for kw in frontend_keywords):
+                has_visual_defect = True
+                visual_defect_desc = defect
+                break
+        
+        # Override action type for visual defects - route to layout debugger
+        if has_visual_defect:
+            return FixAction(
+                target_pass=pass_name,
+                action_type="skill",
+                description=f"FRONTEND FIX: {visual_defect_desc[:60]}...",
+                priority=priority,
+                params={
+                    "skill_name": "lane-layout-debugger",
+                    "docs_query": "react flow node sizing text truncation layout",
+                    "defects": pass_result.defects,
+                    "suggestions": pass_result.suggestions,
+                    "score": pass_result.score,
+                    "visual_defect": True
+                }
+            )
+        
+        # Standard action determination
         if mapping["skill"]:
             action_type = "skill"
         elif pass_name in ["badges", "styling", "connections"]:
@@ -202,22 +259,208 @@ class SkillTrigger:
         return results
     
     async def _execute_skill(self, action: FixAction) -> Dict[str, Any]:
-        """Execute a Cortex skill"""
+        """
+        Execute a Cortex skill - for visual defects, apply frontend code fixes directly.
+        """
         skill_name = action.params.get("skill_name")
+        is_visual_defect = action.params.get("visual_defect", False)
         
         if not skill_name:
-            return {"status": "error", "reason": "No skill specified"}
+            return {"success": False, "status": "error", "reason": "No skill specified"}
         
-        print(f"  Would invoke skill: ${skill_name}")
+        print(f"  Skill to invoke: ${skill_name}")
+        defects = action.params.get("defects", [])
+        defects_lower = " ".join(defects).lower()
         
-        # In actual implementation, this would invoke the skill
-        # For now, return instructions for manual invocation
+        # For visual defects, apply DIRECT frontend code fixes
+        if skill_name == "lane-layout-debugger" and is_visual_defect:
+            fixes_applied = []
+            
+            # FIX 1: Label truncation - update CSS to allow more text
+            if "truncat" in defects_lower:
+                css_fix = await self._fix_label_truncation()
+                if css_fix.get("success"):
+                    fixes_applied.append("label_truncation")
+                    print(f"  ✓ Fixed label truncation in CustomNode.module.css")
+            
+            # FIX 2: UI artifacts (red X button) - hide during screenshot
+            if "artifact" in defects_lower or "red" in defects_lower:
+                artifact_fix = await self._fix_ui_artifacts()
+                if artifact_fix.get("success"):
+                    fixes_applied.append("ui_artifacts")
+                    print(f"  ✓ Fixed UI artifact visibility")
+            
+            # FIX 3: Boundary overlap - adjust subgraph spacing
+            if "overlap" in defects_lower or "boundary" in defects_lower:
+                overlap_fix = await self._fix_boundary_overlap()
+                if overlap_fix.get("success"):
+                    fixes_applied.append("boundary_overlap")
+                    print(f"  ✓ Fixed boundary overlap spacing")
+            
+            if fixes_applied:
+                return {
+                    "success": True,
+                    "status": "frontend_fixes_applied",
+                    "skill": skill_name,
+                    "fixes_applied": fixes_applied,
+                    "defects_addressed": defects,
+                    "action": "Frontend code updated - re-render to verify"
+                }
+            else:
+                # Generate guidance if no direct fixes possible
+                return {
+                    "success": True,
+                    "status": "guidance_generated",
+                    "skill": skill_name,
+                    "layout_guidance": self._generate_layout_guidance(defects),
+                    "defects_to_fix": defects
+                }
+        
+        # Standard layout guidance for non-visual defects
+        if skill_name == "lane-layout-debugger":
+            return {
+                "success": True,
+                "status": "feedback_generated",
+                "skill": skill_name,
+                "layout_guidance": self._generate_layout_guidance(defects),
+                "defects_to_fix": defects,
+                "action": "Feed layout_guidance into next agent prompt"
+            }
+        
+        # For other skills, return pending for CoCo to handle
         return {
+            "success": True,
             "status": "pending",
             "skill": skill_name,
-            "invoke_command": f"$${skill_name}",
-            "defects_to_fix": action.params.get("defects", [])
+            "invoke_command": f"${skill_name}",
+            "defects_to_fix": defects
         }
+    
+    def _generate_layout_guidance(self, defects: List[str]) -> str:
+        """Generate layout guidance based on defects."""
+        return """
+LAYOUT FIX REQUIRED:
+1. Ensure external sources (Kafka, CSP) are in LEFT subgraph
+2. Ensure Snowflake processing is in CENTER subgraph  
+3. Ensure outputs (Analytics, ML) are in RIGHT subgraph
+4. Add explicit subgraph nesting: sources -> snowflake -> outputs
+5. Use 'direction LR' at top level for horizontal flow
+"""
+    
+    async def _fix_label_truncation(self) -> Dict[str, Any]:
+        """
+        Fix label truncation by updating CustomNode.module.css.
+        Removes line-clamp and increases max-height to prevent text cutoff.
+        """
+        import os
+        css_path = os.path.join(
+            os.path.dirname(__file__), 
+            "../../../frontend/src/components/CustomNode.module.css"
+        )
+        
+        try:
+            with open(css_path, 'r') as f:
+                content = f.read()
+            
+            # Check if truncation CSS is present
+            if "-webkit-line-clamp: 3;" in content:
+                # Replace restrictive label styles with flexible ones
+                old_label_css = """  /* Support for multi-line labels */
+  line-height: 1.3;
+  max-height: 4em;  /* ~3 lines max */
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;"""
+                
+                new_label_css = """  /* Support for multi-line labels - NO TRUNCATION */
+  line-height: 1.3;
+  max-height: none;  /* Allow full text display */
+  overflow: visible;
+  /* Removed -webkit-line-clamp to prevent truncation */"""
+                
+                if old_label_css in content:
+                    content = content.replace(old_label_css, new_label_css)
+                    with open(css_path, 'w') as f:
+                        f.write(content)
+                    return {"success": True, "file": css_path, "change": "removed line-clamp"}
+            
+            return {"success": False, "reason": "CSS pattern not found"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    async def _fix_ui_artifacts(self) -> Dict[str, Any]:
+        """
+        Fix UI artifacts by ensuring delete button is hidden in export/screenshot mode.
+        Adds a CSS class that can be toggled during screenshot capture.
+        """
+        import os
+        css_path = os.path.join(
+            os.path.dirname(__file__), 
+            "../../../frontend/src/components/CustomNode.module.css"
+        )
+        
+        try:
+            with open(css_path, 'r') as f:
+                content = f.read()
+            
+            # Add export mode class if not present
+            export_mode_css = """
+/* ===== EXPORT MODE - Hide interactive elements during screenshot ===== */
+:global(.export-mode) .deleteButton {
+  display: none !important;
+}
+
+:global(.export-mode) .handle {
+  opacity: 0 !important;
+}
+"""
+            if ":global(.export-mode)" not in content:
+                content += export_mode_css
+                with open(css_path, 'w') as f:
+                    f.write(content)
+                return {"success": True, "file": css_path, "change": "added export-mode class"}
+            
+            return {"success": True, "reason": "export-mode already present"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    async def _fix_boundary_overlap(self) -> Dict[str, Any]:
+        """
+        Fix boundary overlap by adjusting subgraph padding/margins.
+        """
+        import os
+        css_path = os.path.join(
+            os.path.dirname(__file__), 
+            "../../../frontend/src/components/CustomNode.module.css"
+        )
+        
+        try:
+            with open(css_path, 'r') as f:
+                content = f.read()
+            
+            # Add boundary spacing if not present
+            boundary_spacing_css = """
+/* ===== BOUNDARY OVERLAP FIX - Increased spacing ===== */
+.boundaryNode {
+  margin: 16px;
+  padding: 24px;
+}
+
+.boundaryNode .nodeSurface {
+  padding: 24px;
+}
+"""
+            # Check if we already have the fix
+            if "BOUNDARY OVERLAP FIX" not in content:
+                content += boundary_spacing_css
+                with open(css_path, 'w') as f:
+                    f.write(content)
+                return {"success": True, "file": css_path, "change": "added boundary spacing"}
+            
+            return {"success": True, "reason": "boundary spacing already present"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
     
     async def _execute_code_fix(self, action: FixAction) -> Dict[str, Any]:
         """Execute a direct code fix on Mermaid template"""

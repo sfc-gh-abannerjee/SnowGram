@@ -1,0 +1,265 @@
+{
+  "nodes": [
+    {
+      "id": "app",
+      "label": "Application Training Data",
+      "componentType": "AI",
+      "groupId": "sources",
+      "layer": "snowflake"
+    },
+    {
+      "id": "streaming",
+      "label": "Streaming Service",
+      "componentType": "Stream",
+      "groupId": "sources",
+      "layer": "snowflake"
+    },
+    {
+      "id": "data_lake",
+      "label": "Data Lake",
+      "componentType": "Data Lake",
+      "groupId": "sources",
+      "layer": "external"
+    },
+    {
+      "id": "snowpipe",
+      "label": "Snowpipe",
+      "componentType": "Snowpipe",
+      "groupId": "ingestion",
+      "layer": "snowflake"
+    },
+    {
+      "id": "external_table",
+      "label": "External Tables",
+      "componentType": "Table",
+      "groupId": "ingestion",
+      "layer": "external"
+    },
+    {
+      "id": "iceberg",
+      "label": "Iceberg Tables Open Format",
+      "componentType": "Table",
+      "groupId": "ingestion",
+      "layer": "snowflake"
+    },
+    {
+      "id": "tasks",
+      "label": "Serverless Tasks Scheduled",
+      "componentType": "Task",
+      "groupId": "processing",
+      "layer": "snowflake"
+    },
+    {
+      "id": "snowpark_proc",
+      "label": "Snowpark Python DataFrame API",
+      "componentType": "Stream",
+      "groupId": "processing",
+      "layer": "external"
+    },
+    {
+      "id": "snowpark_ml",
+      "label": "Snowpark ML scikit-learn XGBoost",
+      "componentType": "Snowpark ML scikit-learn XGBoost",
+      "groupId": "processing",
+      "layer": "snowflake"
+    },
+    {
+      "id": "snowpark_wh",
+      "label": "Snowpark-Optimized WH 16x Memory",
+      "componentType": "Snowpark-Optimized WH 16x Memory",
+      "groupId": "training",
+      "layer": "snowflake"
+    },
+    {
+      "id": "spcs",
+      "label": "Snowpark Container Services GPU Inference",
+      "componentType": "AI",
+      "groupId": "training",
+      "layer": "snowflake"
+    },
+    {
+      "id": "model_registry",
+      "label": "Model Registry Schema-Level Objects Versioning",
+      "componentType": "Schema",
+      "groupId": "registry",
+      "layer": "snowflake"
+    },
+    {
+      "id": "model_udf",
+      "label": "Model as UDF Batch Inference",
+      "componentType": "Model as UDF Batch Inference",
+      "groupId": "registry",
+      "layer": "snowflake"
+    },
+    {
+      "id": "cortex_ml",
+      "label": "Cortex ML Functions Classification, Forecast",
+      "componentType": "Function",
+      "groupId": "cortex",
+      "layer": "snowflake"
+    },
+    {
+      "id": "cortex_llm",
+      "label": "Cortex LLM COMPLETE, SUMMARIZE",
+      "componentType": "Cortex",
+      "groupId": "cortex",
+      "layer": "snowflake"
+    },
+    {
+      "id": "streamlit",
+      "label": "Streamlit in Snowflake ML Dashboards",
+      "componentType": "View",
+      "groupId": "viz",
+      "layer": "external"
+    }
+  ],
+  "edges": [
+    {
+      "source": "app",
+      "target": "streaming",
+      "style": "solid"
+    },
+    {
+      "source": "streaming",
+      "target": "snowpipe",
+      "style": "solid"
+    },
+    {
+      "source": "data_lake",
+      "target": "snowpipe",
+      "style": "solid"
+    },
+    {
+      "source": "tasks",
+      "target": "snowpark_proc",
+      "style": "solid"
+    },
+    {
+      "source": "snowpark_proc",
+      "target": "snowpark_ml",
+      "style": "solid"
+    },
+    {
+      "source": "snowpark_ml",
+      "target": "snowpark_wh",
+      "style": "solid"
+    },
+    {
+      "source": "snowpark_wh",
+      "target": "model_registry",
+      "style": "solid"
+    },
+    {
+      "source": "model_registry",
+      "target": "model_udf",
+      "style": "solid"
+    },
+    {
+      "source": "model_registry",
+      "target": "spcs",
+      "style": "solid"
+    },
+    {
+      "source": "snowpark_ml",
+      "target": "cortex_ml",
+      "style": "solid"
+    },
+    {
+      "source": "cortex_ml",
+      "target": "cortex_llm",
+      "style": "solid"
+    },
+    {
+      "source": "model_udf",
+      "target": "streamlit",
+      "style": "solid"
+    },
+    {
+      "source": "cortex_llm",
+      "target": "streamlit",
+      "style": "solid"
+    }
+  ],
+  "groups": [
+    {
+      "id": "sources",
+      "label": "Data Sources",
+      "type": "boundary",
+      "index": -1,
+      "style": {
+        "background": "#E3F2FD"
+      }
+    },
+    {
+      "id": "snowflake",
+      "label": "Snowflake",
+      "type": "boundary",
+      "index": 0,
+      "style": {
+        "background": "#F3E5F5"
+      }
+    },
+    {
+      "id": "ingestion",
+      "label": "Ingestion",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E8F5E9"
+      }
+    },
+    {
+      "id": "processing",
+      "label": "Feature Engineering",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#FFF8E1"
+      }
+    },
+    {
+      "id": "training",
+      "label": "Model Training",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E1F5FE"
+      }
+    },
+    {
+      "id": "registry",
+      "label": "Model Management",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#FCE4EC"
+      }
+    },
+    {
+      "id": "cortex",
+      "label": "Cortex AI",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E0F2F1"
+      }
+    },
+    {
+      "id": "viz",
+      "label": "Visualization",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FFF3E0"
+      }
+    }
+  ],
+  "badges": [],
+  "direction": "LR",
+  "mermaidSource": "flowchart LR\n    subgraph sources[\"Data Sources\"]\n        app[\"Application<br/>Training Data\"]\n        streaming[\"Streaming Service\"]\n        data_lake[\"Data Lake\"]\n    end\n    \n    subgraph snowflake[\"Snowflake\"]\n        subgraph ingestion[\"Ingestion\"]\n            snowpipe[\"Snowpipe\"]\n            external_table[\"External Tables\"]\n            iceberg[\"Iceberg Tables<br/>Open Format\"]\n        end\n        \n        subgraph processing[\"Feature Engineering\"]\n            tasks[\"Serverless Tasks<br/>Scheduled\"]\n            snowpark_proc[\"Snowpark Python<br/>DataFrame API\"]\n            snowpark_ml[\"Snowpark ML<br/>scikit-learn<br/>XGBoost\"]\n        end\n        \n        subgraph training[\"Model Training\"]\n            snowpark_wh[\"Snowpark-Optimized WH<br/>16x Memory\"]\n            spcs[\"Snowpark Container Services<br/>GPU Inference\"]\n        end\n        \n        subgraph registry[\"Model Management\"]\n            model_registry[\"Model Registry<br/>Schema-Level Objects<br/>Versioning\"]\n            model_udf[\"Model as UDF<br/>Batch Inference\"]\n        end\n        \n        subgraph cortex[\"Cortex AI\"]\n            cortex_ml[\"Cortex ML Functions<br/>Classification, Forecast\"]\n            cortex_llm[\"Cortex LLM<br/>COMPLETE, SUMMARIZE\"]\n        end\n    end\n    \n    subgraph viz[\"Visualization\"]\n        streamlit[\"Streamlit in Snowflake<br/>ML Dashboards\"]\n    end\n    \n    app --> streaming & data_lake\n    streaming --> snowpipe\n    data_lake --> snowpipe & external_table & iceberg\n    snowpipe & external_table & iceberg --> tasks\n    tasks --> snowpark_proc\n    snowpark_proc --> snowpark_ml\n    snowpark_ml --> snowpark_wh\n    snowpark_wh --> model_registry\n    model_registry --> model_udf\n    model_registry --> spcs\n    snowpark_ml --> cortex_ml\n    cortex_ml --> cortex_llm\n    model_udf --> streamlit\n    cortex_llm --> streamlit\n    \n    style sources fill:#E8F4FD,stroke:#29B5E8\n    style snowflake fill:#E0F7FA,stroke:#00ACC1\n    style viz fill:#FFE4E1,stroke:#FF6B6B"
+}

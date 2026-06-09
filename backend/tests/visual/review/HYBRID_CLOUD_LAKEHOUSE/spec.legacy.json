@@ -1,0 +1,260 @@
+{
+  "nodes": [
+    {
+      "id": "s3",
+      "label": "AWS S3 Parquet/Iceberg Files",
+      "componentType": "Table",
+      "groupId": "data_lake",
+      "layer": "external"
+    },
+    {
+      "id": "glue",
+      "label": "AWS Glue Catalog or Polaris",
+      "componentType": "AWS Glue Catalog or Polaris",
+      "groupId": "catalog",
+      "layer": "external"
+    },
+    {
+      "id": "catalog_int",
+      "label": "Catalog Integration Iceberg REST",
+      "componentType": "Iceberg",
+      "groupId": "catalog",
+      "layer": "snowflake"
+    },
+    {
+      "id": "ext_vol",
+      "label": "External Volume Cross-Region Support",
+      "componentType": "External",
+      "groupId": "external_vol",
+      "layer": "external"
+    },
+    {
+      "id": "iceberg_ext",
+      "label": "External Iceberg Catalog-Managed",
+      "componentType": "Iceberg",
+      "groupId": "iceberg",
+      "layer": "external"
+    },
+    {
+      "id": "iceberg_sf",
+      "label": "Snowflake-Managed Full Platform Support",
+      "componentType": "Platform",
+      "groupId": "iceberg",
+      "layer": "external"
+    },
+    {
+      "id": "external_table",
+      "label": "External Tables Query in Place",
+      "componentType": "Table",
+      "groupId": "query",
+      "layer": "external"
+    },
+    {
+      "id": "mat_view",
+      "label": "Materialized Views",
+      "componentType": "View",
+      "groupId": "query",
+      "layer": "snowflake"
+    },
+    {
+      "id": "stream_cdc",
+      "label": "Streams CDC Tracking",
+      "componentType": "Stream",
+      "groupId": "transform",
+      "layer": "snowflake"
+    },
+    {
+      "id": "tasks",
+      "label": "Tasks",
+      "componentType": "Task",
+      "groupId": "transform",
+      "layer": "snowflake"
+    },
+    {
+      "id": "curated",
+      "label": "Curated Tables",
+      "componentType": "Table",
+      "groupId": "transform",
+      "layer": "gold"
+    },
+    {
+      "id": "spark",
+      "label": "Apache Spark",
+      "componentType": "Spark",
+      "groupId": "engines",
+      "layer": "snowflake"
+    },
+    {
+      "id": "trino",
+      "label": "Trino",
+      "componentType": "Trino",
+      "groupId": "engines",
+      "layer": "snowflake"
+    },
+    {
+      "id": "dremio",
+      "label": "Dremio",
+      "componentType": "Dremio",
+      "groupId": "engines",
+      "layer": "snowflake"
+    },
+    {
+      "id": "tableau",
+      "label": "Tableau",
+      "componentType": "Table",
+      "groupId": "bi",
+      "layer": "bi"
+    }
+  ],
+  "edges": [
+    {
+      "source": "s3",
+      "target": "ext_vol",
+      "style": "solid"
+    },
+    {
+      "source": "glue",
+      "target": "catalog_int",
+      "style": "solid"
+    },
+    {
+      "source": "ext_vol",
+      "target": "iceberg_ext",
+      "style": "solid"
+    },
+    {
+      "source": "catalog_int",
+      "target": "iceberg_ext",
+      "style": "solid"
+    },
+    {
+      "source": "iceberg_ext",
+      "target": "iceberg_sf",
+      "style": "solid"
+    },
+    {
+      "source": "s3",
+      "target": "external_table",
+      "style": "solid"
+    },
+    {
+      "source": "iceberg_sf",
+      "target": "mat_view",
+      "style": "solid"
+    },
+    {
+      "source": "mat_view",
+      "target": "stream_cdc",
+      "style": "solid"
+    },
+    {
+      "source": "stream_cdc",
+      "target": "tasks",
+      "style": "solid"
+    },
+    {
+      "source": "tasks",
+      "target": "curated",
+      "style": "solid"
+    },
+    {
+      "source": "curated",
+      "target": "tableau",
+      "style": "solid"
+    },
+    {
+      "source": "iceberg_sf",
+      "target": "spark",
+      "style": "solid"
+    }
+  ],
+  "groups": [
+    {
+      "id": "data_lake",
+      "label": "Data Lake",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E3F2FD"
+      }
+    },
+    {
+      "id": "catalog",
+      "label": "External Catalog",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#F3E5F5"
+      }
+    },
+    {
+      "id": "external_vol",
+      "label": "External Volume",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E8F5E9"
+      }
+    },
+    {
+      "id": "snowflake",
+      "label": "Snowflake Lakehouse",
+      "type": "boundary",
+      "index": 0,
+      "style": {
+        "background": "#FFF8E1"
+      }
+    },
+    {
+      "id": "iceberg",
+      "label": "Iceberg Tables",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E1F5FE"
+      }
+    },
+    {
+      "id": "query",
+      "label": "Query Options",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#FCE4EC"
+      }
+    },
+    {
+      "id": "transform",
+      "label": "Transformation",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E0F2F1"
+      }
+    },
+    {
+      "id": "engines",
+      "label": "External Engines",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FFF3E0"
+      }
+    },
+    {
+      "id": "bi",
+      "label": "Analytics",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E8EAF6"
+      }
+    }
+  ],
+  "badges": [],
+  "direction": "LR",
+  "mermaidSource": "flowchart LR\n    subgraph data_lake[\"Data Lake\"]\n        s3[\"AWS S3<br/>Parquet/Iceberg Files\"]\n    end\n    \n    subgraph catalog[\"External Catalog\"]\n        glue[\"AWS Glue Catalog<br/>or Polaris\"]\n        catalog_int[\"Catalog Integration<br/>Iceberg REST\"]\n    end\n    \n    subgraph external_vol[\"External Volume\"]\n        ext_vol[\"External Volume<br/>Cross-Region Support\"]\n    end\n    \n    subgraph snowflake[\"Snowflake Lakehouse\"]\n        subgraph iceberg[\"Iceberg Tables\"]\n            iceberg_ext[\"External Iceberg<br/>Catalog-Managed\"]\n            iceberg_sf[\"Snowflake-Managed<br/>Full Platform Support\"]\n        end\n        \n        subgraph query[\"Query Options\"]\n            external_table[\"External Tables<br/>Query in Place\"]\n            mat_view[\"Materialized Views\"]\n        end\n        \n        subgraph transform[\"Transformation\"]\n            stream_cdc[\"Streams<br/>CDC Tracking\"]\n            tasks[\"Tasks\"]\n            curated[\"Curated Tables\"]\n        end\n    end\n    \n    subgraph engines[\"External Engines\"]\n        spark[\"Apache Spark\"]\n        trino[\"Trino\"]\n        dremio[\"Dremio\"]\n    end\n    \n    subgraph bi[\"Analytics\"]\n        tableau[\"Tableau\"]\n    end\n    \n    s3 --> ext_vol\n    glue --> catalog_int\n    ext_vol --> iceberg_ext\n    catalog_int --> iceberg_ext\n    iceberg_ext --> iceberg_sf\n    s3 --> external_table\n    iceberg_sf --> mat_view\n    mat_view --> stream_cdc\n    stream_cdc --> tasks\n    tasks --> curated\n    curated --> tableau\n    iceberg_sf --> spark & trino & dremio\n    \n    style data_lake fill:#FF9900,stroke:#fff\n    style catalog fill:#FFE4B5,stroke:#FFA500\n    style external_vol fill:#E6E6FA,stroke:#9370DB\n    style snowflake fill:#E0F7FA,stroke:#00ACC1\n    style engines fill:#98D8C8,stroke:#2ECC71\n    style bi fill:#F2C94C,stroke:#333"
+}

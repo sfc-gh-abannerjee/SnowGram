@@ -1,0 +1,46 @@
+{
+  "type": "docs_driven",
+  "pipeline_type": "security",
+  "spec": [
+    {
+      "stage": "raw_storage",
+      "object_type": "TABLE",
+      "label": "Base Table",
+      "detail": "Source data with PII",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "stage": "transformation",
+      "object_type": "MASKING_POLICY",
+      "label": "Masking Policy",
+      "detail": "Column-level dynamic masking",
+      "zone": "Security & Governance",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/security-column-ddm-intro"
+    },
+    {
+      "stage": "transformation",
+      "object_type": "ROW_ACCESS_POLICY",
+      "label": "Row Access Policy",
+      "detail": "Row-level security",
+      "zone": "Security & Governance",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/security-row-intro"
+    },
+    {
+      "stage": "serving",
+      "object_type": "SECURE_VIEW",
+      "label": "Secure View",
+      "detail": "Policy-enforced access",
+      "zone": "Access Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/views-secure"
+    },
+    {
+      "stage": "consumption",
+      "object_type": "BI_TOOL",
+      "label": "Analytics",
+      "detail": "Role-scoped dashboards",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+    }
+  ]
+}

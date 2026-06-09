@@ -27,6 +27,17 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
   const isBoundary = data.componentType?.startsWith('account_boundary');
   const labelColor = (data as any)?.labelColor || (style as any)?.color;
   
+  // Dynamic font sizing based on label length to prevent truncation
+  const getLabelFontSize = (label: string): number => {
+    const len = label.length;
+    if (len <= 15) return 13;       // Default size for short labels
+    if (len <= 25) return 12;       // Slightly smaller
+    if (len <= 40) return 11;       // Medium labels
+    if (len <= 60) return 10;       // Long labels
+    return 9;                        // Very long labels (minimum readable)
+  };
+  const labelFontSize = getLabelFontSize(data.label);
+  
   // Helper to extract hex color from border string (e.g., "2px dashed #29B5E8" -> "#29B5E8")
   const extractBorderColor = (border?: string): string | null => {
     if (!border) return null;
@@ -210,10 +221,10 @@ const CustomNode: React.FC<NodeProps<CustomNodeData>> = (props) => {
           />
         ) : (
           <div 
-            className={styles.label}
+            className={`${styles.label} ${(data as any).shouldWrap ? styles.labelWrap : ''}`}
             onDoubleClick={handleDoubleClick}
             title="Double-click to rename"
-            style={{ color: labelColor || undefined }}
+            style={{ color: labelColor || undefined, fontSize: labelFontSize }}
           >
             {data.label}
           </div>

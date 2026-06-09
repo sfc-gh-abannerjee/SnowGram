@@ -9,5 +9,175 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2026-01-26T13:24:58.900000-08:00",
-  "UPDATED_AT": "2026-02-17T21:53:46.264000-08:00"
+  "UPDATED_AT": "2026-02-17T21:53:46.264000-08:00",
+  "RICH_STATE": {
+    "title": "Medallion Architecture (Bronze-Silver-Gold)",
+    "subtitle": "External cloud storage \u2192 Bronze \u2192 Silver \u2192 Gold \u2192 BI",
+    "nodes": [
+      {
+        "id": "s3",
+        "label": "AWS S3",
+        "detail": "Data lake source",
+        "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+        "category": "onprem",
+        "zone": "External Sources",
+        "object_type": "S3",
+        "stage": "source",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
+      },
+      {
+        "id": "stage",
+        "label": "External Stage",
+        "detail": "Snowflake-managed stage",
+        "icon": "Snowflake_ICON_RA_Stage_External.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "STAGE",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage"
+      },
+      {
+        "id": "pipe",
+        "label": "Snowpipe",
+        "detail": "Auto-ingest, separate from streaming WH",
+        "icon": "Snowflake_ICON_RA_Pipe.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "PIPE",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
+      },
+      {
+        "id": "bronze",
+        "label": "Bronze Tables",
+        "detail": "Append-only raw, VARIANT for JSON",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Bronze Layer",
+        "object_type": "TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "stream",
+        "label": "Bronze Stream",
+        "detail": "CDC over raw",
+        "icon": "Snowflake_ICON_RA_Stream.svg",
+        "category": "snow",
+        "zone": "Bronze Layer",
+        "object_type": "STREAM",
+        "stage": "transformation",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/streams-intro"
+      },
+      {
+        "id": "silver",
+        "label": "Silver Tables",
+        "detail": "Cleaned, conformed, deduped",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Silver Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "curated_storage",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "gold",
+        "label": "Gold Tables",
+        "detail": "Business-ready aggregates",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Gold Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "bi",
+        "label": "BI Platform",
+        "detail": "Dashboards & reports",
+        "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "BI_TOOL",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+      }
+    ],
+    "edges": [
+      {
+        "source": "s3",
+        "target": "stage"
+      },
+      {
+        "source": "stage",
+        "target": "pipe"
+      },
+      {
+        "source": "pipe",
+        "target": "bronze"
+      },
+      {
+        "source": "bronze",
+        "target": "stream"
+      },
+      {
+        "source": "stream",
+        "target": "silver"
+      },
+      {
+        "source": "silver",
+        "target": "gold"
+      },
+      {
+        "source": "gold",
+        "target": "bi"
+      }
+    ],
+    "zones": [
+      {
+        "name": "External Sources",
+        "category": "onprem",
+        "node_ids": [
+          "s3"
+        ]
+      },
+      {
+        "name": "Ingestion",
+        "category": "bridge",
+        "node_ids": [
+          "stage",
+          "pipe"
+        ]
+      },
+      {
+        "name": "Bronze Layer",
+        "category": "snow",
+        "node_ids": [
+          "bronze",
+          "stream"
+        ]
+      },
+      {
+        "name": "Silver Layer",
+        "category": "snow",
+        "node_ids": [
+          "silver"
+        ]
+      },
+      {
+        "name": "Gold Layer",
+        "category": "snow",
+        "node_ids": [
+          "gold"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "bi"
+        ]
+      }
+    ]
+  }
 }

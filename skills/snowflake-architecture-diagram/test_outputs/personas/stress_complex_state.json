@@ -1,0 +1,313 @@
+{
+  "title": "Stress Test \u2014 Multi-Source Retail Analytics",
+  "subtitle": "3 sources \u00b7 15 nodes \u00b7 16 edges \u00b7 6 zones \u00b7 non-linear DAG",
+  "source": "standalone:docs_driven",
+  "nodes": [
+    {
+      "id": "aws_s3",
+      "label": "AWS S3",
+      "detail": "POS transaction files",
+      "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
+    },
+    {
+      "id": "kafka",
+      "label": "Kafka",
+      "detail": "Clickstream events",
+      "icon": "Snowflake_ICON_Kafka_Connectors.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/kafka-connector"
+    },
+    {
+      "id": "iot_sensors",
+      "label": "IoT Sensors",
+      "detail": "Store shelf sensors",
+      "icon": "Snowflake_ICON_IoT.svg",
+      "category": "onprem",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
+    },
+    {
+      "id": "snowpipe",
+      "label": "Snowpipe",
+      "detail": "Batch file ingest",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
+    },
+    {
+      "id": "snowpipe_streaming",
+      "label": "Snowpipe Streaming",
+      "detail": "Real-time event ingest",
+      "icon": "Snowflake_ICON_RA_Pipe.svg",
+      "category": "bridge",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
+    },
+    {
+      "id": "transactions_raw",
+      "label": "Transactions Raw",
+      "detail": "POS + clickstream landing",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "sensor_raw",
+      "label": "Sensor Raw",
+      "detail": "IoT time-series landing",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "dt_customer_360",
+      "label": "DT: Customer 360",
+      "detail": "Unified customer profile",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "dt_inventory",
+      "label": "DT: Inventory",
+      "detail": "Real-time stock levels",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "dt_revenue",
+      "label": "DT: Revenue",
+      "detail": "Sales aggregation",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "exec_dashboard_view",
+      "label": "Exec Dashboard View",
+      "detail": "RLS-enforced KPIs",
+      "icon": "Snowflake_ICON_RA_View_Secure.svg",
+      "category": "snow",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/views-secure"
+    },
+    {
+      "id": "dt_ml_features",
+      "label": "DT: ML Features",
+      "detail": "Feature store output",
+      "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+      "category": "snow",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+    },
+    {
+      "id": "tableau",
+      "label": "Tableau",
+      "detail": "Executive dashboards",
+      "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+      "category": "outcome",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+    },
+    {
+      "id": "streamlit_app",
+      "label": "Streamlit App",
+      "detail": "Store manager portal",
+      "icon": "Snowflake_ICON_Streamlit_in_Snowflake.svg",
+      "category": "outcome",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
+    },
+    {
+      "id": "snowflake_ml",
+      "label": "Snowflake ML",
+      "detail": "Demand forecasting",
+      "icon": "Snowflake_ICON_Cortex.svg",
+      "category": "outcome",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview"
+    }
+  ],
+  "edges": [
+    {
+      "source": "aws_s3",
+      "target": "snowpipe"
+    },
+    {
+      "source": "kafka",
+      "target": "snowpipe_streaming"
+    },
+    {
+      "source": "iot_sensors",
+      "target": "snowpipe_streaming"
+    },
+    {
+      "source": "snowpipe",
+      "target": "transactions_raw"
+    },
+    {
+      "source": "snowpipe_streaming",
+      "target": "transactions_raw"
+    },
+    {
+      "source": "snowpipe_streaming",
+      "target": "sensor_raw"
+    },
+    {
+      "source": "transactions_raw",
+      "target": "dt_customer_360"
+    },
+    {
+      "source": "transactions_raw",
+      "target": "dt_revenue"
+    },
+    {
+      "source": "sensor_raw",
+      "target": "dt_inventory"
+    },
+    {
+      "source": "dt_customer_360",
+      "target": "exec_dashboard_view"
+    },
+    {
+      "source": "dt_revenue",
+      "target": "exec_dashboard_view"
+    },
+    {
+      "source": "dt_inventory",
+      "target": "dt_ml_features"
+    },
+    {
+      "source": "dt_customer_360",
+      "target": "dt_ml_features"
+    },
+    {
+      "source": "exec_dashboard_view",
+      "target": "tableau"
+    },
+    {
+      "source": "exec_dashboard_view",
+      "target": "streamlit_app"
+    },
+    {
+      "source": "dt_ml_features",
+      "target": "snowflake_ml"
+    }
+  ],
+  "zones": [
+    {
+      "name": "External Sources",
+      "category": "onprem",
+      "node_ids": [
+        "aws_s3",
+        "kafka",
+        "iot_sensors"
+      ]
+    },
+    {
+      "name": "Ingestion",
+      "category": "bridge",
+      "node_ids": [
+        "snowpipe",
+        "snowpipe_streaming"
+      ]
+    },
+    {
+      "name": "Raw Layer",
+      "category": "snow",
+      "node_ids": [
+        "transactions_raw",
+        "sensor_raw"
+      ]
+    },
+    {
+      "name": "Transformation",
+      "category": "snow",
+      "node_ids": [
+        "dt_customer_360",
+        "dt_inventory",
+        "dt_revenue"
+      ]
+    },
+    {
+      "name": "Serving Layer",
+      "category": "snow",
+      "node_ids": [
+        "exec_dashboard_view",
+        "dt_ml_features"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "tableau",
+        "streamlit_app",
+        "snowflake_ml"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-s3",
+      "title": "AWS S3",
+      "excerpt": "POS transaction files"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/kafka-connector",
+      "title": "Kafka",
+      "excerpt": "Clickstream events"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
+      "title": "IoT Sensors",
+      "excerpt": "Store shelf sensors"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro",
+      "title": "Snowpipe",
+      "excerpt": "Batch file ingest"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Transactions Raw",
+      "excerpt": "POS + clickstream landing"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+      "title": "DT: Customer 360",
+      "excerpt": "Unified customer profile"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/views-secure",
+      "title": "Exec Dashboard View",
+      "excerpt": "RLS-enforced KPIs"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
+      "title": "Tableau",
+      "excerpt": "Executive dashboards"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit",
+      "title": "Streamlit App",
+      "excerpt": "Store manager portal"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview",
+      "title": "Snowflake ML",
+      "excerpt": "Demand forecasting"
+    }
+  ]
+}

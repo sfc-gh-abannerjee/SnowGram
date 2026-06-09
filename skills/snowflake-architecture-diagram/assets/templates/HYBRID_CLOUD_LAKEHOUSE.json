@@ -9,5 +9,137 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2025-11-07T09:45:51.543000-08:00",
-  "UPDATED_AT": "2026-02-17T21:53:30.842000-08:00"
+  "UPDATED_AT": "2026-02-17T21:53:30.842000-08:00",
+  "RICH_STATE": {
+    "title": "Hybrid Cloud Lakehouse (Iceberg)",
+    "subtitle": "External Iceberg catalog \u2192 Snowflake-managed Iceberg \u2192 Dynamic Tables \u2192 AI/BI",
+    "nodes": [
+      {
+        "id": "catalog",
+        "label": "External Catalog",
+        "detail": "AWS Glue / Polaris",
+        "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+        "category": "onprem",
+        "zone": "External Sources",
+        "object_type": "S3",
+        "stage": "source",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
+      },
+      {
+        "id": "iceberg",
+        "label": "Iceberg Tables",
+        "detail": "Open table format",
+        "icon": "Snowflake_ICON_RA_Table_Iceberg.svg",
+        "category": "snow",
+        "zone": "Raw Layer",
+        "object_type": "ICEBERG_TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/tables-iceberg"
+      },
+      {
+        "id": "dt",
+        "label": "Dynamic Tables",
+        "detail": "Refreshed transforms",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Curated Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "transformation",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "serve",
+        "label": "Serving Iceberg",
+        "detail": "Read across engines",
+        "icon": "Snowflake_ICON_RA_Table_Iceberg.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "ICEBERG_TABLE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/tables-iceberg"
+      },
+      {
+        "id": "cortex",
+        "label": "Cortex AI",
+        "detail": "LLM / search over lakehouse",
+        "icon": "Snowflake_ICON_Cortex.svg",
+        "category": "outcome",
+        "zone": "Serving Layer",
+        "object_type": "CORTEX",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview"
+      },
+      {
+        "id": "bi",
+        "label": "BI / Spark",
+        "detail": "Engine-agnostic consumption",
+        "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "BI_TOOL",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+      }
+    ],
+    "edges": [
+      {
+        "source": "catalog",
+        "target": "iceberg"
+      },
+      {
+        "source": "iceberg",
+        "target": "dt"
+      },
+      {
+        "source": "dt",
+        "target": "serve"
+      },
+      {
+        "source": "serve",
+        "target": "cortex"
+      },
+      {
+        "source": "cortex",
+        "target": "bi"
+      }
+    ],
+    "zones": [
+      {
+        "name": "External Sources",
+        "category": "onprem",
+        "node_ids": [
+          "catalog"
+        ]
+      },
+      {
+        "name": "Raw Layer",
+        "category": "snow",
+        "node_ids": [
+          "iceberg"
+        ]
+      },
+      {
+        "name": "Curated Layer",
+        "category": "snow",
+        "node_ids": [
+          "dt"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "outcome",
+        "node_ids": [
+          "serve",
+          "cortex"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "bi"
+        ]
+      }
+    ]
+  }
 }

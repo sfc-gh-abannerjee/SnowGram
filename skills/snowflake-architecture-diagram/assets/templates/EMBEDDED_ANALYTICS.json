@@ -9,5 +9,119 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2026-02-17T19:38:04.825000-08:00",
-  "UPDATED_AT": "2026-02-17T21:53:02.753000-08:00"
+  "UPDATED_AT": "2026-02-17T21:53:02.753000-08:00",
+  "RICH_STATE": {
+    "title": "Embedded Analytics",
+    "subtitle": "Operational app \u2192 Hybrid Tables \u2192 Multi-cluster WH \u2192 Embedded UI",
+    "nodes": [
+      {
+        "id": "app",
+        "label": "Operational App",
+        "detail": "OLTP-style writes",
+        "icon": "Snowflake_ICON_Web_App.svg",
+        "category": "outcome",
+        "zone": "External Sources",
+        "object_type": "WEB_APP",
+        "stage": "source",
+        "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
+      },
+      {
+        "id": "hybrid",
+        "label": "Hybrid Table",
+        "detail": "OLTP + analytics",
+        "icon": "Snowflake_ICON_RA_Table_Hybrid.svg",
+        "category": "snow",
+        "zone": "Curated Layer",
+        "object_type": "HYBRID_TABLE",
+        "stage": "curated_storage",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/tables-hybrid"
+      },
+      {
+        "id": "dt",
+        "label": "Aggregation DT",
+        "detail": "Materialized rollups",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "wh",
+        "label": "Multi-Cluster WH",
+        "detail": "Auto-scale concurrency",
+        "icon": "Snowflake_ICON_RA_Virtual_Warehouse.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "WAREHOUSE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/warehouses-overview"
+      },
+      {
+        "id": "embed",
+        "label": "Embedded Dashboard",
+        "detail": "Customer-facing analytics",
+        "icon": "Snowflake_ICON_Streamlit_in_Snowflake.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "STREAMLIT",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
+      }
+    ],
+    "edges": [
+      {
+        "source": "app",
+        "target": "hybrid"
+      },
+      {
+        "source": "hybrid",
+        "target": "dt"
+      },
+      {
+        "source": "dt",
+        "target": "wh"
+      },
+      {
+        "source": "wh",
+        "target": "embed"
+      },
+      {
+        "source": "dt",
+        "target": "embed"
+      }
+    ],
+    "zones": [
+      {
+        "name": "External Sources",
+        "category": "outcome",
+        "node_ids": [
+          "app"
+        ]
+      },
+      {
+        "name": "Curated Layer",
+        "category": "snow",
+        "node_ids": [
+          "hybrid"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "snow",
+        "node_ids": [
+          "dt",
+          "wh"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "embed"
+        ]
+      }
+    ]
+  }
 }

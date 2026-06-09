@@ -1,0 +1,53 @@
+flowchart LR
+    subgraph source["Data Sources"]
+        s3["AWS S3<br/>Data Lake"]
+    end
+
+    subgraph bronze["Bronze Layer (Raw)"]
+        pipe["Snowpipe<br/>Auto-Ingest<br/>Separate from Streaming"]
+        bronze_db["BRONZE_DB"]
+        bronze_raw["Raw Tables<br/>Append-Only<br/>VARIANT for JSON"]
+    end
+
+    subgraph silver["Silver Layer (Cleaned)"]
+        stream_b["Stream<br/>Bronze CDC"]
+        task_clean["Serverless Task<br/>Data Quality"]
+        silver_db["SILVER_DB"]
+        silver_tables["Cleaned Tables<br/>SCD Type 2"]
+    end
+
+    subgraph gold["Gold Layer (Business)"]
+        dyn_table["Dynamic Tables<br/>TARGET_LAG=DOWNSTREAM<br/>Dedicated WH<br/>Set Refresh Mode"]
+        gold_db["GOLD_DB"]
+        gold_agg["Aggregated Facts<br/>Business Metrics"]
+    end
+
+    subgraph compute["Warehouse Strategy"]
+        wh_load["WH_LOADING<br/>Ingestion"]
+        wh_transform["WH_TRANSFORM<br/>DT Refresh"]
+        wh_bi["WH_BI_ANALYTICS<br/>Multi-Cluster"]
+    end
+
+    subgraph bi["Analytics"]
+        bi_tools["BI Tools<br/>Dashboards"]
+    end
+
+    s3 --> pipe
+    pipe --> bronze_raw
+    bronze_raw --> stream_b
+    stream_b --> task_clean
+    task_clean --> silver_tables
+    silver_tables --> dyn_table
+    dyn_table --> gold_agg
+    gold_agg --> bi_tools
+    
+    wh_load -.-> pipe
+    wh_transform -.-> dyn_table
+    wh_bi -.-> bi_tools
+
+    style source fill:#FF9900,stroke:#fff
+    style bronze fill:#CD7F32,stroke:#8B4513
+    style silver fill:#C0C0C0,stroke:#808080
+    style gold fill:#FFD700,stroke:#DAA520
+    style compute fill:#E6E6FA,stroke:#9370DB
+    style bi fill:#F2C94C,stroke:#333

@@ -9,7 +9,8 @@
       "detail": "MQTT / device telemetry",
       "icon": "Snowflake_ICON_IoT.svg",
       "category": "onprem",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview"
     },
     {
       "id": "snowpipe_streaming",
@@ -53,7 +54,8 @@
       "detail": "Operations dashboard",
       "icon": "Snowflake_ICON_Web_App.svg",
       "category": "outcome",
-      "zone": "Consumption"
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/developer-guide/native-apps/connector-sdk/flow/ingestion-management/overview"
     }
   ],
   "edges": [
@@ -124,6 +126,11 @@
   ],
   "citations": [
     {
+      "url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
+      "title": "IoT Gateway",
+      "excerpt": "MQTT / device telemetry"
+    },
+    {
       "url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview",
       "title": "Snowpipe Streaming",
       "excerpt": "Sub-second sensor ingest"
@@ -132,6 +139,11 @@
       "url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
       "title": "Time-Series Table",
       "excerpt": "Raw sensor readings"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/developer-guide/native-apps/connector-sdk/flow/ingestion-management/overview",
+      "title": "Monitoring App",
+      "excerpt": "Operations dashboard"
     }
   ]
 }

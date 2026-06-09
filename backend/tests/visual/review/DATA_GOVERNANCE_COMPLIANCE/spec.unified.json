@@ -1,0 +1,223 @@
+{
+  "nodes": [
+    {
+      "id": "source_table",
+      "label": "Source Tables CUSTOMER_PII",
+      "componentType": "Table",
+      "groupId": "sources",
+      "layer": "bronze"
+    },
+    {
+      "id": "classify",
+      "label": "SYSTEM$CLASSIFY Auto-Classification",
+      "componentType": "SYSTEM$CLASSIFY Auto-Classification",
+      "groupId": "classification",
+      "layer": "snowflake"
+    },
+    {
+      "id": "tags",
+      "label": "Object Tags PII, SENSITIVE",
+      "componentType": "Tag",
+      "groupId": "classification",
+      "layer": "snowflake"
+    },
+    {
+      "id": "masking",
+      "label": "Dynamic Data Masking Owner Rights",
+      "componentType": "Dynamic",
+      "groupId": "policies",
+      "layer": "snowflake"
+    },
+    {
+      "id": "row_access",
+      "label": "Row Access Policy Mapping Tables",
+      "componentType": "Table",
+      "groupId": "policies",
+      "layer": "snowflake"
+    },
+    {
+      "id": "projection",
+      "label": "Projection Policy",
+      "componentType": "Policy",
+      "groupId": "policies",
+      "layer": "snowflake"
+    },
+    {
+      "id": "roles",
+      "label": "Functional Roles ANALYST, MANAGER",
+      "componentType": "Function",
+      "groupId": "access",
+      "layer": "snowflake"
+    },
+    {
+      "id": "db_roles",
+      "label": "Database Roles For Sharing",
+      "componentType": "Database",
+      "groupId": "access",
+      "layer": "snowflake"
+    },
+    {
+      "id": "is_role",
+      "label": "IS_ROLE_IN_SESSION Not CURRENT_ROLE",
+      "componentType": "Session",
+      "groupId": "access",
+      "layer": "snowflake"
+    },
+    {
+      "id": "access_history",
+      "label": "ACCESS_HISTORY Account Usage",
+      "componentType": "Access",
+      "groupId": "audit",
+      "layer": "snowflake"
+    },
+    {
+      "id": "query_history",
+      "label": "QUERY_HISTORY Who Queried What",
+      "componentType": "QUERY_HISTORY Who Queried What",
+      "groupId": "audit",
+      "layer": "snowflake"
+    },
+    {
+      "id": "login_history",
+      "label": "LOGIN_HISTORY",
+      "componentType": "LOGIN_HISTORY",
+      "groupId": "audit",
+      "layer": "snowflake"
+    },
+    {
+      "id": "share",
+      "label": "Secure Share CURRENT_ACCOUNT Check",
+      "componentType": "Secure",
+      "groupId": "sharing",
+      "layer": "snowflake"
+    },
+    {
+      "id": "reader",
+      "label": "Reader Accounts Resource Monitors",
+      "componentType": "View",
+      "groupId": "sharing",
+      "layer": "bronze"
+    }
+  ],
+  "edges": [
+    {
+      "source": "source_table",
+      "target": "classify",
+      "style": "solid"
+    },
+    {
+      "source": "classify",
+      "target": "tags",
+      "style": "solid"
+    },
+    {
+      "source": "tags",
+      "target": "masking",
+      "style": "solid"
+    },
+    {
+      "source": "masking",
+      "target": "roles",
+      "style": "solid"
+    },
+    {
+      "source": "row_access",
+      "target": "roles",
+      "style": "solid"
+    },
+    {
+      "source": "roles",
+      "target": "db_roles",
+      "style": "solid"
+    },
+    {
+      "source": "db_roles",
+      "target": "is_role",
+      "style": "solid"
+    },
+    {
+      "source": "is_role",
+      "target": "access_history",
+      "style": "solid"
+    },
+    {
+      "source": "access_history",
+      "target": "query_history",
+      "style": "solid"
+    },
+    {
+      "source": "query_history",
+      "target": "login_history",
+      "style": "solid"
+    },
+    {
+      "source": "roles",
+      "target": "share",
+      "style": "solid"
+    },
+    {
+      "source": "share",
+      "target": "reader",
+      "style": "solid"
+    }
+  ],
+  "groups": [
+    {
+      "id": "sources",
+      "label": "Source Data",
+      "type": "boundary",
+      "index": -1,
+      "style": {
+        "background": "#E3F2FD"
+      }
+    },
+    {
+      "id": "classification",
+      "label": "Data Classification",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#F3E5F5"
+      }
+    },
+    {
+      "id": "policies",
+      "label": "Policy Layer",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E8F5E9"
+      }
+    },
+    {
+      "id": "access",
+      "label": "Access Control",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FFF8E1"
+      }
+    },
+    {
+      "id": "audit",
+      "label": "Audit & Compliance",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E1F5FE"
+      }
+    },
+    {
+      "id": "sharing",
+      "label": "Secure Sharing",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FCE4EC"
+      }
+    }
+  ],
+  "badges": [],
+  "direction": "LR",
+  "mermaidSource": "flowchart TD\n    subgraph sources[\"Source Data\"]\n        source_table[\"Source Tables<br/>CUSTOMER_PII\"]\n    end\n    \n    subgraph classification[\"Data Classification\"]\n        classify[\"SYSTEM$CLASSIFY<br/>Auto-Classification\"]\n        tags[\"Object Tags<br/>PII, SENSITIVE\"]\n    end\n    \n    subgraph policies[\"Policy Layer\"]\n        masking[\"Dynamic Data Masking<br/>Owner Rights\"]\n        row_access[\"Row Access Policy<br/>Mapping Tables\"]\n        projection[\"Projection Policy\"]\n    end\n    \n    subgraph access[\"Access Control\"]\n        roles[\"Functional Roles<br/>ANALYST, MANAGER\"]\n        db_roles[\"Database Roles<br/>For Sharing\"]\n        is_role[\"IS_ROLE_IN_SESSION<br/>Not CURRENT_ROLE\"]\n    end\n    \n    subgraph audit[\"Audit & Compliance\"]\n        access_history[\"ACCESS_HISTORY<br/>Account Usage\"]\n        query_history[\"QUERY_HISTORY<br/>Who Queried What\"]\n        login_history[\"LOGIN_HISTORY\"]\n    end\n    \n    subgraph sharing[\"Secure Sharing\"]\n        share[\"Secure Share<br/>CURRENT_ACCOUNT Check\"]\n        reader[\"Reader Accounts<br/>Resource Monitors\"]\n    end\n    \n    source_table --> classify\n    classify --> tags\n    tags --> masking & row_access & projection\n    masking --> roles\n    row_access --> roles\n    roles --> db_roles\n    db_roles --> is_role\n    is_role --> access_history\n    access_history --> query_history\n    query_history --> login_history\n    roles --> share\n    share --> reader\n    \n    style sources fill:#E8F4FD,stroke:#29B5E8\n    style classification fill:#FFE4B5,stroke:#FFA500\n    style policies fill:#FF6B6B,stroke:#CC0000\n    style access fill:#E6E6FA,stroke:#9370DB\n    style audit fill:#98D8C8,stroke:#2ECC71\n    style sharing fill:#DDA0DD,stroke:#8B008B"
+}

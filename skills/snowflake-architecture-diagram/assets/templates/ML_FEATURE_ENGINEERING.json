@@ -9,5 +9,155 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2025-11-07T09:45:50.151000-08:00",
-  "UPDATED_AT": "2026-02-17T21:54:01.846000-08:00"
+  "UPDATED_AT": "2026-02-17T21:54:01.846000-08:00",
+  "RICH_STATE": {
+    "title": "ML Feature Engineering & Serving",
+    "subtitle": "Source \u2192 Feature pipelines \u2192 Model Registry \u2192 Inference (Cortex / SPCS)",
+    "nodes": [
+      {
+        "id": "src",
+        "label": "Source Data",
+        "detail": "Curated business tables",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Raw Layer",
+        "object_type": "TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "feat_dt",
+        "label": "Feature Dynamic Tables",
+        "detail": "Declarative feature views",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Curated Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "transformation",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "fs",
+        "label": "Feature Store",
+        "detail": "Versioned feature tables",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Curated Layer",
+        "object_type": "TABLE",
+        "stage": "curated_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "registry",
+        "label": "Model Registry",
+        "detail": "Snowpark ML registry",
+        "icon": "Snowflake_ICON_RA_Function.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "MODEL_REGISTRY",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-function"
+      },
+      {
+        "id": "udf",
+        "label": "Inference UDF",
+        "detail": "Snowpark / Cortex inference",
+        "icon": "Snowflake_ICON_RA_Function.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "FUNCTION",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-function"
+      },
+      {
+        "id": "spcs",
+        "label": "SPCS Service",
+        "detail": "Container-hosted models",
+        "icon": "Snowflake_ICON_Snowpark_Containers.svg",
+        "category": "outcome",
+        "zone": "Serving Layer",
+        "object_type": "SPCS",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/developer-guide/snowpark-container-services/overview"
+      },
+      {
+        "id": "app",
+        "label": "ML-powered App",
+        "detail": "Streamlit / REST consumer",
+        "icon": "Snowflake_ICON_Streamlit_in_Snowflake.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "STREAMLIT",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
+      }
+    ],
+    "edges": [
+      {
+        "source": "src",
+        "target": "feat_dt"
+      },
+      {
+        "source": "feat_dt",
+        "target": "fs"
+      },
+      {
+        "source": "fs",
+        "target": "registry"
+      },
+      {
+        "source": "registry",
+        "target": "udf"
+      },
+      {
+        "source": "udf",
+        "target": "spcs"
+      },
+      {
+        "source": "spcs",
+        "target": "app"
+      },
+      {
+        "source": "registry",
+        "target": "spcs"
+      },
+      {
+        "source": "udf",
+        "target": "app"
+      }
+    ],
+    "zones": [
+      {
+        "name": "Raw Layer",
+        "category": "snow",
+        "node_ids": [
+          "src"
+        ]
+      },
+      {
+        "name": "Curated Layer",
+        "category": "snow",
+        "node_ids": [
+          "feat_dt",
+          "fs"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "snow",
+        "node_ids": [
+          "registry",
+          "udf",
+          "spcs"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "app"
+        ]
+      }
+    ]
+  }
 }

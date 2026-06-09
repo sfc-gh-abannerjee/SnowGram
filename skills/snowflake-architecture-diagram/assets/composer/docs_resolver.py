@@ -79,6 +79,22 @@ _DOCS_QUERIES: dict[str, list[str]] = {
         "data governance masking policy snowflake",
         "dynamic data masking column-level security",
     ],
+    "ml": [
+        "snowflake ml model registry",
+        "feature store snowflake",
+        "snowpark container services GPU inference",
+        "cortex AI complete summarize",
+    ],
+    "cleanroom": [
+        "snowflake data clean rooms overview",
+        "differential privacy clean room",
+        "row access policy clean room",
+    ],
+    "marketing": [
+        "dynamic tables event time join",
+        "snowflake connector for salesforce",
+        "clickstream analytics snowflake",
+    ],
     "generic": [
         "snowflake data pipeline recommended architecture",
         "dynamic tables vs streams and tasks comparison",
@@ -95,6 +111,20 @@ _INTENT_SIGNALS: dict[str, list[str]] = {
     "iot": ["iot", "sensor", "mqtt", "device", "telemetry", "edge"],
     "batch": ["batch", "etl", "star schema", "data warehouse", "scheduled", "nightly"],
     "security": ["security", "governance", "masking", "rls", "rbac", "compliance", "audit"],
+    "ml": [
+        "machine learning", "ml pipeline", "ml model", "feature store",
+        "model registry", "snowpark ml", "xgboost", "scikit", "spcs",
+        "snowpark container services", "cortex ml", "cortex ai", "model training",
+        "inference", "fraud scoring",
+    ],
+    "cleanroom": [
+        "clean room", "cleanroom", "data clean room", "differential privacy",
+        "second-party", "joint analysis", "cohort sharing",
+    ],
+    "marketing": [
+        "attribution", "clickstream", "marketing pipeline", "campaign",
+        "segment ", "salesforce", "hubspot", "crm sync", "growth team",
+    ],
 }
 
 
@@ -221,6 +251,36 @@ _DEFAULT_PIPELINE_SPECS: dict[str, list[dict[str, Any]]] = {
         {"stage": "serving", "object_type": "SECURE_VIEW", "label": "Secure View", "detail": "Policy-enforced access", "zone": "Access Layer"},
         {"stage": "consumption", "object_type": "BI_TOOL", "label": "Analytics", "detail": "Role-scoped dashboards", "zone": "Consumption"},
     ],
+    "ml": [
+        {"stage": "source", "object_type": "S3", "label": "Training Data", "detail": "Historical labeled examples", "zone": "External Sources"},
+        {"stage": "ingestion", "object_type": "PIPE", "label": "Snowpipe Streaming", "detail": "Live event ingest", "zone": "Ingestion"},
+        {"stage": "raw_storage", "object_type": "TABLE", "label": "Raw Events", "detail": "Append-only events", "zone": "Raw Layer"},
+        {"stage": "transformation", "object_type": "FEATURE_STORE", "label": "Feature Store", "detail": "Versioned feature views", "zone": "Feature Engineering"},
+        {"stage": "transformation", "object_type": "SNOWPARK_ML", "label": "Snowpark ML", "detail": "scikit-learn / XGBoost training", "zone": "Model Training"},
+        {"stage": "serving", "object_type": "MODEL_REGISTRY", "label": "Model Registry", "detail": "Versioned model artifacts", "zone": "Model Management"},
+        {"stage": "serving", "object_type": "SPCS", "label": "Inference Service", "detail": "Snowpark Container Services", "zone": "Serving Layer"},
+        {"stage": "consumption", "object_type": "STREAMLIT", "label": "ML App", "detail": "Predictions dashboard", "zone": "Consumption"},
+    ],
+    "cleanroom": [
+        {"stage": "source", "object_type": "DATA_SHARE", "label": "Provider Data", "detail": "Party A contribution", "zone": "Provider Sources"},
+        {"stage": "source", "object_type": "DATA_SHARE", "label": "Partner Data", "detail": "Party B contribution", "zone": "Provider Sources"},
+        {"stage": "transformation", "object_type": "CLEANROOM", "label": "Data Clean Room", "detail": "Cross-party joint analysis", "zone": "Clean Room"},
+        {"stage": "transformation", "object_type": "ROW_ACCESS_POLICY", "label": "Row Access Policy", "detail": "Per-party row scoping", "zone": "Security & Governance"},
+        {"stage": "transformation", "object_type": "MASKING_POLICY", "label": "Differential Privacy", "detail": "Noise on aggregations", "zone": "Security & Governance"},
+        {"stage": "serving", "object_type": "SECURE_VIEW", "label": "Approved Output", "detail": "Aggregate-only results", "zone": "Access Layer"},
+        {"stage": "consumption", "object_type": "STREAMLIT", "label": "Cohort Explorer", "detail": "Joint analytics app", "zone": "Consumption"},
+    ],
+    "marketing": [
+        {"stage": "source", "object_type": "WEB_APP", "label": "Clickstream", "detail": "Web / app events", "zone": "External Sources"},
+        {"stage": "source", "object_type": "SALESFORCE", "label": "CRM", "detail": "Salesforce contacts & opps", "zone": "External Sources"},
+        {"stage": "ingestion", "object_type": "PIPE", "label": "Snowpipe Streaming", "detail": "Event ingest", "zone": "Ingestion"},
+        {"stage": "ingestion", "object_type": "CONNECTOR", "label": "Salesforce Connector", "detail": "Native CRM sync", "zone": "Ingestion"},
+        {"stage": "raw_storage", "object_type": "TABLE", "label": "Events", "detail": "Raw clickstream", "zone": "Raw Layer"},
+        {"stage": "raw_storage", "object_type": "TABLE", "label": "Contacts", "detail": "CRM dimension", "zone": "Raw Layer"},
+        {"stage": "transformation", "object_type": "DYNAMIC_TABLE", "label": "Attribution DT", "detail": "Event-time join & scoring", "zone": "Transformation"},
+        {"stage": "serving", "object_type": "DYNAMIC_TABLE", "label": "Attribution Mart", "detail": "Per-customer scores", "zone": "Serving Layer"},
+        {"stage": "consumption", "object_type": "BI_TOOL", "label": "Marketing BI", "detail": "Growth team dashboards", "zone": "Consumption"},
+    ],
     "generic": [
         {"stage": "source", "object_type": "S3", "label": "Data Source", "detail": "External system", "zone": "External Sources"},
         {"stage": "ingestion", "object_type": "PIPE", "label": "Snowpipe", "detail": "Automated ingestion", "zone": "Ingestion"},
@@ -238,35 +298,121 @@ def _enrich_from_docs(
 ) -> list[dict[str, Any]]:
     """
     Query SnowflakeProductDocs to validate/enrich the pipeline spec.
-    Attaches doc_urls and potentially updates details based on docs content.
+    Attaches doc_urls to each spec entry based on its object type.
     """
     queries = _DOCS_QUERIES.get(pipeline_type, _DOCS_QUERIES["generic"])
-    doc_urls: list[str] = []
+    all_docs: list[dict[str, str]] = []  # [{url, title, content}, ...]
 
     for query in queries[:3]:  # Limit to 3 queries for latency
         raw = _run_cortex_search_docs(query)
         if raw:
             entries = _parse_docs_response(raw)
-            for entry in entries:
-                if entry.get("url"):
-                    doc_urls.append(entry["url"])
+            all_docs.extend(entries)
 
-    # Attach doc_urls to relevant spec entries
-    # Map docs to stages by keyword matching
+    # Deduplicate by URL
+    seen_urls: set[str] = set()
+    unique_docs: list[dict[str, str]] = []
+    for doc in all_docs:
+        url = doc.get("url", "")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_docs.append(doc)
+
+    # Match docs to spec entries using keyword relevance
     for spec_entry in base_spec:
-        obj_type = spec_entry.get("object_type", "").lower()
-        for url in doc_urls:
-            url_lower = url.lower()
-            if obj_type.replace("_", "-") in url_lower or obj_type.replace("_", " ") in url_lower:
-                spec_entry["doc_url"] = url
-                break
-        # Fallback: construct a docs URL from object type
-        if "doc_url" not in spec_entry:
-            obj_slug = obj_type.lower().replace("_", "-")
-            if obj_type in ("TABLE", "DYNAMIC_TABLE", "STREAM", "TASK", "PIPE"):
-                spec_entry["doc_url"] = f"https://docs.snowflake.com/en/user-guide/{obj_slug}s-about"
+        if spec_entry.get("doc_url"):
+            continue  # Already has one
+
+        obj_type = spec_entry.get("object_type", "")
+        label = spec_entry.get("label", "")
+
+        # Build search terms for this entry
+        search_terms = _doc_search_terms(obj_type, label)
+
+        # Score each doc by how many terms match its URL or title
+        best_url = None
+        best_score = 0
+        for doc in unique_docs:
+            url = doc.get("url", "").lower()
+            title = doc.get("title", "").lower()
+            score = sum(1 for term in search_terms if term in url or term in title)
+            if score > best_score:
+                best_score = score
+                best_url = doc["url"]
+
+        if best_url:
+            spec_entry["doc_url"] = best_url
+        else:
+            # Fallback: use known canonical doc URLs per object type
+            fallback = _CANONICAL_DOC_URLS.get(obj_type)
+            if fallback:
+                spec_entry["doc_url"] = fallback
 
     return base_spec
+
+
+# Canonical documentation URLs for common Snowflake object types
+_CANONICAL_DOC_URLS: dict[str, str] = {
+    "TABLE": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+    "DYNAMIC_TABLE": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about",
+    "STREAM": "https://docs.snowflake.com/en/user-guide/streams-intro",
+    "TASK": "https://docs.snowflake.com/en/user-guide/tasks-intro",
+    "PIPE": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro",
+    "STAGE": "https://docs.snowflake.com/en/sql-reference/sql/create-stage",
+    "VIEW": "https://docs.snowflake.com/en/sql-reference/sql/create-view",
+    "SECURE_VIEW": "https://docs.snowflake.com/en/user-guide/views-secure",
+    "MATERIALIZED_VIEW": "https://docs.snowflake.com/en/user-guide/views-materialized",
+    "WAREHOUSE": "https://docs.snowflake.com/en/user-guide/warehouses-overview",
+    "FUNCTION": "https://docs.snowflake.com/en/sql-reference/sql/create-function",
+    "STORED_PROCEDURE": "https://docs.snowflake.com/en/sql-reference/sql/create-procedure",
+    "UDF": "https://docs.snowflake.com/en/sql-reference/sql/create-function",
+    "EXTERNAL_FUNCTION": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function",
+    "MASKING_POLICY": "https://docs.snowflake.com/en/user-guide/security-column-ddm-intro",
+    "ROW_ACCESS_POLICY": "https://docs.snowflake.com/en/user-guide/security-row-intro",
+    "ROLE": "https://docs.snowflake.com/en/user-guide/security-access-control-overview",
+    "DATABASE": "https://docs.snowflake.com/en/sql-reference/sql/create-database",
+    "ICEBERG_TABLE": "https://docs.snowflake.com/en/user-guide/tables-iceberg",
+    "HYBRID_TABLE": "https://docs.snowflake.com/en/user-guide/tables-hybrid",
+    # External systems
+    "S3": "https://docs.snowflake.com/en/user-guide/data-load-s3",
+    "AZURE_BLOB": "https://docs.snowflake.com/en/user-guide/data-load-azure",
+    "GCS": "https://docs.snowflake.com/en/user-guide/data-load-gcs",
+    "KAFKA": "https://docs.snowflake.com/en/user-guide/kafka-connector",
+    "IOT": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-streaming-overview",
+    # Consumption
+    "BI_TOOL": "https://docs.snowflake.com/en/user-guide/odbc-download",
+    "STREAMLIT": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit",
+    "SNOWPARK": "https://docs.snowflake.com/en/developer-guide/snowpark/index",
+    "CORTEX": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview",
+    "SPCS": "https://docs.snowflake.com/en/developer-guide/snowpark-container-services/overview",
+    "WEB_APP": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit",
+    "NATIVE_APP": "https://docs.snowflake.com/en/developer-guide/native-apps/native-apps-about",
+    "DATA_SHARE": "https://docs.snowflake.com/en/user-guide/data-sharing-intro",
+    "MARKETPLACE": "https://docs.snowflake.com/en/user-guide/data-marketplace",
+    # ML / AI
+    "FEATURE_STORE": "https://docs.snowflake.com/en/developer-guide/snowflake-ml/feature-store/overview",
+    "MODEL_REGISTRY": "https://docs.snowflake.com/en/developer-guide/snowflake-ml/model-registry/overview",
+    "SNOWPARK_ML": "https://docs.snowflake.com/en/developer-guide/snowflake-ml/overview",
+    # Clean rooms
+    "CLEANROOM": "https://docs.snowflake.com/en/user-guide/cleanrooms/introduction",
+    # Connectors
+    "SALESFORCE": "https://docs.snowflake.com/en/user-guide/connector-salesforce-data-cloud",
+    "CONNECTOR": "https://docs.snowflake.com/en/user-guide/snowflake-connectors/overview",
+}
+
+
+def _doc_search_terms(object_type: str, label: str) -> list[str]:
+    """Generate search terms for matching docs to a spec entry."""
+    terms: list[str] = []
+    # From object type: "DYNAMIC_TABLE" -> ["dynamic", "table", "dynamic-table"]
+    parts = object_type.lower().split("_")
+    terms.extend(parts)
+    if len(parts) > 1:
+        terms.append("-".join(parts))
+    # From label: "Snowpipe Streaming" -> ["snowpipe", "streaming"]
+    label_parts = label.lower().split()
+    terms.extend(label_parts)
+    return [t for t in terms if len(t) > 2]  # Filter out tiny words
 
 
 # --------------------------------------------------------------------------- #

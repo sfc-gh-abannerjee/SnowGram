@@ -1,0 +1,27 @@
+{
+  "template_id": "MEDALLION_LAKEHOUSE",
+  "pipeline": "legacy",
+  "pass_rate": 100.0,
+  "checks": [
+    {
+      "name": "no_raw_syntax_in_labels",
+      "passed": true,
+      "detail": "all labels clean"
+    },
+    {
+      "name": "no_helper_nodes_leaked",
+      "passed": true,
+      "detail": "no helpers in spec"
+    },
+    {
+      "name": "min_edges",
+      "passed": true,
+      "detail": "11 edges (min 8)"
+    },
+    {
+      "name": "expected_components_present",
+      "passed": true,
+      "detail": "all 8 present"
+    }
+  ]
+}

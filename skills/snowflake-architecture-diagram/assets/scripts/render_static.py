@@ -25,6 +25,61 @@ SKILL_DIR = SCRIPT_DIR.parent.parent
 VIEWER_DIR = SKILL_DIR / "assets" / "viewer"
 ICONS_DIR = VIEWER_DIR / "icons"
 INDEX_HTML = VIEWER_DIR / "index.html"
+ICON_MANIFEST_PATH = SKILL_DIR / "assets" / "icon_manifest.json"
+
+# Object type aliases — incoming object_type values that map to a different
+# canonical key in the manifest. Kept in sync with build_rich_states.py.
+_OBJECT_TYPE_ALIASES = {
+    "SNOWPIPE_STREAMING": "PIPE",
+    "TABLEAU": "BI_TOOL",
+    "POWERBI": "BI_TOOL",
+    "POWER_BI": "BI_TOOL",
+    "LOOKER": "BI_TOOL",
+    "FIVETRAN": "S3",
+    "AIRBYTE": "S3",
+    "POSTGRES": "S3",
+    "API_GATEWAY": "EXTERNAL_FUNCTION",
+    "LAMBDA": "EXTERNAL_FUNCTION",
+    "AZURE_FUNCTION": "EXTERNAL_FUNCTION",
+    "KINESIS": "KAFKA",
+    "ML_MODEL": "FUNCTION",
+    "FEATURE_STORE": "TABLE",
+    "MODEL_REGISTRY": "FUNCTION",
+    "CDP": "TABLE",
+    "PROFILE_TABLE": "TABLE",
+    "ACTIVATION": "BI_TOOL",
+    "PROCEDURE": "STORED_PROCEDURE",
+}
+
+
+def _load_manifest() -> dict:
+    if not ICON_MANIFEST_PATH.exists():
+        return {}
+    try:
+        return json.loads(ICON_MANIFEST_PATH.read_text())
+    except Exception:
+        return {}
+
+
+def _resolve_icon_for_object_type(object_type: str, manifest: dict) -> tuple[str, str] | None:
+    """Look up the canonical (icon, category) for a Snowflake object_type.
+
+    Returns None if the object_type is not in the manifest or its alias map.
+    Caller can then fall back to whatever icon the node already specifies.
+    """
+    if not object_type:
+        return None
+    key = _OBJECT_TYPE_ALIASES.get(object_type, object_type)
+    entry = manifest.get(key)
+    if isinstance(entry, dict) and "icon" in entry:
+        return entry["icon"], entry.get("category", "snow")
+    ext = manifest.get("_external_systems", {}).get(key)
+    if isinstance(ext, dict) and "icon" in ext:
+        return ext["icon"], ext.get("category", "onprem")
+    cons = manifest.get("_consumption", {}).get(key)
+    if isinstance(cons, dict) and "icon" in cons:
+        return cons["icon"], cons.get("category", "outcome")
+    return None
 
 
 def _icon_to_data_uri(icon_filename: str) -> str:
@@ -47,9 +102,25 @@ def render(state: dict) -> str:
         raise FileNotFoundError(f"viewer index.html not found at {INDEX_HTML}")
     html = INDEX_HTML.read_text(encoding="utf-8")
 
-    # Replace each node's icon filename with a data URI
+    manifest = _load_manifest()
+
+    # Replace each node's icon filename with a data URI. Defensively resolve
+    # the icon from the node's object_type — this protects against producers
+    # that hand-roll a state.json and stamp a wrong/uniform icon string on
+    # every Snowflake node (a real failure mode for CoCo-improvised states).
+    # If the manifest has a canonical icon for the object_type, use that;
+    # otherwise fall back to whatever the node specifies.
     rewritten_state = json.loads(json.dumps(state))  # deep copy
     for node in rewritten_state.get("nodes", []) or []:
+        object_type = node.get("object_type") or ""
+        canonical = _resolve_icon_for_object_type(object_type, manifest)
+        if canonical:
+            canonical_icon, canonical_category = canonical
+            # Override the icon with the canonical one for this object type.
+            # Keep the existing category if the node already specified one.
+            node["icon"] = canonical_icon
+            if not node.get("category"):
+                node["category"] = canonical_category
         icon_name = node.get("icon")
         if icon_name:
             node["icon_data"] = _icon_to_data_uri(icon_name)
@@ -90,8 +161,20 @@ def render(state: dict) -> str:
         html,
     )
 
-    # Inline the two vendored libraries so the file is fully offline.
-    for lib_name in ("mermaid.min.js", "html-to-image.min.js"):
+    # Inline the vendored libraries so the file is fully offline.
+    #
+    # Mermaid is OPTIONAL: it's only used by the viewer's fallback path
+    # when state has a top-level `mermaid` field (the rich-state SVG
+    # connector renderer doesn't need it). Inlining mermaid.min.js
+    # unconditionally bloats every rendered HTML file by ~3.3 MB of
+    # dead minified JS that also leaks into raw text views (e.g.
+    # GitHub's blob viewer or "view source"). Skip it when the state
+    # doesn't actually use it.
+    state_uses_mermaid = bool(rewritten_state.get("mermaid"))
+    libs_to_inline = ["html-to-image.min.js"]
+    if state_uses_mermaid:
+        libs_to_inline.insert(0, "mermaid.min.js")
+    for lib_name in libs_to_inline:
         lib_path = VIEWER_DIR / "lib" / lib_name
         if not lib_path.exists():
             continue
@@ -99,6 +182,14 @@ def render(state: dict) -> str:
         html = html.replace(
             f'<script src="lib/{lib_name}"></script>',
             f'<script>\n/* {lib_name} (vendored) */\n{lib_src}\n</script>',
+            1,
+        )
+    # Drop any library script tag that we did NOT inline so the
+    # rendered file doesn't 404 when opened standalone.
+    if not state_uses_mermaid:
+        html = html.replace(
+            '<script src="lib/mermaid.min.js"></script>',
+            '<!-- mermaid.min.js omitted: state has no `mermaid` field -->',
             1,
         )
 

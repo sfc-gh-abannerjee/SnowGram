@@ -1,0 +1,237 @@
+{
+  "nodes": [
+    {
+      "id": "s3",
+      "label": "S3 Bucket Sales Data",
+      "componentType": "S3",
+      "groupId": "aws",
+      "layer": "external"
+    },
+    {
+      "id": "stage_aws",
+      "label": "Stage @AWS",
+      "componentType": "Tag",
+      "groupId": "aws",
+      "layer": "external"
+    },
+    {
+      "id": "db_aws",
+      "label": "Sales Domain DB",
+      "componentType": "AI",
+      "groupId": "aws",
+      "layer": "external"
+    },
+    {
+      "id": "blob",
+      "label": "Azure Blob Marketing Data",
+      "componentType": "Data",
+      "groupId": "azure",
+      "layer": "snowflake"
+    },
+    {
+      "id": "stage_azure",
+      "label": "Stage @AZURE",
+      "componentType": "Tag",
+      "groupId": "azure",
+      "layer": "snowflake"
+    },
+    {
+      "id": "db_azure",
+      "label": "Marketing Domain DB",
+      "componentType": "AI",
+      "groupId": "azure",
+      "layer": "snowflake"
+    },
+    {
+      "id": "gcs",
+      "label": "GCS Bucket Product Data",
+      "componentType": "Data",
+      "groupId": "gcp",
+      "layer": "snowflake"
+    },
+    {
+      "id": "stage_gcp",
+      "label": "Stage @GCP",
+      "componentType": "Tag",
+      "groupId": "gcp",
+      "layer": "snowflake"
+    },
+    {
+      "id": "db_gcp",
+      "label": "Product Domain DB",
+      "componentType": "AI",
+      "groupId": "gcp",
+      "layer": "snowflake"
+    },
+    {
+      "id": "tags",
+      "label": "Domain Tags",
+      "componentType": "AI",
+      "groupId": "governance",
+      "layer": "snowflake"
+    },
+    {
+      "id": "policies",
+      "label": "Masking Policies CURRENT_ACCOUNT check",
+      "componentType": "Masking",
+      "groupId": "governance",
+      "layer": "snowflake"
+    },
+    {
+      "id": "catalog",
+      "label": "Data Catalog",
+      "componentType": "Data",
+      "groupId": "governance",
+      "layer": "snowflake"
+    },
+    {
+      "id": "share_sales",
+      "label": "Sales Share Database Roles",
+      "componentType": "Database",
+      "groupId": "sharing",
+      "layer": "snowflake"
+    },
+    {
+      "id": "share_mkt",
+      "label": "Marketing Share",
+      "componentType": "Marketing Share",
+      "groupId": "sharing",
+      "layer": "snowflake"
+    },
+    {
+      "id": "share_prod",
+      "label": "Product Share",
+      "componentType": "Product Share",
+      "groupId": "sharing",
+      "layer": "snowflake"
+    },
+    {
+      "id": "reader",
+      "label": "Reader Accounts Resource Monitors",
+      "componentType": "View",
+      "groupId": "consume",
+      "layer": "bronze"
+    },
+    {
+      "id": "cross_cloud",
+      "label": "Cross-Region Replication",
+      "componentType": "Cross-Region Replication",
+      "groupId": "consume",
+      "layer": "snowflake"
+    }
+  ],
+  "edges": [
+    {
+      "source": "s3",
+      "target": "stage_aws",
+      "style": "solid"
+    },
+    {
+      "source": "blob",
+      "target": "stage_azure",
+      "style": "solid"
+    },
+    {
+      "source": "gcs",
+      "target": "stage_gcp",
+      "style": "solid"
+    },
+    {
+      "source": "db_aws",
+      "target": "tags",
+      "style": "solid"
+    },
+    {
+      "source": "db_azure",
+      "target": "tags",
+      "style": "solid"
+    },
+    {
+      "source": "db_gcp",
+      "target": "tags",
+      "style": "solid"
+    },
+    {
+      "source": "tags",
+      "target": "policies",
+      "style": "solid"
+    },
+    {
+      "source": "db_aws",
+      "target": "share_sales",
+      "style": "solid"
+    },
+    {
+      "source": "db_azure",
+      "target": "share_mkt",
+      "style": "solid"
+    },
+    {
+      "source": "db_gcp",
+      "target": "share_prod",
+      "style": "solid"
+    }
+  ],
+  "groups": [
+    {
+      "id": "aws",
+      "label": "AWS Domain",
+      "type": "boundary",
+      "index": 0,
+      "style": {
+        "background": "#E3F2FD"
+      }
+    },
+    {
+      "id": "azure",
+      "label": "Azure Domain",
+      "type": "boundary",
+      "index": 0,
+      "style": {
+        "background": "#F3E5F5"
+      }
+    },
+    {
+      "id": "gcp",
+      "label": "GCP Domain",
+      "type": "boundary",
+      "index": 0,
+      "style": {
+        "background": "#E8F5E9"
+      }
+    },
+    {
+      "id": "governance",
+      "label": "Governance",
+      "type": "container",
+      "parentId": "mesh",
+      "index": 0,
+      "style": {
+        "background": "#E1F5FE"
+      }
+    },
+    {
+      "id": "sharing",
+      "label": "Federated Sharing",
+      "type": "container",
+      "parentId": "mesh",
+      "index": 0,
+      "style": {
+        "background": "#FCE4EC"
+      }
+    },
+    {
+      "id": "consume",
+      "label": "Consumer Layer",
+      "type": "container",
+      "parentId": "mesh",
+      "index": 0,
+      "style": {
+        "background": "#E0F2F1"
+      }
+    }
+  ],
+  "badges": [],
+  "direction": "LR",
+  "mermaidSource": "flowchart LR\n    subgraph aws[\"AWS Domain\"]\n        s3[\"S3 Bucket<br/>Sales Data\"]\n        stage_aws[\"Stage @AWS\"]\n        db_aws[\"Sales Domain DB\"]\n    end\n    \n    subgraph azure[\"Azure Domain\"]\n        blob[\"Azure Blob<br/>Marketing Data\"]\n        stage_azure[\"Stage @AZURE\"]\n        db_azure[\"Marketing Domain DB\"]\n    end\n    \n    subgraph gcp[\"GCP Domain\"]\n        gcs[\"GCS Bucket<br/>Product Data\"]\n        stage_gcp[\"Stage @GCP\"]\n        db_gcp[\"Product Domain DB\"]\n    end\n    \n    subgraph mesh[\"Data Mesh Hub\"]\n        subgraph governance[\"Governance\"]\n            tags[\"Domain Tags\"]\n            policies[\"Masking Policies<br/>CURRENT_ACCOUNT check\"]\n            catalog[\"Data Catalog\"]\n        end\n        \n        subgraph sharing[\"Federated Sharing\"]\n            share_sales[\"Sales Share<br/>Database Roles\"]\n            share_mkt[\"Marketing Share\"]\n            share_prod[\"Product Share\"]\n        end\n        \n        subgraph consume[\"Consumer Layer\"]\n            reader[\"Reader Accounts<br/>Resource Monitors\"]\n            cross_cloud[\"Cross-Region<br/>Replication\"]\n        end\n    end\n    \n    s3 --> stage_aws --> db_aws\n    blob --> stage_azure --> db_azure\n    gcs --> stage_gcp --> db_gcp\n    \n    db_aws --> tags\n    db_azure --> tags\n    db_gcp --> tags\n    tags --> policies --> catalog\n    \n    db_aws --> share_sales\n    db_azure --> share_mkt\n    db_gcp --> share_prod\n    \n    share_sales & share_mkt & share_prod --> reader\n    share_sales & share_mkt & share_prod --> cross_cloud\n    \n    style aws fill:#FF9900,stroke:#fff\n    style azure fill:#0089D6,stroke:#fff\n    style gcp fill:#4285F4,stroke:#fff\n    style mesh fill:#E0F7FA,stroke:#00ACC1"
+}

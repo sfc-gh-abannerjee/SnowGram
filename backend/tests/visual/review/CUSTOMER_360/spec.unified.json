@@ -1,0 +1,271 @@
+{
+  "nodes": [
+    {
+      "id": "data_lake",
+      "label": "Data Lake Products, Audiences",
+      "componentType": "Data Lake",
+      "groupId": "sources",
+      "layer": "external"
+    },
+    {
+      "id": "streaming",
+      "label": "Streaming Service Clickstreams",
+      "componentType": "Stream",
+      "groupId": "sources",
+      "layer": "snowflake"
+    },
+    {
+      "id": "third_party",
+      "label": "Third-Party Data Native Apps",
+      "componentType": "Native App",
+      "groupId": "sources",
+      "layer": "snowflake"
+    },
+    {
+      "id": "snowpark",
+      "label": "Snowpark Orchestration",
+      "componentType": "Snowpark Orchestration",
+      "groupId": "ingestion",
+      "layer": "snowflake"
+    },
+    {
+      "id": "dbt",
+      "label": "dbt SQL Transforms",
+      "componentType": "Task",
+      "groupId": "ingestion",
+      "layer": "silver"
+    },
+    {
+      "id": "external_tables",
+      "label": "External Tables Query in Place",
+      "componentType": "Table",
+      "groupId": "ingestion",
+      "layer": "external"
+    },
+    {
+      "id": "streams_tasks",
+      "label": "Streams & Tasks Automation",
+      "componentType": "Stream",
+      "groupId": "ingestion",
+      "layer": "snowflake"
+    },
+    {
+      "id": "raw_data",
+      "label": "Raw Data Native JSON",
+      "componentType": "Table",
+      "groupId": "storage",
+      "layer": "bronze"
+    },
+    {
+      "id": "enriched_data",
+      "label": "Customer 360 View Unified Profile",
+      "componentType": "View",
+      "groupId": "storage",
+      "layer": "snowflake"
+    },
+    {
+      "id": "secure_share",
+      "label": "Secure Shares Zero-Copy",
+      "componentType": "Secure",
+      "groupId": "sharing",
+      "layer": "snowflake"
+    },
+    {
+      "id": "native_app",
+      "label": "Native Apps No Data Movement",
+      "componentType": "Native App",
+      "groupId": "sharing",
+      "layer": "snowflake"
+    },
+    {
+      "id": "reader",
+      "label": "Reader Accounts Resource Monitors",
+      "componentType": "View",
+      "groupId": "sharing",
+      "layer": "bronze"
+    },
+    {
+      "id": "ml_training",
+      "label": "ML Models Propensity Scoring",
+      "componentType": "ML Model",
+      "groupId": "ml",
+      "layer": "snowflake"
+    },
+    {
+      "id": "predictions",
+      "label": "Real-Time API External Access",
+      "componentType": "Stream",
+      "groupId": "ml",
+      "layer": "external"
+    },
+    {
+      "id": "batch_results",
+      "label": "Batch Predictions",
+      "componentType": "Batch Predictions",
+      "groupId": "ml",
+      "layer": "snowflake"
+    },
+    {
+      "id": "cloud_api",
+      "label": "External Network Rules Egress Control",
+      "componentType": "External",
+      "groupId": "external",
+      "layer": "external"
+    },
+    {
+      "id": "healthcare",
+      "label": "Cloud Healthcare API",
+      "componentType": "Stream",
+      "groupId": "external",
+      "layer": "external"
+    }
+  ],
+  "edges": [
+    {
+      "source": "data_lake",
+      "target": "snowpark",
+      "style": "solid"
+    },
+    {
+      "source": "streaming",
+      "target": "streams_tasks",
+      "style": "solid"
+    },
+    {
+      "source": "third_party",
+      "target": "native_app",
+      "style": "solid"
+    },
+    {
+      "source": "native_app",
+      "target": "raw_data",
+      "style": "solid"
+    },
+    {
+      "source": "snowpark",
+      "target": "dbt",
+      "style": "solid"
+    },
+    {
+      "source": "dbt",
+      "target": "raw_data",
+      "style": "solid"
+    },
+    {
+      "source": "external_tables",
+      "target": "raw_data",
+      "style": "solid"
+    },
+    {
+      "source": "streams_tasks",
+      "target": "raw_data",
+      "style": "solid"
+    },
+    {
+      "source": "raw_data",
+      "target": "enriched_data",
+      "style": "solid"
+    },
+    {
+      "source": "enriched_data",
+      "target": "secure_share",
+      "style": "solid"
+    },
+    {
+      "source": "secure_share",
+      "target": "reader",
+      "style": "solid"
+    },
+    {
+      "source": "enriched_data",
+      "target": "ml_training",
+      "style": "solid"
+    },
+    {
+      "source": "ml_training",
+      "target": "predictions",
+      "style": "solid"
+    },
+    {
+      "source": "enriched_data",
+      "target": "cloud_api",
+      "style": "solid"
+    },
+    {
+      "source": "cloud_api",
+      "target": "healthcare",
+      "style": "solid"
+    }
+  ],
+  "groups": [
+    {
+      "id": "sources",
+      "label": "Data Sources",
+      "type": "boundary",
+      "index": -1,
+      "style": {
+        "background": "#E3F2FD"
+      }
+    },
+    {
+      "id": "snowflake",
+      "label": "Snowflake",
+      "type": "boundary",
+      "index": 0,
+      "style": {
+        "background": "#F3E5F5"
+      }
+    },
+    {
+      "id": "ingestion",
+      "label": "Ingestion & Transform",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E8F5E9"
+      }
+    },
+    {
+      "id": "storage",
+      "label": "Customer Data",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#FFF8E1"
+      }
+    },
+    {
+      "id": "sharing",
+      "label": "Data Sharing",
+      "type": "container",
+      "parentId": "snowflake",
+      "index": 0,
+      "style": {
+        "background": "#E1F5FE"
+      }
+    },
+    {
+      "id": "ml",
+      "label": "Machine Learning",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#FCE4EC"
+      }
+    },
+    {
+      "id": "external",
+      "label": "External Access",
+      "type": "container",
+      "index": 0,
+      "style": {
+        "background": "#E0F2F1"
+      }
+    }
+  ],
+  "badges": [],
+  "direction": "LR",
+  "mermaidSource": "flowchart LR\n    subgraph sources[\"Data Sources\"]\n        data_lake[\"Data Lake<br/>Products, Audiences\"]\n        streaming[\"Streaming Service<br/>Clickstreams\"]\n        third_party[\"Third-Party Data<br/>Native Apps\"]\n    end\n    \n    subgraph snowflake[\"Snowflake\"]\n        subgraph ingestion[\"Ingestion & Transform\"]\n            snowpark[\"Snowpark<br/>Orchestration\"]\n            dbt[\"dbt<br/>SQL Transforms\"]\n            external_tables[\"External Tables<br/>Query in Place\"]\n            streams_tasks[\"Streams & Tasks<br/>Automation\"]\n        end\n        \n        subgraph storage[\"Customer Data\"]\n            raw_data[\"Raw Data<br/>Native JSON\"]\n            enriched_data[\"Customer 360 View<br/>Unified Profile\"]\n        end\n        \n        subgraph sharing[\"Data Sharing\"]\n            secure_share[\"Secure Shares<br/>Zero-Copy\"]\n            native_app[\"Native Apps<br/>No Data Movement\"]\n            reader[\"Reader Accounts<br/>Resource Monitors\"]\n        end\n    end\n    \n    subgraph ml[\"Machine Learning\"]\n        ml_training[\"ML Models<br/>Propensity Scoring\"]\n        predictions[\"Real-Time API<br/>External Access\"]\n        batch_results[\"Batch Predictions\"]\n    end\n    \n    subgraph external[\"External Access\"]\n        cloud_api[\"External Network Rules<br/>Egress Control\"]\n        healthcare[\"Cloud Healthcare API\"]\n    end\n    \n    data_lake --> snowpark & external_tables\n    streaming --> streams_tasks\n    third_party --> native_app\n    native_app --> raw_data\n    snowpark --> dbt\n    dbt --> raw_data\n    external_tables --> raw_data\n    streams_tasks --> raw_data\n    raw_data --> enriched_data\n    enriched_data --> secure_share\n    secure_share --> reader\n    enriched_data --> ml_training\n    ml_training --> predictions & batch_results\n    enriched_data --> cloud_api\n    cloud_api --> healthcare\n    \n    style sources fill:#E8F4FD,stroke:#29B5E8\n    style snowflake fill:#E0F7FA,stroke:#00ACC1\n    style ml fill:#E6E6FA,stroke:#9370DB\n    style external fill:#FFE4E1,stroke:#FF6B6B"
+}

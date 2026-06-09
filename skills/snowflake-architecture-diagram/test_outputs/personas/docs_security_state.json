@@ -1,0 +1,128 @@
+{
+  "title": "Docs-Driven \u2014 Security & Governance",
+  "subtitle": "Masking \u2192 RLS \u2192 Secure Views",
+  "source": "standalone:docs_driven",
+  "nodes": [
+    {
+      "id": "base_table",
+      "label": "Base Table",
+      "detail": "Source data with PII",
+      "icon": "Snowflake_ICON_RA_Table.svg",
+      "category": "snow",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+    },
+    {
+      "id": "masking_policy",
+      "label": "Masking Policy",
+      "detail": "Column-level dynamic masking",
+      "icon": "Snowflake_ICON_RA_Policy_Masking.svg",
+      "category": "snow",
+      "zone": "Security & Governance",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/security-column-ddm-intro"
+    },
+    {
+      "id": "row_access_policy",
+      "label": "Row Access Policy",
+      "detail": "Row-level security",
+      "icon": "Snowflake_ICON_RA_Policy_Row.svg",
+      "category": "snow",
+      "zone": "Security & Governance",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/security-row-intro"
+    },
+    {
+      "id": "secure_view",
+      "label": "Secure View",
+      "detail": "Policy-enforced access",
+      "icon": "Snowflake_ICON_RA_View_Secure.svg",
+      "category": "snow",
+      "zone": "Access Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/views-secure"
+    },
+    {
+      "id": "analytics",
+      "label": "Analytics",
+      "detail": "Role-scoped dashboards",
+      "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+      "category": "outcome",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+    }
+  ],
+  "edges": [
+    {
+      "source": "base_table",
+      "target": "masking_policy"
+    },
+    {
+      "source": "masking_policy",
+      "target": "row_access_policy"
+    },
+    {
+      "source": "row_access_policy",
+      "target": "secure_view"
+    },
+    {
+      "source": "secure_view",
+      "target": "analytics"
+    }
+  ],
+  "zones": [
+    {
+      "name": "Raw Layer",
+      "category": "snow",
+      "node_ids": [
+        "base_table"
+      ]
+    },
+    {
+      "name": "Security & Governance",
+      "category": "snow",
+      "node_ids": [
+        "masking_policy",
+        "row_access_policy"
+      ]
+    },
+    {
+      "name": "Access Layer",
+      "category": "snow",
+      "node_ids": [
+        "secure_view"
+      ]
+    },
+    {
+      "name": "Consumption",
+      "category": "outcome",
+      "node_ids": [
+        "analytics"
+      ]
+    }
+  ],
+  "citations": [
+    {
+      "url": "https://docs.snowflake.com/en/sql-reference/sql/create-table",
+      "title": "Base Table",
+      "excerpt": "Source data with PII"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/security-column-ddm-intro",
+      "title": "Masking Policy",
+      "excerpt": "Column-level dynamic masking"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/security-row-intro",
+      "title": "Row Access Policy",
+      "excerpt": "Row-level security"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/views-secure",
+      "title": "Secure View",
+      "excerpt": "Policy-enforced access"
+    },
+    {
+      "url": "https://docs.snowflake.com/en/user-guide/odbc-download",
+      "title": "Analytics",
+      "excerpt": "Role-scoped dashboards"
+    }
+  ]
+}

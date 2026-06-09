@@ -5,6 +5,10 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # Weekly security audit — Mondays 06:00 UTC
+    - cron: '0 6 * * 1'
 
 jobs:
   frontend:
@@ -55,17 +59,17 @@ jobs:
     
     - name: Validate test harness syntax
       run: |
-        python -m py_compile backend/tests/agent/run_tests.py
+        python3 -m py_compile backend/tests/agent/run_tests.py
         echo "✅ Test harness syntax OK"
     
     - name: Validate test cases YAML
       run: |
-        python -c "import yaml; yaml.safe_load(open('backend/tests/agent/test_cases.yaml'))"
+        python3 -c "import yaml; yaml.safe_load(open('backend/tests/agent/test_cases.yaml'))"
         echo "✅ Test cases YAML valid"
     
     - name: List test configuration
       run: |
-        python -c "
+        python3 -c "
         import yaml
         config = yaml.safe_load(open('backend/tests/agent/test_cases.yaml'))
         tests = config['test_cases']
@@ -74,11 +78,14 @@ jobs:
             print(f'  - {t[\"name\"]}: {t.get(\"description\", t[\"query\"][:50])}')
         "
 
-  # Agent tests require Snowflake credentials - run manually or with secrets
+  # Agent tests require Snowflake credentials — run via workflow_dispatch or [test-agent] commit tag.
+  # Required secrets: SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD
   agent-tests:
     name: Agent Tests (Smoke)
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[test-agent]')
+    if: >-
+      (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[test-agent]'))
+      && secrets.SNOWFLAKE_ACCOUNT != ''
     
     steps:
     - uses: actions/checkout@v4
@@ -116,7 +123,7 @@ jobs:
     - name: Run smoke tests
       working-directory: backend/tests/agent
       run: |
-        python run_tests.py --verbose --report
+        python3 run_tests.py --verbose --report
       timeout-minutes: 10
     
     - name: Upload test results
@@ -126,3 +133,33 @@ jobs:
         name: test-results
         path: backend/tests/agent/results/
         retention-days: 7
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Frontend npm audit
+      working-directory: frontend
+      run: npm audit --audit-level=high
+      continue-on-error: true
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Backend pip-audit
+      run: |
+        python3 -m pip install pip-audit
+        pip-audit -r backend/requirements.txt

@@ -9,5 +9,159 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2025-11-07T09:45:48.331000-08:00",
-  "UPDATED_AT": "2026-02-17T21:55:16.116000-08:00"
+  "UPDATED_AT": "2026-02-17T21:55:16.116000-08:00",
+  "RICH_STATE": {
+    "title": "Batch Data Warehouse (Star Schema)",
+    "subtitle": "File drops \u2192 Snowpipe \u2192 Staging \u2192 Star schema \u2192 Reports",
+    "nodes": [
+      {
+        "id": "files",
+        "label": "File Drops",
+        "detail": "Nightly batch CSV / Parquet",
+        "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+        "category": "onprem",
+        "zone": "External Sources",
+        "object_type": "S3",
+        "stage": "source",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
+      },
+      {
+        "id": "stage",
+        "label": "External Stage",
+        "detail": "Snowflake-managed staging",
+        "icon": "Snowflake_ICON_RA_Stage_External.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "STAGE",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-stage"
+      },
+      {
+        "id": "pipe",
+        "label": "Snowpipe",
+        "detail": "Auto-ingest on file arrival",
+        "icon": "Snowflake_ICON_RA_Pipe.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "PIPE",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
+      },
+      {
+        "id": "raw",
+        "label": "Staging Tables",
+        "detail": "Append-only landing",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Raw Layer",
+        "object_type": "TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "dim",
+        "label": "Dimension Tables",
+        "detail": "SCD Type 2 conformed dims",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Curated Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "transformation",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "fact",
+        "label": "Fact Tables",
+        "detail": "Star-schema facts",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "bi",
+        "label": "BI Platform",
+        "detail": "Scheduled reports",
+        "icon": "Snowflake_ICON_Embedded_Analytics.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "BI_TOOL",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+      }
+    ],
+    "edges": [
+      {
+        "source": "files",
+        "target": "stage"
+      },
+      {
+        "source": "stage",
+        "target": "pipe"
+      },
+      {
+        "source": "pipe",
+        "target": "raw"
+      },
+      {
+        "source": "raw",
+        "target": "dim"
+      },
+      {
+        "source": "dim",
+        "target": "fact"
+      },
+      {
+        "source": "fact",
+        "target": "bi"
+      }
+    ],
+    "zones": [
+      {
+        "name": "External Sources",
+        "category": "onprem",
+        "node_ids": [
+          "files"
+        ]
+      },
+      {
+        "name": "Ingestion",
+        "category": "bridge",
+        "node_ids": [
+          "stage",
+          "pipe"
+        ]
+      },
+      {
+        "name": "Raw Layer",
+        "category": "snow",
+        "node_ids": [
+          "raw"
+        ]
+      },
+      {
+        "name": "Curated Layer",
+        "category": "snow",
+        "node_ids": [
+          "dim"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "snow",
+        "node_ids": [
+          "fact"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "bi"
+        ]
+      }
+    ]
+  }
 }

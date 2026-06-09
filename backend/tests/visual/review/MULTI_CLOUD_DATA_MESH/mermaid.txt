@@ -1,0 +1,58 @@
+flowchart LR
+    subgraph aws["AWS Domain"]
+        s3["S3 Bucket<br/>Sales Data"]
+        stage_aws["Stage @AWS"]
+        db_aws["Sales Domain DB"]
+    end
+    
+    subgraph azure["Azure Domain"]
+        blob["Azure Blob<br/>Marketing Data"]
+        stage_azure["Stage @AZURE"]
+        db_azure["Marketing Domain DB"]
+    end
+    
+    subgraph gcp["GCP Domain"]
+        gcs["GCS Bucket<br/>Product Data"]
+        stage_gcp["Stage @GCP"]
+        db_gcp["Product Domain DB"]
+    end
+    
+    subgraph mesh["Data Mesh Hub"]
+        subgraph governance["Governance"]
+            tags["Domain Tags"]
+            policies["Masking Policies<br/>CURRENT_ACCOUNT check"]
+            catalog["Data Catalog"]
+        end
+        
+        subgraph sharing["Federated Sharing"]
+            share_sales["Sales Share<br/>Database Roles"]
+            share_mkt["Marketing Share"]
+            share_prod["Product Share"]
+        end
+        
+        subgraph consume["Consumer Layer"]
+            reader["Reader Accounts<br/>Resource Monitors"]
+            cross_cloud["Cross-Region<br/>Replication"]
+        end
+    end
+    
+    s3 --> stage_aws --> db_aws
+    blob --> stage_azure --> db_azure
+    gcs --> stage_gcp --> db_gcp
+    
+    db_aws --> tags
+    db_azure --> tags
+    db_gcp --> tags
+    tags --> policies --> catalog
+    
+    db_aws --> share_sales
+    db_azure --> share_mkt
+    db_gcp --> share_prod
+    
+    share_sales & share_mkt & share_prod --> reader
+    share_sales & share_mkt & share_prod --> cross_cloud
+    
+    style aws fill:#FF9900,stroke:#fff
+    style azure fill:#0089D6,stroke:#fff
+    style gcp fill:#4285F4,stroke:#fff
+    style mesh fill:#E0F7FA,stroke:#00ACC1

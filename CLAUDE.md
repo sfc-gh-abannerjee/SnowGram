@@ -49,6 +49,19 @@ CREATE OR REPLACE AGENT SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT FROM SPECIFICATION $$ 
 | `REALTIME_FINANCIAL_TRANSACTIONS` | High-volume transaction processing |
 | `HYBRID_CLOUD_LAKEHOUSE` | Iceberg, external catalog |
 
+## Dual-Track Design
+
+SnowGram has two independent diagram generation tracks (no shared layout code):
+
+| | Track 1 — CoCo Skill | Track 2 — Agent + GUI |
+|---|---|---|
+| **Location** | `skills/snowflake-architecture-diagram/` | `SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT` + `frontend/` |
+| **Flow** | CoCo skill → `flow_builder.py` → state JSON → `index.html` viewer | Cortex Agent + tools + semantic view → ReactFlow + ELK.js |
+| **Requires Snowflake deploy?** | No | Yes |
+| **Audience** | Quick ad-hoc diagrams, no-deploy environments | Interactive GUI with conversational refinement |
+
+The tracks serve different user populations and are kept separate by design.
+
 ## Gotchas
 
 1. **Agent tool output** - Tool descriptions MUST tell agent to include returned Mermaid code verbatim in response. Without this, agent says "Diagram updated" without showing code.

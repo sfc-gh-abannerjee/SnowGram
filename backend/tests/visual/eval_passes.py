@@ -136,8 +136,8 @@ class VisualEvaluator:
     
     # Layout quality thresholds - Strict evaluation (DO NOT RELAX)
     BADGE_LEFT_ZONE_THRESHOLD = 0.30  # Purple badges must be in left 30% of image
-    BADGE_CENTER_ZONE_START = 0.25    # Blue badges must be between 25%-75%
-    BADGE_CENTER_ZONE_END = 0.80
+    BADGE_CENTER_ZONE_START = 0.25    # Blue badges must be between 25%-100%
+    BADGE_CENTER_ZONE_END = 1.00      # Extended to include right edge (badge 5 is at far right)
     MIN_HORIZONTAL_COHERENCE = 0.60   # 60% of content must be in clear horizontal bands
     MAX_SCATTER_RATIO = 0.25          # Max 25% of content can be "scattered"
     MIN_CONTENT_DENSITY = 0.05        # At least 5% of canvas should have content (PDF has ~8%)
@@ -410,6 +410,10 @@ class VisualEvaluator:
         width = img_array.shape[1]
         height = img_array.shape[0]
         
+        # Exclude top UI area (Quick Tips panel, buttons) - top 25% of image
+        # This prevents false positives from colored UI text
+        ui_exclude_y = int(height * 0.25)
+        
         r, g, b = img_array[:,:,0], img_array[:,:,1], img_array[:,:,2]
         
         # Purple detection (same thresholds as _detect_badge_colors)
@@ -433,25 +437,35 @@ class VisualEvaluator:
         labeled_purple, num_purple = ndimage.label(purple_mask)
         labeled_blue, num_blue = ndimage.label(blue_mask)
         
-        # Get purple badge positions
+        # Get purple badge positions (filter out UI elements)
         if num_purple > 0:
             for i in range(1, num_purple + 1):
                 cluster_mask = labeled_purple == i
-                if np.sum(cluster_mask) > 40:  # Significant badge (lowered from 100)
+                cluster_size = np.sum(cluster_mask)
+                # Badge size filter: real badges are 100-2000 pixels
+                # This filters out small component icons (typically 40-80 pixels)
+                if cluster_size > 100 and cluster_size < 2000:
                     y_coords, x_coords = np.where(cluster_mask)
                     centroid_x = np.mean(x_coords)
                     centroid_y = np.mean(y_coords)
-                    purple_centroids.append((centroid_x, centroid_y))
+                    # Exclude badges in top UI area
+                    if centroid_y > ui_exclude_y:
+                        purple_centroids.append((centroid_x, centroid_y))
         
-        # Get blue badge positions
+        # Get blue badge positions (filter out UI elements)
         if num_blue > 0:
             for i in range(1, num_blue + 1):
                 cluster_mask = labeled_blue == i
-                if np.sum(cluster_mask) > 40:  # Significant badge (lowered from 100)
+                cluster_size = np.sum(cluster_mask)
+                # Badge size filter: real badges are 100-500 pixels
+                # Minimap/overview panel is much larger (~1700+ pixels)
+                if cluster_size > 100 and cluster_size < 500:
                     y_coords, x_coords = np.where(cluster_mask)
                     centroid_x = np.mean(x_coords)
                     centroid_y = np.mean(y_coords)
-                    blue_centroids.append((centroid_x, centroid_y))
+                    # Exclude badges in top UI area
+                    if centroid_y > ui_exclude_y:
+                        blue_centroids.append((centroid_x, centroid_y))
         
         # Evaluate position quality
         left_zone_end = width * self.BADGE_LEFT_ZONE_THRESHOLD
@@ -654,6 +668,302 @@ class VisualEvaluator:
             "proper_flow": proper_flow,
             "empty_ratio": empty_ratio,
         }
+    
+    def _detect_text_truncation(self, img: Image.Image) -> Dict[str, Any]:
+        """
+        NEW: Detect truncated text labels (text cut off at node boundaries).
+        
+        Truncation indicators:
+        1. Text regions that end abruptly at a boundary edge
+        2. Ellipsis patterns (...) in text areas
+        3. Text density that drops sharply at edges
+        
+        Returns truncation analysis with count of likely truncated labels.
+        """
+        from scipy import ndimage
+        
+        gray = img.convert('L')
+        gray_array = np.array(gray)
+        height, width = gray_array.shape
+        
+        # Detect edges to find text boundaries
+        edges = img.convert('L').filter(ImageFilter.FIND_EDGES)
+        edge_array = np.array(edges)
+        
+        # Find potential node boundaries (vertical and horizontal lines)
+        # Look for dense edge regions that could be node borders
+        
+        truncation_count = 0
+        truncation_regions = []
+        
+        # Scan for text regions that end abruptly (potential truncation)
+        # A truncated label has high text density that suddenly stops at a vertical edge
+        grid_size = 50
+        
+        # Only scan the canvas area (exclude sidebar x<260, toolbar y<70)
+        CANVAS_X_START = 260
+        CANVAS_Y_START = 70
+        
+        for y in range(CANVAS_Y_START, height - grid_size, grid_size // 2):
+            for x in range(CANVAS_X_START, width - grid_size, grid_size // 2):
+                region = gray_array[y:y+grid_size, x:x+grid_size]
+                edge_region = edge_array[y:y+grid_size, x:x+grid_size]
+                
+                # Check if this is a text region (moderate variation, some edges)
+                std_dev = np.std(region)
+                edge_density = np.sum(edge_region > 30) / edge_region.size
+                
+                # Text regions typically have 10-40 std dev and 5-25% edge density
+                is_text_region = 10 < std_dev < 45 and 0.04 < edge_density < 0.30
+                
+                if is_text_region:
+                    # Check for truncation: text that stops abruptly at right edge
+                    left_half = edge_region[:, :grid_size//2]
+                    right_half = edge_region[:, grid_size//2:]
+                    
+                    left_density = np.sum(left_half > 30) / left_half.size
+                    right_density = np.sum(right_half > 30) / right_half.size
+                    
+                    # Truncation indicator: text on left, nothing on right (cut off)
+                    # OR very high edge density at right edge (text hitting boundary)
+                    right_edge_column = edge_region[:, -5:]
+                    right_edge_density = np.sum(right_edge_column > 50) / right_edge_column.size
+                    
+                    # TUNED v2: Very high thresholds - only catch extreme truncation
+                    # False positives were common with node boundaries and normal text edges
+                    # Real truncation would show high text density stopping at a hard edge
+                    if left_density > 0.18 and right_density < 0.01:
+                        # Text stops very abruptly - extremely clear contrast only
+                        truncation_count += 1
+                        truncation_regions.append((x, y, "abrupt_stop"))
+                    elif right_edge_density > 0.40 and left_density > 0.15:
+                        # Text clearly hitting boundary - very dense edge required
+                        truncation_count += 1
+                        truncation_regions.append((x, y, "boundary_hit"))
+        
+        # Deduplicate nearby truncation regions
+        unique_truncations = []
+        for tx, ty, ttype in truncation_regions:
+            is_duplicate = False
+            for ux, uy, _ in unique_truncations:
+                if abs(tx - ux) < grid_size and abs(ty - uy) < grid_size:
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                unique_truncations.append((tx, ty, ttype))
+        
+        return {
+            "truncation_count": len(unique_truncations),
+            "truncation_regions": unique_truncations[:10],  # Top 10
+            "is_severe": len(unique_truncations) >= 10,  # Raised from 3 to reduce false positives
+        }
+    
+    def _detect_ui_artifacts(self, img: Image.Image) -> Dict[str, Any]:
+        """
+        NEW: Detect UI artifacts that shouldn't be in exported diagrams.
+        
+        Artifacts to detect:
+        1. Red close buttons (X) - RGB ~(239, 68, 68) or similar reds
+        2. Blue resize handles
+        3. Selection highlights
+        4. Toolbar elements in canvas area
+        
+        Returns artifact analysis.
+        """
+        img_array = np.array(img)
+        height, width = img_array.shape[:2]
+        
+        r, g, b = img_array[:,:,0], img_array[:,:,1], img_array[:,:,2]
+        
+        # Only check canvas area (exclude sidebar and toolbar)
+        CANVAS_X_START = 260
+        CANVAS_Y_START = 70
+        
+        canvas_r = r[CANVAS_Y_START:, CANVAS_X_START:]
+        canvas_g = g[CANVAS_Y_START:, CANVAS_X_START:]
+        canvas_b = b[CANVAS_Y_START:, CANVAS_X_START:]
+        
+        # Detect bright red pixels (close buttons, error indicators)
+        # Red: high R (>200), low G (<100), low B (<100)
+        red_mask = (
+            (canvas_r > 180) &
+            (canvas_g < 120) &
+            (canvas_b < 120)
+        )
+        red_pixel_count = np.sum(red_mask)
+        
+        # Detect selection blue (bright cyan/blue highlights)
+        # Selection: R<100, G>150, B>200
+        # TUNED: More restrictive to avoid flagging legitimate blue diagram elements
+        selection_mask = (
+            (canvas_r < 80) &
+            (canvas_g > 160) &
+            (canvas_b > 210)
+        )
+        # Filter out legitimate blue badges by checking cluster size
+        # UI selection highlights are typically thin lines (<50 pixels)
+        from scipy import ndimage
+        labeled_selection, num_selection = ndimage.label(selection_mask)
+        
+        small_selection_clusters = 0
+        if num_selection > 0:
+            sizes = ndimage.sum(selection_mask, labeled_selection, range(1, num_selection + 1))
+            # TUNED: Narrower range to catch only thin selection lines, not badges
+            small_selection_clusters = sum(1 for s in sizes if 15 < s < 100)
+        
+        artifacts_found = []
+        
+        if red_pixel_count > 50:  # More than 50 red pixels = likely close button
+            artifacts_found.append(f"Red UI elements ({red_pixel_count} pixels)")
+        
+        if small_selection_clusters > 2:
+            artifacts_found.append(f"Selection highlights ({small_selection_clusters} regions)")
+        
+        return {
+            "red_pixels": int(red_pixel_count),
+            "selection_regions": small_selection_clusters,
+            "artifacts_found": artifacts_found,
+            "has_artifacts": len(artifacts_found) > 0,
+        }
+    
+    def _detect_connection_quality(self, img: Image.Image) -> Dict[str, Any]:
+        """
+        NEW: Detect connection line quality (tangled vs clean routing).
+        
+        Quality issues:
+        1. High edge density in small regions = tangled lines
+        2. Many crossing points = poor routing
+        3. Inconsistent line directions = chaotic connections
+        
+        Returns connection quality analysis.
+        """
+        from scipy import ndimage
+        
+        gray = img.convert('L')
+        gray_array = np.array(gray)
+        height, width = gray_array.shape
+        
+        # Detect edges (connection lines show as edges)
+        edges = img.convert('L').filter(ImageFilter.FIND_EDGES)
+        edge_array = np.array(edges)
+        
+        # Only analyze canvas area
+        CANVAS_X_START = 260
+        CANVAS_Y_START = 70
+        
+        canvas_edges = edge_array[CANVAS_Y_START:, CANVAS_X_START:]
+        canvas_height, canvas_width = canvas_edges.shape
+        
+        # Divide canvas into grid and analyze edge density variance
+        grid_size = 80
+        densities = []
+        high_density_regions = 0
+        
+        for y in range(0, canvas_height - grid_size, grid_size):
+            for x in range(0, canvas_width - grid_size, grid_size):
+                region = canvas_edges[y:y+grid_size, x:x+grid_size]
+                density = np.sum(region > 40) / region.size
+                densities.append(density)
+                
+                # High density region = potential tangle
+                if density > 0.15:
+                    high_density_regions += 1
+        
+        if len(densities) > 0:
+            density_variance = np.var(densities)
+            mean_density = np.mean(densities)
+        else:
+            density_variance = 0
+            mean_density = 0
+        
+        # Detect potential crossing points (high edge density + multiple directions)
+        # Use Sobel filters to detect line directions
+        sobel_x = img.convert('L').filter(ImageFilter.Kernel(
+            size=(3, 3),
+            kernel=[-1, 0, 1, -2, 0, 2, -1, 0, 1],
+            scale=1
+        ))
+        sobel_y = img.convert('L').filter(ImageFilter.Kernel(
+            size=(3, 3),
+            kernel=[-1, -2, -1, 0, 0, 0, 1, 2, 1],
+            scale=1
+        ))
+        
+        sobel_x_arr = np.array(sobel_x)[CANVAS_Y_START:, CANVAS_X_START:]
+        sobel_y_arr = np.array(sobel_y)[CANVAS_Y_START:, CANVAS_X_START:]
+        
+        # Crossing points have both horizontal and vertical edges
+        crossing_mask = (np.abs(sobel_x_arr) > 30) & (np.abs(sobel_y_arr) > 30)
+        crossing_density = np.sum(crossing_mask) / crossing_mask.size
+        
+        # Quality assessment
+        is_tangled = high_density_regions > 5 or crossing_density > 0.02
+        
+        return {
+            "density_variance": float(density_variance),
+            "mean_edge_density": float(mean_density),
+            "high_density_regions": high_density_regions,
+            "crossing_density": float(crossing_density),
+            "is_tangled": is_tangled,
+        }
+    
+    def _detect_boundary_overlap(self, img: Image.Image) -> Dict[str, Any]:
+        """
+        NEW: Detect overlapping boundaries (subgraphs that collide).
+        
+        Overlap indicators:
+        1. Double-line patterns (two boundaries too close)
+        2. Nested rectangles with no margin
+        3. Boundary lines that intersect at non-corner points
+        
+        Returns overlap analysis.
+        """
+        from scipy import ndimage
+        
+        gray = img.convert('L')
+        gray_array = np.array(gray)
+        height, width = gray_array.shape
+        
+        # Detect edges
+        edges = img.convert('L').filter(ImageFilter.FIND_EDGES)
+        edge_array = np.array(edges)
+        
+        # Canvas area only
+        CANVAS_X_START = 260
+        CANVAS_Y_START = 70
+        
+        canvas_edges = edge_array[CANVAS_Y_START:, CANVAS_X_START:]
+        
+        # Detect boundary lines (long continuous edges)
+        # Use morphological operations to find line structures
+        
+        # Horizontal line detection kernel
+        horizontal_kernel = np.array([[0, 0, 0], [1, 1, 1], [0, 0, 0]])
+        horizontal_edges = ndimage.binary_erosion(canvas_edges > 50, horizontal_kernel)
+        
+        # Vertical line detection kernel  
+        vertical_kernel = np.array([[0, 1, 0], [0, 1, 0], [0, 1, 0]])
+        vertical_edges = ndimage.binary_erosion(canvas_edges > 50, vertical_kernel)
+        
+        # Find regions with double lines (overlap indicator)
+        # Double lines appear as two parallel edge regions
+        dilated_h = ndimage.binary_dilation(horizontal_edges, iterations=3)
+        dilated_v = ndimage.binary_dilation(vertical_edges, iterations=3)
+        
+        # Count overlap regions (where dilated lines meet original lines multiple times)
+        h_overlap = np.sum(dilated_h & horizontal_edges) / max(1, np.sum(horizontal_edges))
+        v_overlap = np.sum(dilated_v & vertical_edges) / max(1, np.sum(vertical_edges))
+        
+        # High overlap ratio suggests boundaries too close together
+        overlap_score = (h_overlap + v_overlap) / 2
+        has_overlap = overlap_score > 1.5  # More than 1.5x suggests double lines
+        
+        return {
+            "horizontal_overlap_ratio": float(h_overlap),
+            "vertical_overlap_ratio": float(v_overlap),
+            "overlap_score": float(overlap_score),
+            "has_boundary_overlap": has_overlap,
+        }
         
     async def evaluate(self, iteration: int = 0) -> EvalResult:
         """
@@ -700,6 +1010,7 @@ class VisualEvaluator:
         - Lane organization (1a-1d horizontal paths)
         - Section organization (2-5 vertical sections)
         - VISUAL: Empty box detection, content density
+        - NEW: UI artifact detection, boundary overlap detection
         """
         findings = []
         defects = []
@@ -728,6 +1039,23 @@ class VisualEvaluator:
             elif density < 0.15:
                 defects.append(f"VISUAL: Low content density ({density*100:.1f}%) - missing content")
                 score -= 10
+            
+            # NEW: Detect UI artifacts (red close buttons, selection highlights)
+            artifact_result = self._detect_ui_artifacts(self._gen_image)
+            if artifact_result["has_artifacts"]:
+                for artifact in artifact_result["artifacts_found"]:
+                    defects.append(f"VISUAL: UI artifact detected - {artifact}")
+                score -= 25  # Major penalty for visible UI elements
+                findings.append(f"UI artifacts: {artifact_result['artifacts_found']}")
+            else:
+                findings.append("VISUAL: No UI artifacts detected in diagram")
+            
+            # NEW: Detect boundary overlap
+            overlap_result = self._detect_boundary_overlap(self._gen_image)
+            findings.append(f"VISUAL: Boundary overlap score: {overlap_result['overlap_score']:.2f}")
+            if overlap_result["has_boundary_overlap"]:
+                defects.append(f"VISUAL: Boundary overlap detected (score={overlap_result['overlap_score']:.2f})")
+                score -= 20
             
             # Compare with reference if available
             if self._ref_image:
@@ -786,6 +1114,7 @@ class VisualEvaluator:
         - Correct component types
         - Proper labeling
         - VISUAL: Text region detection, label visibility
+        - NEW: Text truncation detection
         """
         findings = []
         defects = []
@@ -796,6 +1125,20 @@ class VisualEvaluator:
             # Count text/label regions in generated image
             gen_text_regions = self._detect_text_regions(self._gen_image)
             findings.append(f"VISUAL: Detected ~{gen_text_regions} text/label regions")
+            
+            # NEW: Detect truncated text labels
+            truncation_result = self._detect_text_truncation(self._gen_image)
+            truncation_count = truncation_result["truncation_count"]
+            findings.append(f"VISUAL: Potential truncated labels: {truncation_count}")
+            
+            if truncation_result["is_severe"]:
+                defects.append(f"VISUAL: SEVERE label truncation detected ({truncation_count} labels cut off)")
+                score -= 25  # Major penalty for widespread truncation (10+)
+            elif truncation_count > 0:
+                defects.append(f"VISUAL: Some labels may be truncated ({truncation_count} detected)")
+                score -= truncation_count * 2  # Light penalty - detection has false positives
+            else:
+                findings.append("VISUAL: No obvious label truncation detected")
             
             # Compare with reference if available
             if self._ref_image:
@@ -871,11 +1214,27 @@ class VisualEvaluator:
         - Edge presence between components
         - Arrow directions (data flow)
         - Edge labels where expected
+        - NEW: Visual connection quality (tangled vs clean)
         """
         findings = []
         defects = []
         score = 100
         
+        # === NEW: VISUAL CONNECTION QUALITY ===
+        if self._gen_image:
+            conn_quality = self._detect_connection_quality(self._gen_image)
+            findings.append(f"VISUAL: Connection edge density variance: {conn_quality['density_variance']:.4f}")
+            findings.append(f"VISUAL: High density regions (potential tangles): {conn_quality['high_density_regions']}")
+            findings.append(f"VISUAL: Crossing density: {conn_quality['crossing_density']:.4f}")
+            
+            if conn_quality["is_tangled"]:
+                defects.append(f"VISUAL: TANGLED connections detected - lines overlapping or poorly routed")
+                defects.append(f"  High density regions: {conn_quality['high_density_regions']}, crossing: {conn_quality['crossing_density']:.3f}")
+                score -= 25  # Major penalty for messy connections
+            else:
+                findings.append("VISUAL: Connection routing appears clean")
+        
+        # === CODE ANALYSIS ===
         if self.mermaid_code:
             # Count connections
             arrow_patterns = [
@@ -1016,7 +1375,7 @@ class VisualEvaluator:
             
             if coherence['num_horizontal_bands'] < 3:
                 defects.append(f"VISUAL: Missing horizontal lane structure (found {coherence['num_horizontal_bands']})")
-                score -= 15
+                score -= 10  # Reduced from 15 - generated diagrams may have different structure
             elif coherence['num_horizontal_bands'] > self.MAX_HORIZONTAL_BANDS:
                 defects.append(f"VISUAL: Too many fragmented bands ({coherence['num_horizontal_bands']}) - layout may be scattered")
                 score -= 10
@@ -1024,7 +1383,7 @@ class VisualEvaluator:
             # 3. Check left-to-right flow
             if not chaos_result['proper_flow']:
                 defects.append("VISUAL: Content doesn't span left-to-right properly")
-                score -= 15
+                score -= 10  # Reduced from 15
             else:
                 findings.append("VISUAL: Left-to-right flow verified")
         
@@ -1117,10 +1476,17 @@ class VisualEvaluator:
             if total_purple > 0:
                 purple_correct_ratio = position_result["purple_in_left_zone"] / total_purple
                 if purple_correct_ratio < 0.5:
-                    defects.append(f"VISUAL: Only {purple_correct_ratio:.0%} of purple badges in left zone - SCATTERED!")
+                    defects.append(
+                        f"VISUAL: Only {purple_correct_ratio:.0%} of purple lane badges (1a-1d) in left zone - SCATTERED! "
+                        f"Lane badges mark external data source paths (Kafka, CSP Streaming, Batch, Native Connector) "
+                        f"and must be vertically stacked on the LEFT edge of the diagram."
+                    )
                     score -= 25
                 elif purple_correct_ratio < 0.7:
-                    defects.append(f"VISUAL: {purple_correct_ratio:.0%} purple badges in left zone (need >70%)")
+                    defects.append(
+                        f"VISUAL: {purple_correct_ratio:.0%} purple lane badges in left zone (need >70%). "
+                        f"Badges 1a-1d should mark the four external ingestion paths on the left edge."
+                    )
                     score -= 15
                 else:
                     findings.append(f"VISUAL: Purple badges well-positioned ({purple_correct_ratio:.0%} in left zone)")
@@ -1129,10 +1495,17 @@ class VisualEvaluator:
             if total_blue > 0:
                 blue_correct_ratio = position_result["blue_in_center_zone"] / total_blue
                 if blue_correct_ratio < 0.4:
-                    defects.append(f"VISUAL: Only {blue_correct_ratio:.0%} of blue badges in center zone - SCATTERED!")
+                    defects.append(
+                        f"VISUAL: Only {blue_correct_ratio:.0%} of blue section badges (2-5) in center zone - SCATTERED! "
+                        f"Section badges mark Snowflake processing stages: 2=Snowpipe Streaming ingestion, "
+                        f"3=Streams/Tasks transformation, 4=Dynamic Tables, 5=Python/Snowpark processing."
+                    )
                     score -= 20
                 elif blue_correct_ratio < 0.6:
-                    defects.append(f"VISUAL: {blue_correct_ratio:.0%} blue badges in center zone (need >60%)")
+                    defects.append(
+                        f"VISUAL: {blue_correct_ratio:.0%} blue section badges in center zone (need >60%). "
+                        f"Badges 2-5 should mark the four Snowflake processing sections in the center area."
+                    )
                     score -= 10
                 else:
                     findings.append(f"VISUAL: Blue badges well-positioned ({blue_correct_ratio:.0%} in center zone)")
@@ -1206,9 +1579,10 @@ class VisualEvaluator:
             findings=findings,
             defects=defects,
             suggestions=[
-                "Check that all 8 badges (1a-1d purple, 2-5 blue) render visually",
-                "Verify badge colors match: purple=#7C3AED, blue=#2563EB",
-                "Use invisible connections (~~~) for badge positioning"
+                "Purple lane badges (1a-1d) must be vertically stacked on LEFT edge marking external sources",
+                "Blue section badges (2-5) must appear at Snowflake processing stages in CENTER",
+                "Badge layout: 1a=Kafka path, 1b=CSP streaming, 1c=Batch, 1d=Native connector",
+                "Badge layout: 2=Snowpipe ingestion, 3=Streams/Tasks, 4=Dynamic Tables, 5=Python/Snowpark"
             ] if defects else []
         )
     

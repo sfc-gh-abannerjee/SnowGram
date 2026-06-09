@@ -200,6 +200,27 @@ DOCS_PERSONAS = [
         "title": "Docs-Driven — IoT Pipeline",
         "subtitle": "Device telemetry → Dynamic Tables → monitoring",
     },
+    # ── STRESS TEST: Batch ETL with governance ────────────────────────────────
+    {
+        "name": "docs_batch_governed",
+        "prompt": "batch ETL data warehouse with masking policies and row-level security for compliance",
+        "title": "Docs-Driven — Governed Batch ETL",
+        "subtitle": "Batch ingest + Dynamic Tables + RLS/masking",
+    },
+    # ── STRESS TEST: Security-focused architecture ────────────────────────────
+    {
+        "name": "docs_security",
+        "prompt": "data governance architecture with column masking row access policies and secure views",
+        "title": "Docs-Driven — Security & Governance",
+        "subtitle": "Masking → RLS → Secure Views",
+    },
+    # ── STRESS TEST: Vague/generic prompt ─────────────────────────────────────
+    {
+        "name": "docs_vague",
+        "prompt": "build me a data pipeline for my company",
+        "title": "Docs-Driven — Vague Prompt (Generic)",
+        "subtitle": "Tests fallback to generic pipeline pattern",
+    },
 ]
 
 

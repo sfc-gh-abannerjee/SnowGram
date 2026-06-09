@@ -1,0 +1,297 @@
+flowchart LR
+    badge_5(["5"]):::sectionBadge
+    badge_4(["4"]):::sectionBadge
+    badge_3(["3"]):::sectionBadge
+    badge_2(["2"]):::sectionBadge
+    badge_6(["6"]):::sectionBadge
+    %% Lane Badges (Purple)
+    badge_1a(["1a"]):::laneBadge
+    badge_1b(["1b"]):::laneBadge
+    badge_1c(["1c"]):::laneBadge
+    badge_1d(["1d"]):::laneBadge
+    
+    subgraph spacer_top[" "]
+        spacer_top_node[" "]
+        style spacer_top_node fill:none,stroke:none
+    end
+    
+    subgraph spacer_left[" "]
+        spacer_left_node[" "]
+        style spacer_left_node fill:none,stroke:none
+    end
+    
+    subgraph spacer_left_bottom[" "]
+        spacer_left_bottom_node[" "]
+        style spacer_left_bottom_node fill:none,stroke:none
+    end
+    
+    subgraph producer["Producer App"]
+        prod_app["Producer App"]
+    end
+    
+    subgraph ingestion_paths["Ingestion Paths"]
+        subgraph path_1a["1a: Kafka Path"]
+            firehose["Amazon Data Firehose"]
+            kafka["Kafka"]
+            kafka_connector["Snowflake Connector<br/>for Kafka<br/>(Snowpipe Streaming built-in)"]
+        end
+        
+        subgraph path_1b["1b: CSP Stream Processing"]
+            kinesis["Amazon Kinesis"]
+            event_hubs["Azure Event Hubs"]
+            pubsub["Google Pub/Sub"]
+            compute["Compute<br/>(VM, Container, Serverless)"]
+        end
+        
+        subgraph path_1c["1c: Batch/Files"]
+            s3["Amazon S3"]
+            azure_blob["Azure Blob Storage"]
+            gcs["Google Cloud Storage"]
+        end
+        
+        subgraph path_1d["1d: Native App Connector"]
+            industry_sources["Industry Data Sources<br/>(ServiceNow, Salesforce, etc.)"]
+            marketplace["Snowflake Marketplace"]
+        end
+    end
+    
+    subgraph snowflake["Snowflake"]
+        subgraph section_2["2: Ingestion"]
+            snowpipe_streaming["Snowpipe Streaming"]
+            snowpipe["Snowpipe"]
+            native_connector["Native App Connector"]
+        end
+        
+        subgraph section_3["3: Aggregation Using Streams & Tasks"]
+            streams["Streams"]
+            serverless_tasks["Serverless Tasks"]
+        end
+        
+        subgraph section_4["4: Tables"]
+            normalized_tables["Normalized Tables"]
+            dynamic_tables["Dynamic Tables"]
+            scalability[/"Instant Scalability"/]
+        end
+        
+        subgraph section_5["5: Consumption"]
+            python_sp["Python Stored Procedures"]
+            snowpark["Snowpark"]
+            spcs["Snowpark Container Services"]
+        end
+        
+        subgraph analytics_section["6: Analytics"]
+            analytics["In-app Analytics"]
+        end
+    end
+    
+    subgraph consumer_group["Consumer"]
+        consumer["Consumer App"]
+    end
+    
+    subgraph spacer_right[" "]
+        spacer_right_node[" "]
+        style spacer_right_node fill:none,stroke:none
+    end
+    
+    subgraph spacer_right_bottom[" "]
+        spacer_right_bottom_node[" "]
+        style spacer_right_bottom_node fill:none,stroke:none
+    end
+    
+    subgraph spacer_bottom[" "]
+        spacer_bottom_node[" "]
+        style spacer_bottom_node fill:none,stroke:none
+    end
+    
+    subgraph spacer_top_left[" "]
+        spacer_top_left_node[" "]
+        style spacer_top_left_node fill:none,stroke:none
+    end
+    
+    subgraph spacer_top_right[" "]
+        spacer_top_right_node[" "]
+        style spacer_top_right_node fill:none,stroke:none
+    end
+    
+    subgraph spacer_bottom_right[" "]
+        spacer_bottom_right_node[" "]
+        style spacer_bottom_right_node fill:none,stroke:none
+    end
+    
+    subgraph spacer_bottom_left[" "]
+        spacer_bottom_left_node[" "]
+        style spacer_bottom_left_node fill:none,stroke:none
+    end
+    
+    subgraph label_area_streaming_1a[" "]
+        label_streaming_1a[" "]
+        style label_streaming_1a fill:none,stroke:none
+    end
+    
+    subgraph label_area_streaming_1b[" "]
+        label_streaming_1b[" "]
+        style label_streaming_1b fill:none,stroke:none
+    end
+    
+    subgraph label_area_batch_1c[" "]
+        label_batch_1c[" "]
+        style label_batch_1c fill:none,stroke:none
+    end
+    
+    subgraph label_area_native_1d[" "]
+        label_native_1d[" "]
+        style label_native_1d fill:none,stroke:none
+    end
+    
+    subgraph label_area_cdc_2_3[" "]
+        label_cdc_2_3[" "]
+        style label_cdc_2_3 fill:none,stroke:none
+    end
+    
+    subgraph label_area_transform_3[" "]
+        label_transform_3[" "]
+        style label_transform_3 fill:none,stroke:none
+    end
+    
+    subgraph label_area_write_3_4[" "]
+        label_write_3_4[" "]
+        style label_write_3_4 fill:none,stroke:none
+    end
+    
+    subgraph label_area_scale_4[" "]
+        label_scale_4[" "]
+        style label_scale_4 fill:none,stroke:none
+    end
+    
+    subgraph label_area_process_4_5[" "]
+        label_process_4_5[" "]
+        style label_process_4_5 fill:none,stroke:none
+    end
+    
+    subgraph label_area_analyze_5_6[" "]
+        label_analyze_5_6[" "]
+        style label_analyze_5_6 fill:none,stroke:none
+    end
+    
+    subgraph label_area_deliver_6[" "]
+        label_deliver_6[" "]
+        style label_deliver_6 fill:none,stroke:none
+    end
+    
+    %% Spacer connections for layout
+    spacer_top_node ~~~ spacer_top_left_node
+    spacer_top_left_node ~~~ spacer_left_node
+    spacer_left_node ~~~ spacer_left_bottom_node
+    spacer_left_bottom_node ~~~ spacer_bottom_node
+    spacer_top_node ~~~ spacer_top_right_node
+    spacer_top_right_node ~~~ spacer_right_node
+    spacer_right_node ~~~ spacer_right_bottom_node
+    spacer_right_bottom_node ~~~ spacer_bottom_right_node
+    spacer_bottom_node ~~~ spacer_bottom_right_node
+    spacer_bottom_node ~~~ spacer_bottom_left_node
+    spacer_bottom_left_node ~~~ spacer_left_bottom_node
+    
+    %% Path 1a: Kafka
+    prod_app -->|"Streaming"| firehose
+    firehose -->|"Streaming"| kafka
+    kafka -->|"Streaming"| kafka_connector
+    kafka_connector -->|"Streaming/row-set"| snowpipe_streaming
+    
+    %% Path 1b: CSP Streaming
+    prod_app -->|"Streaming"| kinesis
+    prod_app -->|"Streaming"| event_hubs
+    prod_app -->|"Streaming"| pubsub
+    kinesis -->|"Streaming"| compute
+    event_hubs -->|"Streaming"| compute
+    pubsub -->|"Streaming"| compute
+    compute -->|"Streaming"| snowpipe_streaming
+    
+    %% Path 1c: Batch/Files
+    prod_app -->|"Batch"| s3
+    prod_app -->|"Batch"| azure_blob
+    prod_app -->|"Batch"| gcs
+    s3 -->|"Batch/Files"| snowpipe
+    azure_blob -->|"Batch/Files"| snowpipe
+    gcs -->|"Batch/Files"| snowpipe
+    
+    %% Path 1d: Native App Connector
+    industry_sources -->|"Native"| marketplace
+    marketplace -->|"Native"| native_connector
+    
+    %% Section 2 to Section 3
+    snowpipe_streaming -->|"CDC"| streams
+    snowpipe -->|"CDC"| streams
+    native_connector -->|"CDC"| streams
+    native_connector -->|"Direct"| dynamic_tables
+    
+    %% Section 3 processing
+    streams -->|"Transform"| serverless_tasks
+    serverless_tasks -->|"Write"| normalized_tables
+    serverless_tasks -->|"Write"| dynamic_tables
+    
+    %% Section 4 scalability
+    normalized_tables -->|"Scale"| scalability
+    dynamic_tables -->|"Scale"| scalability
+    
+    %% Section 4 to Section 5
+    scalability -->|"Process"| python_sp
+    scalability -->|"Process"| snowpark
+    scalability -->|"Process"| spcs
+    
+    %% Section 5 to Analytics
+    python_sp -->|"Analyze"| analytics
+    snowpark -->|"Analyze"| analytics
+    spcs -->|"Analyze"| analytics
+    
+    %% Analytics to Consumer
+    analytics -->|"Deliver"| consumer
+    
+    %% Badge positioning
+    badge_1a ~~~ path_1a
+    badge_1b ~~~ path_1b
+    badge_1c ~~~ path_1c
+    badge_1d ~~~ path_1d
+    badge_2 ~~~ section_2
+    badge_3 ~~~ section_3
+    badge_4 ~~~ section_4
+    badge_5 ~~~ section_5
+    badge_6 ~~~ analytics_section
+    
+    %% Styling
+    classDef laneBadge fill:#7C3AED,stroke:#5B21B6,color:#fff,font-weight:bold
+    classDef sectionBadge fill:#2563EB,stroke:#1D4ED8,color:#fff,font-weight:bold
+    
+    style ingestion_paths fill:#F5F5F5,stroke:#666
+    style path_1a fill:#E3F2FD,stroke:#2196F3
+    style path_1b fill:#F3E5F5,stroke:#9C27B0
+    style path_1c fill:#E8F5E9,stroke:#4CAF50
+    style path_1d fill:#FFF8E1,stroke:#FFC107
+    style snowflake fill:#E0F7FA,stroke:#00ACC1
+    style section_2 fill:#E1F5FE,stroke:#03A9F4
+    style section_3 fill:#F3E5F5,stroke:#9C27B0
+    style section_4 fill:#E8F5E9,stroke:#4CAF50
+    style section_5 fill:#FFF3E0,stroke:#FF9800
+    style analytics_section fill:#FCE4EC,stroke:#E91E63
+    style consumer_group fill:#FFF,stroke:#999
+    style producer fill:#FFF,stroke:#999
+    style spacer_top fill:none,stroke:none
+    style spacer_left fill:none,stroke:none
+    style spacer_left_bottom fill:none,stroke:none
+    style spacer_right fill:none,stroke:none
+    style spacer_right_bottom fill:none,stroke:none
+    style spacer_bottom fill:none,stroke:none
+    style spacer_top_left fill:none,stroke:none
+    style spacer_top_right fill:none,stroke:none
+    style spacer_bottom_right fill:none,stroke:none
+    style spacer_bottom_left fill:none,stroke:none
+    style label_area_streaming_1a fill:none,stroke:none
+    style label_area_streaming_1b fill:none,stroke:none
+    style label_area_batch_1c fill:none,stroke:none
+    style label_area_native_1d fill:none,stroke:none
+    style label_area_cdc_2_3 fill:none,stroke:none
+    style label_area_transform_3 fill:none,stroke:none
+    style label_area_write_3_4 fill:none,stroke:none
+    style label_area_scale_4 fill:none,stroke:none
+    style label_area_process_4_5 fill:none,stroke:none
+    style label_area_analyze_5_6 fill:none,stroke:none
+    style label_area_deliver_6 fill:none,stroke:none

@@ -1,0 +1,58 @@
+flowchart LR
+    subgraph sources["Data Sources"]
+        data_lake["Data Lake<br/>Products, Audiences"]
+        streaming["Streaming Service<br/>Clickstreams"]
+        third_party["Third-Party Data<br/>Native Apps"]
+    end
+    
+    subgraph snowflake["Snowflake"]
+        subgraph ingestion["Ingestion & Transform"]
+            snowpark["Snowpark<br/>Orchestration"]
+            dbt["dbt<br/>SQL Transforms"]
+            external_tables["External Tables<br/>Query in Place"]
+            streams_tasks["Streams & Tasks<br/>Automation"]
+        end
+        
+        subgraph storage["Customer Data"]
+            raw_data["Raw Data<br/>Native JSON"]
+            enriched_data["Customer 360 View<br/>Unified Profile"]
+        end
+        
+        subgraph sharing["Data Sharing"]
+            secure_share["Secure Shares<br/>Zero-Copy"]
+            native_app["Native Apps<br/>No Data Movement"]
+            reader["Reader Accounts<br/>Resource Monitors"]
+        end
+    end
+    
+    subgraph ml["Machine Learning"]
+        ml_training["ML Models<br/>Propensity Scoring"]
+        predictions["Real-Time API<br/>External Access"]
+        batch_results["Batch Predictions"]
+    end
+    
+    subgraph external["External Access"]
+        cloud_api["External Network Rules<br/>Egress Control"]
+        healthcare["Cloud Healthcare API"]
+    end
+    
+    data_lake --> snowpark & external_tables
+    streaming --> streams_tasks
+    third_party --> native_app
+    native_app --> raw_data
+    snowpark --> dbt
+    dbt --> raw_data
+    external_tables --> raw_data
+    streams_tasks --> raw_data
+    raw_data --> enriched_data
+    enriched_data --> secure_share
+    secure_share --> reader
+    enriched_data --> ml_training
+    ml_training --> predictions & batch_results
+    enriched_data --> cloud_api
+    cloud_api --> healthcare
+    
+    style sources fill:#E8F4FD,stroke:#29B5E8
+    style snowflake fill:#E0F7FA,stroke:#00ACC1
+    style ml fill:#E6E6FA,stroke:#9370DB
+    style external fill:#FFE4E1,stroke:#FF6B6B

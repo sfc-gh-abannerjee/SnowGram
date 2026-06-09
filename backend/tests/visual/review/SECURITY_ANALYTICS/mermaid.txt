@@ -1,0 +1,75 @@
+flowchart LR
+    subgraph app_infra["App / Infrastructure"]
+        messages["Messages"]
+        logs["Logs"]
+        log_collection["Log Collection &<br/>Aggregation Systems"]
+    end
+    
+    subgraph streaming["Streaming Service (CSP or Kafka)"]
+        kafka["Kafka"]
+        kinesis["Amazon Kinesis"]
+        event_hubs["Azure Event Hubs"]
+        pubsub["Google Pub/Sub"]
+    end
+    
+    subgraph object_storage["Object Storage"]
+        s3["Amazon S3"]
+        azure_blob["Azure Blob Storage"]
+        gcs["Google Cloud Storage"]
+    end
+    
+    subgraph snowflake["Snowflake"]
+        subgraph snowpipe_services["Snowpipe Services"]
+            snowpipe_streaming["Snowpipe Streaming<br/>MAX_CLIENT_LAG=50s"]
+            snowpipe["Snowpipe"]
+            snowpipe_auto["Snowpipe w/<br/>Auto Ingest"]
+        end
+        
+        subgraph processing["Data Processing"]
+            streams_tasks["Streams & Tasks<br/>Serverless Tasks"]
+            dynamic_tables["Dynamic Tables<br/>TARGET_LAG=1min<br/>Dedicated WH"]
+            snowpark["Snowpark ML<br/>Anomaly Detection"]
+        end
+        
+        subgraph analytics["Analytics"]
+            sos["Search Optimization<br/>Service<br/>Log Search"]
+            time_travel["Time Travel<br/>90-day Forensics"]
+            dashboards["Monitoring Dashboards<br/>Multi-Cluster WH"]
+        end
+        
+        subgraph sharing["Cross-Team"]
+            data_sharing["Secure Data Sharing<br/>Cross-Team Visibility"]
+        end
+    end
+    
+    subgraph external_services["External Services"]
+        messaging["Messaging Service<br/>Email, SMS/Push"]
+    end
+    
+    messages --> log_collection
+    logs --> log_collection
+    log_collection --> kafka & kinesis & event_hubs & pubsub
+    
+    kafka & kinesis --> s3
+    event_hubs --> azure_blob
+    pubsub --> gcs
+    
+    s3 & azure_blob & gcs --> snowpipe_auto
+    kafka & kinesis & event_hubs & pubsub --> snowpipe_streaming
+    s3 & azure_blob & gcs --> snowpipe
+    
+    snowpipe_streaming & snowpipe & snowpipe_auto --> streams_tasks
+    streams_tasks --> dynamic_tables
+    dynamic_tables --> snowpark
+    snowpark --> sos
+    dynamic_tables --> sos
+    sos --> time_travel
+    time_travel --> dashboards
+    dashboards --> messaging
+    dashboards --> data_sharing
+    
+    style app_infra fill:#E8F4FD,stroke:#29B5E8
+    style streaming fill:#FFE4B5,stroke:#FFA500
+    style object_storage fill:#E6E6FA,stroke:#9370DB
+    style snowflake fill:#E0F7FA,stroke:#00ACC1
+    style external_services fill:#FFE4E1,stroke:#FF6B6B

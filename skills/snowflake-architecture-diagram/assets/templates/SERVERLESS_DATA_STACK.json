@@ -9,5 +9,157 @@
   "TIMES_USED": 0,
   "AVG_GENERATION_TIME_MS": null,
   "CREATED_AT": "2026-02-17T19:38:52.091000-08:00",
-  "UPDATED_AT": "2026-02-17T21:54:59.544000-08:00"
+  "UPDATED_AT": "2026-02-17T21:54:59.544000-08:00",
+  "RICH_STATE": {
+    "title": "Serverless Data Stack",
+    "subtitle": "Event sources \u2192 Functions \u2192 Snowpipe \u2192 Cortex / Streamlit",
+    "nodes": [
+      {
+        "id": "event",
+        "label": "Event Source",
+        "detail": "API Gateway / queue",
+        "icon": "Snowflake_ICON_Workloads_Data_Lake.svg",
+        "category": "onprem",
+        "zone": "External Sources",
+        "object_type": "S3",
+        "stage": "source",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-s3"
+      },
+      {
+        "id": "lambda",
+        "label": "Lambda / Function",
+        "detail": "Serverless transform",
+        "icon": "Snowflake_ICON_RA_Function_External.svg",
+        "category": "snow",
+        "zone": "Ingestion",
+        "object_type": "EXTERNAL_FUNCTION",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-external-function"
+      },
+      {
+        "id": "pipe",
+        "label": "Snowpipe Streaming",
+        "detail": "Push to Snowflake",
+        "icon": "Snowflake_ICON_RA_Pipe.svg",
+        "category": "bridge",
+        "zone": "Ingestion",
+        "object_type": "SNOWPIPE_STREAMING",
+        "stage": "ingestion",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro"
+      },
+      {
+        "id": "raw",
+        "label": "Event Tables",
+        "detail": "VARIANT payload",
+        "icon": "Snowflake_ICON_RA_Table.svg",
+        "category": "snow",
+        "zone": "Raw Layer",
+        "object_type": "TABLE",
+        "stage": "raw_storage",
+        "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+      },
+      {
+        "id": "dt",
+        "label": "Dynamic Table",
+        "detail": "Declarative aggregation",
+        "icon": "Snowflake_ICON_RA_Table_Dynamic.svg",
+        "category": "snow",
+        "zone": "Serving Layer",
+        "object_type": "DYNAMIC_TABLE",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      },
+      {
+        "id": "cortex",
+        "label": "Cortex AI",
+        "detail": "Embedded LLM / vector",
+        "icon": "Snowflake_ICON_Cortex.svg",
+        "category": "outcome",
+        "zone": "Serving Layer",
+        "object_type": "CORTEX",
+        "stage": "serving",
+        "doc_url": "https://docs.snowflake.com/en/user-guide/snowflake-cortex/overview"
+      },
+      {
+        "id": "app",
+        "label": "Streamlit App",
+        "detail": "Serverless data app",
+        "icon": "Snowflake_ICON_Streamlit_in_Snowflake.svg",
+        "category": "outcome",
+        "zone": "Consumption",
+        "object_type": "STREAMLIT",
+        "stage": "consumption",
+        "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
+      }
+    ],
+    "edges": [
+      {
+        "source": "event",
+        "target": "lambda"
+      },
+      {
+        "source": "lambda",
+        "target": "pipe"
+      },
+      {
+        "source": "pipe",
+        "target": "raw"
+      },
+      {
+        "source": "raw",
+        "target": "dt"
+      },
+      {
+        "source": "dt",
+        "target": "cortex"
+      },
+      {
+        "source": "cortex",
+        "target": "app"
+      },
+      {
+        "source": "dt",
+        "target": "app"
+      }
+    ],
+    "zones": [
+      {
+        "name": "External Sources",
+        "category": "onprem",
+        "node_ids": [
+          "event"
+        ]
+      },
+      {
+        "name": "Ingestion",
+        "category": "snow",
+        "node_ids": [
+          "lambda",
+          "pipe"
+        ]
+      },
+      {
+        "name": "Raw Layer",
+        "category": "snow",
+        "node_ids": [
+          "raw"
+        ]
+      },
+      {
+        "name": "Serving Layer",
+        "category": "outcome",
+        "node_ids": [
+          "dt",
+          "cortex"
+        ]
+      },
+      {
+        "name": "Consumption",
+        "category": "outcome",
+        "node_ids": [
+          "app"
+        ]
+      }
+    ]
+  }
 }

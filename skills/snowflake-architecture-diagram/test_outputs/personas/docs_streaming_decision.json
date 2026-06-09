@@ -7,7 +7,8 @@
       "object_type": "KAFKA",
       "label": "Kafka",
       "detail": "Streaming topic",
-      "zone": "External Sources"
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/kafka-connector"
     },
     {
       "stage": "ingestion",
@@ -23,7 +24,7 @@
       "label": "Staging Table",
       "detail": "Landing zone for streaming data",
       "zone": "Raw Layer",
-      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-about"
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-high-performance-iceberg"
     },
     {
       "stage": "transformation",
@@ -46,7 +47,8 @@
       "object_type": "STREAMLIT",
       "label": "Streamlit App",
       "detail": "Real-time dashboard",
-      "zone": "Consumption"
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/developer-guide/streamlit/about-streamlit"
     }
   ]
 }

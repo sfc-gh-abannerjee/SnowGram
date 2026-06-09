@@ -1,0 +1,54 @@
+{
+  "type": "docs_driven",
+  "pipeline_type": "generic",
+  "spec": [
+    {
+      "stage": "source",
+      "object_type": "S3",
+      "label": "Data Source",
+      "detail": "External system",
+      "zone": "External Sources",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/multi-location-resilience-data-pipelines"
+    },
+    {
+      "stage": "ingestion",
+      "object_type": "PIPE",
+      "label": "Snowpipe",
+      "detail": "Automated ingestion",
+      "zone": "Ingestion",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-classic-overview"
+    },
+    {
+      "stage": "raw_storage",
+      "object_type": "TABLE",
+      "label": "Landing Table",
+      "detail": "Raw, unprocessed data",
+      "zone": "Raw Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
+    },
+    {
+      "stage": "transformation",
+      "object_type": "DYNAMIC_TABLE",
+      "label": "Dynamic Table",
+      "detail": "Declarative transformation",
+      "zone": "Transformation",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
+    },
+    {
+      "stage": "serving",
+      "object_type": "DYNAMIC_TABLE",
+      "label": "Dynamic Table",
+      "detail": "Consumption-ready output",
+      "zone": "Serving Layer",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables-comparison"
+    },
+    {
+      "stage": "consumption",
+      "object_type": "BI_TOOL",
+      "label": "Analytics",
+      "detail": "Dashboards & reports",
+      "zone": "Consumption",
+      "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+    }
+  ]
+}

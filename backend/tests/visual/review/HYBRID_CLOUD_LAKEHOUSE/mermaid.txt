@@ -1,0 +1,61 @@
+flowchart LR
+    subgraph data_lake["Data Lake"]
+        s3["AWS S3<br/>Parquet/Iceberg Files"]
+    end
+    
+    subgraph catalog["External Catalog"]
+        glue["AWS Glue Catalog<br/>or Polaris"]
+        catalog_int["Catalog Integration<br/>Iceberg REST"]
+    end
+    
+    subgraph external_vol["External Volume"]
+        ext_vol["External Volume<br/>Cross-Region Support"]
+    end
+    
+    subgraph snowflake["Snowflake Lakehouse"]
+        subgraph iceberg["Iceberg Tables"]
+            iceberg_ext["External Iceberg<br/>Catalog-Managed"]
+            iceberg_sf["Snowflake-Managed<br/>Full Platform Support"]
+        end
+        
+        subgraph query["Query Options"]
+            external_table["External Tables<br/>Query in Place"]
+            mat_view["Materialized Views"]
+        end
+        
+        subgraph transform["Transformation"]
+            stream_cdc["Streams<br/>CDC Tracking"]
+            tasks["Tasks"]
+            curated["Curated Tables"]
+        end
+    end
+    
+    subgraph engines["External Engines"]
+        spark["Apache Spark"]
+        trino["Trino"]
+        dremio["Dremio"]
+    end
+    
+    subgraph bi["Analytics"]
+        tableau["Tableau"]
+    end
+    
+    s3 --> ext_vol
+    glue --> catalog_int
+    ext_vol --> iceberg_ext
+    catalog_int --> iceberg_ext
+    iceberg_ext --> iceberg_sf
+    s3 --> external_table
+    iceberg_sf --> mat_view
+    mat_view --> stream_cdc
+    stream_cdc --> tasks
+    tasks --> curated
+    curated --> tableau
+    iceberg_sf --> spark & trino & dremio
+    
+    style data_lake fill:#FF9900,stroke:#fff
+    style catalog fill:#FFE4B5,stroke:#FFA500
+    style external_vol fill:#E6E6FA,stroke:#9370DB
+    style snowflake fill:#E0F7FA,stroke:#00ACC1
+    style engines fill:#98D8C8,stroke:#2ECC71
+    style bi fill:#F2C94C,stroke:#333

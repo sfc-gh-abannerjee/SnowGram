@@ -155,6 +155,33 @@ ELSE:
     DIAGNOSIS: "VISUAL_RENDERING"
     TARGET: elkLayout.ts:458-500
     FIX: Check badge node creation and positioning
+
+# Additional visual issues (verified patterns):
+
+IF sources_from_multiple_lanes_not_stacked:
+    DIAGNOSIS: "CROSS_REGION_FAN_IN"
+    TARGET: elkLayout.ts:700-750 (analyzeLaneStructure)
+    FIX: Detect edges where source.laneIndex !== target.laneIndex
+         Group sources by target, stack vertically if 2+ sources
+    VERIFIED: ✅ S3/Azure Blob/GCS now stack in lane 1C
+
+IF boundary_nodes_on_wrong_side:
+    DIAGNOSIS: "EDGE_FLOW_POSITIONING"
+    TARGET: elkLayout.ts:645-680
+    FIX: Analyze edge direction per boundary node:
+         - outgoing only → LEFT (Producer)
+         - incoming only → RIGHT (Consumer)
+    VERIFIED: ✅ Producer App left, Consumer App right
+
+IF badge_obscured_by_nodes:
+    DIAGNOSIS: "BADGE_ZINDEX"
+    TARGET: elkLayout.ts (labelNodes push)
+    FIX: Add zIndex: 100 to labelNode style object
+
+IF quotes_around_labels:
+    DIAGNOSIS: "QUOTE_STRIPPING"
+    TARGET: mermaidToReactFlow.ts (nodeDefRegex match)
+    FIX: Add .replace(/["]/g, '') before cleanText()
 ```
 
 ---

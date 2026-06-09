@@ -1,3 +1,4 @@
+# DEPRECATED — see backend/agent/agent_spec_deployed.yaml; this file does NOT match the live agent.
 models:
   orchestration: "claude-sonnet-4-5"
 orchestration:

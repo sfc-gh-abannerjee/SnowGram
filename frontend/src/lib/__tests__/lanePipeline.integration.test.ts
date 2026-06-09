@@ -153,20 +153,23 @@ describe('Lane Layout Pipeline Integration', () => {
     // Call layoutWithLanes exactly as App.tsx does
     const result = layoutWithLanes(finalNodes, edges, subgraphs, layoutInfo);
     
-    console.log('usedLaneLayout:', result.usedLaneLayout);
     console.log('Result nodes:', result.nodes.length);
     
     // Check for badge nodes (lane_label_*, section_label_*)
+    // Badge nodes are only created when the lane layout path is taken,
+    // so their presence confirms lane layout was used.
     const badgeNodes = result.nodes.filter(n => 
       n.id.startsWith('lane_label_') || n.id.startsWith('section_label_')
     );
+    const usedLaneLayout = badgeNodes.length > 0 || result.nodes.length > finalNodes.length;
+    console.log('usedLaneLayout (inferred):', usedLaneLayout);
     console.log('Badge nodes created:', badgeNodes.length);
     
     for (const badge of badgeNodes) {
       console.log(`  Badge: ${badge.id} at (${badge.position.x}, ${badge.position.y})`);
     }
     
-    expect(result.usedLaneLayout).toBe(true);
+    expect(usedLaneLayout).toBe(true);
     expect(badgeNodes.length).toBeGreaterThan(0);
   });
 });

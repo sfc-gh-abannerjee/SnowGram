@@ -177,7 +177,11 @@
 
   /* ────────────────────────── Page ────────────────────────── */
   .page {
-    max-width: 1920px;
+    /* Wider cap so high-complexity diagrams (8+ zone-DAG ranks) don't cause
+       horizontal scrolling at typical desktop widths. The grid still uses
+       minmax(220px, 1fr) so cards stay readable; this just ensures the page
+       has enough room to lay them all out side-by-side. */
+    max-width: 2800px;
     margin: 0 auto;
     padding: 28px 24px;
   }
@@ -231,12 +235,59 @@
   .connector-path {
     fill: none;
     stroke: var(--connector-color);
-    stroke-width: 1.5;
-    stroke-dasharray: 6 4;
+    stroke-width: 1.3;
+    stroke-dasharray: 5 4;
     stroke-linecap: round;
     stroke-linejoin: round;
-    opacity: 0.75;
+    opacity: 0.7;
     animation: connector-flow 1.2s linear infinite;
+    transition: stroke-width 120ms ease, opacity 120ms ease, stroke 120ms ease;
+    pointer-events: stroke;
+    cursor: pointer;
+  }
+  /* Wider invisible hit area paired with each visible connector for
+     easy hover targeting (dashed thin strokes are otherwise hard to hit). */
+  .connector-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 14;
+    pointer-events: stroke;
+    cursor: pointer;
+  }
+  /* Hovering anywhere within the group (hit area or visible path)
+     highlights the visible connector. */
+  .connector-group:hover .connector-path,
+  .connector-group.is-active .connector-path {
+    stroke: var(--accent, #6cb9ff);
+    stroke-width: 2.4;
+    opacity: 1;
+    stroke-dasharray: none;
+    animation: none;
+  }
+  /* Highlighted source/target nodes when their connector is hovered
+     (or when the user hovers the node itself). */
+  .flow-node.is-active {
+    box-shadow: 0 0 0 2px var(--accent, #6cb9ff), 0 0 18px rgba(108, 185, 255, 0.45);
+    border-color: var(--accent, #6cb9ff);
+    transition: box-shadow 120ms ease, border-color 120ms ease;
+    cursor: pointer;
+  }
+  /* The card the cursor is directly over. Distinct from .is-active so
+     the user can tell at a glance which card is the focus and which
+     ones are merely connected to it. is-primary wins over is-active
+     because it's listed after and uses higher specificity via the
+     compound selector. */
+  .flow-node.is-primary,
+  .flow-node.is-active.is-primary {
+    box-shadow:
+      0 0 0 2px var(--primary-hover, #ffb454),
+      0 0 22px rgba(255, 180, 84, 0.55);
+    border-color: var(--primary-hover, #ffb454);
+    transition: box-shadow 120ms ease, border-color 120ms ease;
+    cursor: pointer;
+  }
+  .flow-node {
+    transition: box-shadow 120ms ease, border-color 120ms ease;
   }
   .connector-dot {
     fill: var(--connector-color);
@@ -247,7 +298,7 @@
   /* ────────────────────────── Topology-driven multi-column layout ────────────────────────── */
   .arch-layout {
     display: grid;
-    gap: 48px;
+    gap: 72px;
     align-items: start;
     position: relative;
   }
@@ -276,7 +327,7 @@
   .platform-boundary {
     border: 2px dashed var(--sf-blue);
     border-radius: 16px;
-    padding: 28px 24px 24px;
+    padding: 28px 24px 64px;
     position: relative;
     background: rgba(41,181,232,0.015);
   }
@@ -324,6 +375,22 @@
     border-bottom: 1px solid var(--border-subtle);
     background: var(--zone-header-bg, transparent);
     position: relative;
+    /* Reserve enough vertical space for a 2-line title + 1-line tag.
+       This ensures zone bodies start at the same y across all zones
+       regardless of whether their title wraps — which is the difference
+       between, e.g., "SNOWFLAKE — TRANSFORMATION (DYNAMIC TABLES)"
+       (2 lines) and "SNOWFLAKE — CATALOG & INGESTION" (1 line). Without
+       a uniform header, row 0 of one zone sits at a different y than
+       row 0 of its neighbor, producing extraneous L-bends in connectors
+       between aligned siblings (e.g., Iceberg AWS → Dynamic Table Bronze).
+       Title is 11px @ line-height 1.2 = 13.2px/line × 2 = 26.4px;
+       tag is 10px + 3px margin = 13px; padding 12+10 = 22px → ~62px.
+       Round up to 68px for a small safety margin. */
+    min-height: 68px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
   }
   .zone-name {
     font-size: 11px;
@@ -350,6 +417,14 @@
   }
   .zone-body.cols-2 { grid-template-columns: repeat(2, 1fr); min-width: 280px; }
 
+  /* Sub-group label (consolidated zones with AWS/Azure/etc. sub-columns) */
+  /* Hidden — these sub-column header badges (e.g. "AWS", "AZURE")
+     add visual noise without much information value. Sub-columns
+     still group their cards visually via spacing. */
+  .sub-group-label {
+    display: none;
+  }
+
   /* Compact node variant when inside a zone */
   .zone .flow-node {
     min-width: 0;
@@ -370,16 +445,22 @@
   .zone .flow-node .label {
     font-size: clamp(9px, 1.2vw, 12.5px);
     margin-bottom: 2px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    /* Allow wrapping so labels in narrow sub-columns (intra-zone fan-out)
+       aren't truncated. No line clamp — let labels take whatever
+       vertical space they need so nothing is hidden. */
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
   .zone .flow-node .detail {
     font-size: clamp(8px, 1vw, 10.5px);
     line-height: 1.4;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    /* No line clamp — descriptions must show in full so users can read
+       the SQL / policy expressions / configuration the diagram is
+       documenting. Cards grow vertically as needed. */
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   /* Per-category zone tinting */
@@ -586,7 +667,6 @@
       <button id="btn-mmd">Download .mmd</button>
       <button id="btn-svg">Download .svg</button>
       <button id="btn-png">Download .png</button>
-      <button id="btn-html">Download .html</button>
       <button id="btn-theme" class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
         <svg class="moon" viewBox="0 0 24 24" fill="currentColor"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z"/></svg>
         <svg class="sun"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -610,9 +690,15 @@
   <div class="diagram-card">
     <svg id="diagram-connectors" class="connector-overlay">
       <defs>
-        <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M1,1 L9,4 L1,7" fill="none" stroke="var(--connector-color)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-        </marker>
+    <marker id="arrowhead" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrowhead-right" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="0" markerUnits="userSpaceOnUse">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+    <marker id="arrowhead-left" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="180" markerUnits="userSpaceOnUse">
+      <path d="M1,1 L9,4 L1,7" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
       </defs>
     </svg>
     <div class="flow" id="diagram-flow"></div>
@@ -713,7 +799,140 @@
     }
 
     const nodesById = Object.fromEntries(nodes.map(n => [n.id, n]));
-    const zones = Array.isArray(state.zones) ? state.zones : [];
+    var zones = Array.isArray(state.zones) ? state.zones : [];
+
+    // ── Defensive backfill: if a zone has no node_ids[] but matching nodes
+    // have node.zone === zone.name, populate node_ids from the nodes. This
+    // lets hand-rolled state JSONs render correctly even when the producer
+    // forgets to populate node_ids per zone.
+    zones.forEach(function(z) {
+      if (!Array.isArray(z.node_ids) || z.node_ids.length === 0) {
+        z.node_ids = nodes
+          .filter(function(n) { return n.zone === z.name; })
+          .map(function(n) { return n.id; });
+      }
+    });
+
+    // ── Zone consolidation pre-processor ─────────────────────────────
+    // Detect consecutive sibling zones with a shared name prefix and a
+    // known qualifier suffix (e.g. "Ingestion AWS" + "Ingestion Azure" →
+    // single "Ingestion" zone with AWS / Azure sub-columns). This avoids
+    // wasting horizontal space on near-duplicate zones and keeps related
+    // CSP-specific resources visually adjacent. Conservative heuristic:
+    //
+    //   • Adjacent in declared order
+    //   • Same category
+    //   • Each zone has ≤ 4 nodes
+    //   • First name token is identical
+    //   • All extra tokens are in the qualifier whitelist
+    //   • Opt-out: state.consolidate === false disables the pass
+    if (state.consolidate !== false && zones.length > 1) {
+      var QUALIFIERS = {
+        'aws': 1, 'azure': 1, 'gcp': 1, 'oci': 1,
+        'east': 1, 'west': 1, 'us': 1, 'eu': 1, 'apac': 1,
+        'primary': 1, 'secondary': 1, 'dr': 1
+      };
+      function tokenize(name) {
+        return String(name || '').trim().split(/[\s\-_/]+/).filter(Boolean);
+      }
+      function isQualifier(tok) {
+        return QUALIFIERS[tok.toLowerCase()] === 1;
+      }
+      function mergeable(a, b) {
+        if (a.category !== b.category) return false;
+        if ((a.node_ids || []).length > 4) return false;
+        if ((b.node_ids || []).length > 4) return false;
+        var ta = tokenize(a.name), tb = tokenize(b.name);
+        if (!ta.length || !tb.length) return false;
+        if (ta[0].toLowerCase() !== tb[0].toLowerCase()) return false;
+        // Find common prefix length (case-insensitive)
+        var k = 0;
+        while (k < ta.length && k < tb.length &&
+               ta[k].toLowerCase() === tb[k].toLowerCase()) k++;
+        if (k === 0) return false;
+        // Remaining tokens after the common prefix must all be qualifiers.
+        for (var i = k; i < ta.length; i++) if (!isQualifier(ta[i])) return false;
+        for (var j = k; j < tb.length; j++) if (!isQualifier(tb[j])) return false;
+        // At least one zone must have an actual qualifier suffix —
+        // otherwise we'd merge two zones with the same exact name (already
+        // a different bug class).
+        if (ta.length === k && tb.length === k) return false;
+        return true;
+      }
+
+      var consolidated = [];
+      var i = 0;
+      while (i < zones.length) {
+        var group = [zones[i]];
+        var j = i + 1;
+        while (j < zones.length && mergeable(group[group.length - 1], zones[j])) {
+          group.push(zones[j]);
+          j++;
+        }
+        if (group.length === 1) {
+          consolidated.push(zones[i]);
+        } else {
+          // Compute the longest shared prefix across all in the group.
+          var groupTokens = group.map(function(g) { return tokenize(g.name); });
+          var prefixLen = groupTokens[0].length;
+          for (var p = 1; p < groupTokens.length; p++) {
+            var k2 = 0;
+            while (k2 < prefixLen && k2 < groupTokens[p].length &&
+                   groupTokens[0][k2].toLowerCase() ===
+                   groupTokens[p][k2].toLowerCase()) k2++;
+            prefixLen = Math.min(prefixLen, k2);
+          }
+          var prefixName = groupTokens[0].slice(0, prefixLen).join(' ');
+          var subGroups = group.map(function(g, gi) {
+            var toks = groupTokens[gi].slice(prefixLen);
+            // Sub-label is the qualifier(s) joined and uppercased; if empty
+            // (the "no-qualifier" zone in the group), label it "Default".
+            var label = toks.length
+              ? toks.join(' ').toUpperCase()
+              : (g.name || 'DEFAULT');
+            return {
+              label: label,
+              node_ids: (g.node_ids || []).slice(),
+              original_name: g.name
+            };
+          });
+          var allNodeIds = [];
+          subGroups.forEach(function(sg) {
+            sg.node_ids.forEach(function(id) { allNodeIds.push(id); });
+          });
+          // Flatten: stack all merged cards as a single column instead
+          // of creating per-qualifier sub-columns. Sub-columns add
+          // visual noise (sub-headers) and force connectors into
+          // multi-step routes. Stacking keeps the L→R flow clean.
+          // (Set state.consolidate_sub_groups = true to re-enable
+          // the sub-column rendering for layouts that genuinely need
+          // it — e.g. wide fan-outs that won't fit in one column.)
+          var useSubGroups = state.consolidate_sub_groups === true;
+          consolidated.push({
+            name: prefixName,
+            category: group[0].category,
+            description: group.map(function(g) { return g.description || ''; })
+                              .filter(Boolean).join(' / '),
+            node_ids: allNodeIds,
+            sub_groups: useSubGroups ? subGroups : null
+          });
+          // Update nodeToZone-style mapping later — for now just have node.zone
+          // reflect the consolidated name so backfill logic stays consistent.
+          group.forEach(function(g) {
+            (g.node_ids || []).forEach(function(id) {
+              if (nodesById[id]) nodesById[id].zone = prefixName;
+            });
+          });
+        }
+        i = j;
+      }
+      // Replace zones array (mutate state.zones since downstream code reads it).
+      if (consolidated.length !== zones.length) {
+        state.zones = consolidated;
+        zones = consolidated;
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────
 
     // ── Enterprise zones layout (topology-driven columns) ──
     if (zones.length) {
@@ -726,14 +945,24 @@
         (z.node_ids || []).forEach(function(id) { nodeToZone[id] = z.name; });
       });
 
-      // Build zone-level DAG
+      // Build zone-level DAG. Bidirectional cross-zone edges (e.g. an agent
+      // calling back into a tool zone) create cycles which would otherwise
+      // explode the longest-path computation. Break cycles by keeping only
+      // forward edges based on first-occurrence order.
       var zoneNames = zones.map(function(z) { return z.name; });
+      var zoneOrder = {};
+      zoneNames.forEach(function(n, i) { zoneOrder[n] = i; });
       var zoneSuccessors = {};
       zoneNames.forEach(function(n) { zoneSuccessors[n] = []; });
       var edges = state.edges || [];
       edges.forEach(function(e) {
         var sz = nodeToZone[e.source], tz = nodeToZone[e.target];
-        if (sz && tz && sz !== tz && zoneSuccessors[sz].indexOf(tz) === -1) {
+        if (!sz || !tz || sz === tz) return;
+        // Skip back-edges: only count edges in declared-zone-order direction.
+        // Without this, a bidirectional pair (sz↔tz) puts both names in each
+        // other's successor lists and the relaxation never converges.
+        if (zoneOrder[tz] <= zoneOrder[sz]) return;
+        if (zoneSuccessors[sz].indexOf(tz) === -1) {
           zoneSuccessors[sz].push(tz);
         }
       });
@@ -754,18 +983,109 @@
         });
       }
 
+      // Pull in "orphan source" zones — zones with NO forward predecessors
+      // but WITH outgoing cross-zone edges. These are policy/governance zones
+      // that attach to mid-stream consumers (e.g. Horizon Governance applies
+      // masking/RLS to Curated). Without this pass they'd land at rank 0
+      // (no preds in the back-edge-filtered DAG) and get placed at column 1
+      // right after External Sources, forcing every connection from
+      // External Sources to anything past column 1 to cross through them.
+      // Place each such zone at min(out-edge.target.rank) - 1 so it sits
+      // adjacent to its first downstream consumer.
+      //
+      // We use the RAW edge list (not zoneSuccessors) because the back-edge
+      // filter drops "downstream-but-declared-late" edges — exactly the
+      // case for governance zones that wire INTO upstream snow zones.
+      // Skip onprem/bridge/outcome — those legitimately belong outside
+      // the snow pipeline.
+      var zoneCategory = {};
+      zones.forEach(function(z) { zoneCategory[z.name] = z.category; });
+      var hasPred = {};
+      zoneNames.forEach(function(n) { hasPred[n] = false; });
+      zoneNames.forEach(function(src) {
+        zoneSuccessors[src].forEach(function(tgt) { hasPred[tgt] = true; });
+      });
+      zoneNames.forEach(function(n) {
+        if (hasPred[n]) return;
+        if (rank[n] !== 0) return;
+        if (zoneCategory[n] !== 'snow') return; // only re-rank snow-category orphans
+        // Look at every outgoing edge from any node in this zone, regardless
+        // of whether it survived back-edge filtering.
+        var minTgtRank = Infinity;
+        edges.forEach(function(e) {
+          var sz = nodeToZone[e.source], tz = nodeToZone[e.target];
+          if (sz !== n) return;
+          if (!tz || tz === n) return;
+          if (rank[tz] !== undefined && rank[tz] < minTgtRank) {
+            minTgtRank = rank[tz];
+          }
+        });
+        if (minTgtRank === Infinity) return;
+        var pulled = minTgtRank - 1;
+        if (pulled > 0) rank[n] = pulled;
+      });
+      // One more relaxation pass in case pulling in an orphan now violates
+      // a successor's rank (e.g. orphan pulled to rank 5, a successor that
+      // was at rank 5 must move to 6+).
+      changed = true; safety = 0;
+      while (changed && safety < 10) {
+        changed = false; safety++;
+        zoneNames.forEach(function(src) {
+          zoneSuccessors[src].forEach(function(tgt) {
+            if (rank[tgt] < rank[src] + 1) {
+              rank[tgt] = rank[src] + 1;
+              changed = true;
+            }
+          });
+        });
+      }
+
       // Group zones by rank
       var maxRank = 0;
-      zoneNames.forEach(function(n) { if (rank[n] > maxRank) maxRank = rank[n]; });
-      var columns = []; // columns[i] = [zone, zone, ...]
+      zoneNames.forEach(function(n) {
+        // Defense in depth: clamp any individual rank to N-1 too.
+        if (rank[n] > zoneNames.length - 1) rank[n] = zoneNames.length - 1;
+        if (rank[n] > maxRank) maxRank = rank[n];
+      });
+      // Safety clamp: a DAG with N zones has longest path at most N-1.
+      // Without this clamp a cycle (which the back-edge filter above prevents
+      // for declared-order, but defense in depth) blows up the column count.
+      if (maxRank > zoneNames.length - 1) maxRank = zoneNames.length - 1;
+
+      // De-collide same-rank zones into unique columns.
+      // Two zones at the same DAG depth (e.g. Alerting + Consumption both
+      // fed from Monitoring) would otherwise stack vertically inside the
+      // same innerCol, leaving adjacent columns short and creating an
+      // L-shaped boundary visual. Sort by (rank, declared-order) and
+      // re-assign rank by sorted position so every zone has a unique column.
+      var sortedZones = zoneNames.slice().sort(function(a, b) {
+        if (rank[a] !== rank[b]) return rank[a] - rank[b];
+        return zoneOrder[a] - zoneOrder[b];
+      });
+      sortedZones.forEach(function(n, idx) { rank[n] = idx; });
+      maxRank = sortedZones.length - 1;
+
+      var columns = []; // columns[i] = [zone] (always single-zone after de-collision)
       for (var r = 0; r <= maxRank; r++) columns.push([]);
       zones.forEach(function(z) { columns[rank[z.name]].push(z); });
 
       // Set grid columns
       var colCount = maxRank + 1;
-      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', minmax(0, 1fr))';
+      // Use a floor of ~220px per column so cards don't collapse to single-letter
+      // wrapping when there are many zones (8+). When zones exceed viewport width,
+      // the diagram-card scrolls horizontally instead of squeezing content.
+      // Use minmax(min-content, 1fr) so a column with a wide intrinsic
+      // (fan-out) zone — e.g. External Sources with 3+ sub-columns from
+      // intra-zone fan-out — gets enough width to render without
+      // clipping its content INTO the next column / boundary edge.
+      flow.style.gridTemplateColumns = 'repeat(' + colCount + ', minmax(min-content, 1fr))';
 
-      // Helper: build a zone DOM element
+      // Helper: build a zone DOM element. When the zone has intra-zone
+      // fan-out (a node points to multiple siblings in the same zone), we
+      // split the zone body into sub-columns so the source sits in its
+      // own column to the LEFT of its targets — instead of stacking the
+      // source on top of its targets where the connectors have to route
+      // around them awkwardly.
       function buildZoneEl(z) {
         var cat = z.category || 'snow';
         var zoneEl = document.createElement('div');
@@ -777,12 +1097,128 @@
           '</div>' +
           '<div class="zone-body"></div>';
         var body = zoneEl.querySelector('.zone-body');
-        (z.node_ids || []).forEach(function(id) {
+
+        // ── Consolidated zone with sub-groups ────────────────────────
+        // When the zone was produced by the consolidation pre-processor,
+        // z.sub_groups holds [{label, node_ids}, ...]. Render each as its
+        // own labeled sub-column inside the zone-body. Skip the regular
+        // intra-zone fan-out path since sub-groups dictate the layout.
+        if (Array.isArray(z.sub_groups) && z.sub_groups.length > 1) {
+          var nGroups = z.sub_groups.length;
+          body.style.display = 'grid';
+          body.style.gridTemplateColumns = 'repeat(' + nGroups + ', minmax(150px, 1fr))';
+          body.style.columnGap = '20px';
+          body.style.alignItems = 'start';
+          var sgMinWidth = nGroups * 150 + (nGroups - 1) * 20 + 40;
+          body.style.minWidth = sgMinWidth + 'px';
+          zoneEl.style.minWidth = (sgMinWidth + 16) + 'px';
+          body.setAttribute('data-sub-groups', String(nGroups));
+
+          z.sub_groups.forEach(function(sg, sgIdx) {
+            var sgCol = document.createElement('div');
+            sgCol.className = 'sub-group-col';
+            sgCol.style.display = 'flex';
+            sgCol.style.flexDirection = 'column';
+            sgCol.style.gap = '14px';
+            sgCol.style.minWidth = '0';
+            sgCol.style.gridColumn = (sgIdx + 1);
+            // Sub-group label (e.g. "AWS", "AZURE").
+            var lbl = document.createElement('div');
+            lbl.className = 'sub-group-label';
+            lbl.textContent = sg.label || '';
+            sgCol.appendChild(lbl);
+            (sg.node_ids || []).forEach(function(id) {
+              var node = nodesById[id];
+              if (!node) return;
+              var div = document.createElement('div');
+              div.className = 'flow-node node-' + (node.category || 'snow');
+              div.setAttribute('data-node-id', node.id);
+              div.setAttribute('data-zone-col', sgIdx);
+              div.setAttribute('data-sub-group', sg.label || '');
+              var iconSrc = node.icon_data || ('icons/' + escapeHtml(node.icon));
+              div.innerHTML = '<div class="icon"><img src="' + iconSrc + '" alt="" onerror="this.style.display=\'none\'"></div>' +
+                '<div class="label">' + escapeHtml(node.label) + '</div>' +
+                '<div class="detail">' + escapeHtml(node.detail || '') + '</div>';
+              sgCol.appendChild(div);
+            });
+            body.appendChild(sgCol);
+          });
+          return zoneEl;
+        }
+
+        // Compute intra-zone topological column for each node.
+        var nodeIds = z.node_ids || [];
+        var nodeSet = {};
+        nodeIds.forEach(function(id) { nodeSet[id] = true; });
+        var intraEdges = (state.edges || []).filter(function(e) {
+          return nodeSet[e.source] && nodeSet[e.target];
+        });
+        // Detect fan-out: a single node with >=2 intra-zone outgoing edges.
+        var outDeg = {};
+        intraEdges.forEach(function(e) {
+          outDeg[e.source] = (outDeg[e.source] || 0) + 1;
+        });
+        var hasFanout = false;
+        Object.keys(outDeg).forEach(function(k) { if (outDeg[k] >= 2) hasFanout = true; });
+
+        // Topological column assignment via repeated relaxation.
+        // col[id] = max(col[predecessor] + 1) over intra-zone predecessors.
+        var col = {};
+        nodeIds.forEach(function(id) { col[id] = 0; });
+        if (hasFanout) {
+          var maxIter = nodeIds.length + 2;
+          var changed = true;
+          while (changed && maxIter-- > 0) {
+            changed = false;
+            intraEdges.forEach(function(e) {
+              var newCol = col[e.source] + 1;
+              if (newCol > col[e.target]) {
+                col[e.target] = newCol;
+                changed = true;
+              }
+            });
+          }
+        }
+        var maxCol = 0;
+        nodeIds.forEach(function(id) { if (col[id] > maxCol) maxCol = col[id]; });
+
+        // Per-column row index (preserves listed order within a column).
+        var rowsPerCol = {};
+        var nodeRow = {};
+        nodeIds.forEach(function(id) {
+          var c = col[id];
+          if (rowsPerCol[c] === undefined) rowsPerCol[c] = 0;
+          nodeRow[id] = rowsPerCol[c]++;
+        });
+
+        // Apply multi-column layout when fan-out is present.
+        if (hasFanout && maxCol >= 1) {
+          // Each sub-column needs a usable minimum width so card labels
+          // and details don't truncate. 140px per column + 24px gaps.
+          body.style.gridTemplateColumns = 'repeat(' + (maxCol + 1) + ', minmax(140px, 1fr))';
+          body.style.columnGap = '24px';
+          // Force the zone (and its parent rank column) to be wide enough
+          // to accommodate all sub-columns without clipping. Padding 20px
+          // each side + (maxCol+1) columns * 140 + maxCol * 24 gaps.
+          var requiredMinWidth = (maxCol + 1) * 140 + maxCol * 24 + 40;
+          body.style.minWidth = requiredMinWidth + 'px';
+          zoneEl.style.minWidth = (requiredMinWidth + 16) + 'px';
+          // Tag the zone-body so connector routing knows to expect
+          // intra-zone cross-column edges.
+          body.setAttribute('data-fanout', '1');
+        }
+
+        nodeIds.forEach(function(id) {
           var node = nodesById[id];
           if (!node) return;
           var div = document.createElement('div');
           div.className = 'flow-node node-' + (node.category || 'snow');
           div.setAttribute('data-node-id', node.id);
+          div.setAttribute('data-zone-col', col[id]);
+          if (hasFanout && maxCol >= 1) {
+            div.style.gridColumn = (col[id] + 1);
+            div.style.gridRow = (nodeRow[id] + 1);
+          }
           var iconSrc = node.icon_data || ('icons/' + escapeHtml(node.icon));
           div.innerHTML = '<div class="icon"><img src="' + iconSrc + '" alt="" onerror="this.style.display=\'none\'"></div>' +
             '<div class="label">' + escapeHtml(node.label) + '</div>' +
@@ -792,16 +1228,104 @@
         return zoneEl;
       }
 
-      // Determine which columns are "inside Snowflake" (snow or outcome categories)
+      // Determine which columns are "inside Snowflake".
+      //
+      // Categories considered INSIDE the Snowflake Data Cloud boundary:
+      //   • 'snow'    — core Snowflake objects (tables, DTs, warehouses)
+      //   • 'outcome' — Snowflake-native consumers (BI, apps, agents)
+      //   • 'bridge'  — Snowflake-managed ingestion layer (Snowpipe,
+      //                 Openflow, Snowpipe Streaming, Snowpark connectors)
+      //                 — these are services running INSIDE the customer's
+      //                 Snowflake account, NOT external systems. Bridge
+      //                 zones with non-Snowflake connectors should use
+      //                 'onprem' instead.
+      //
+      // Only 'onprem' stays OUTSIDE the boundary.
       var snowCols = {};
       columns.forEach(function(col, ci) {
         col.forEach(function(z) {
-          if (z.category === 'snow' || z.category === 'outcome') snowCols[ci] = true;
+          if (z.category === 'snow' || z.category === 'outcome' || z.category === 'bridge') {
+            snowCols[ci] = true;
+          }
         });
       });
       var snowColIndices = Object.keys(snowCols).map(Number).sort(function(a,b){return a-b;});
       var snowStart = snowColIndices.length ? snowColIndices[0] : -1;
       var snowEnd = snowColIndices.length ? snowColIndices[snowColIndices.length - 1] : -1;
+
+      // ── Pre-compute bridge density per zone-pair ────────────────
+      // We don't know exact node positions yet (DOM hasn't rendered),
+      // but we DO know fan-out / fan-in counts and zone membership
+      // from `state` alone. That's enough to estimate how many
+      // bridged H-V-H-V-H routes will land in each inter-zone gap.
+      // The h-track allocator already distributes them across the
+      // y-band, but each bridge also consumes some HORIZONTAL space
+      // in the gap (V stub at fanOutStubX, H bridge at midY, V stub
+      // at fanInStubX). Wide gaps give the H-track allocator more
+      // breathing room and keep the source / target V stubs from
+      // overlapping each other when many bridges share a pair.
+      //
+      // Map node → zone-name for the bridge-pair counter.
+      var nodeZoneMap = {};
+      (state.nodes || []).forEach(function(n) {
+        // Some nodes may have been re-assigned to a consolidated zone
+        // earlier in this render pass; that already overwrites n.zone.
+        if (n && n.id != null) nodeZoneMap[n.id] = n.zone;
+      });
+      var preFanOut = {}, preFanIn = {};
+      (state.edges || []).forEach(function(e) {
+        if (!e || !e.source || !e.target) return;
+        preFanOut[e.source] = (preFanOut[e.source] || 0) + 1;
+        preFanIn[e.target] = (preFanIn[e.target] || 0) + 1;
+      });
+      var bridgesPerPair = {};
+      var bridgesPerRankGap = {};  // gap index = rank of left side
+      (state.edges || []).forEach(function(e) {
+        if (!e || !e.source || !e.target) return;
+        if ((preFanOut[e.source] || 0) <= 1) return;
+        if ((preFanIn[e.target] || 0) <= 1) return;
+        var sz = nodeZoneMap[e.source];
+        var tz = nodeZoneMap[e.target];
+        if (!sz || !tz || sz === tz) return;
+        var key = sz + '|' + tz;
+        bridgesPerPair[key] = (bridgesPerPair[key] || 0) + 1;
+        // Count this bridge against EVERY inter-rank gap it crosses.
+        // Skip-zone bridges (e.g. rank 0 → rank 3) consume horizontal
+        // space in three gaps (0-1, 1-2, 2-3), so each of those gaps
+        // should reflect that pressure when widening.
+        var sr = rank[sz], tr = rank[tz];
+        if (sr == null || tr == null) return;
+        var lo = Math.min(sr, tr), hi = Math.max(sr, tr);
+        for (var g = lo; g < hi; g++) {
+          bridgesPerRankGap[g] = (bridgesPerRankGap[g] || 0) + 1;
+        }
+      });
+      var maxBridgesPerPair = 0;
+      Object.keys(bridgesPerPair).forEach(function(k) {
+        if (bridgesPerPair[k] > maxBridgesPerPair) maxBridgesPerPair = bridgesPerPair[k];
+      });
+      var maxBridgesPerGap = 0;
+      Object.keys(bridgesPerRankGap).forEach(function(g) {
+        if (bridgesPerRankGap[g] > maxBridgesPerGap) maxBridgesPerGap = bridgesPerRankGap[g];
+      });
+      // Use the worst gap (any rank-pair gap) to size the column gap.
+      // This widens gaps even when no single zone-pair has many
+      // bridges, but multiple skip-zone bridges still pile up in the
+      // same inter-rank slot.
+      var bridgeDensity = Math.max(maxBridgesPerPair, maxBridgesPerGap);
+      // Dynamic gap: baseline 48px, add 14px per extra bridge beyond
+      // the first, capped at 96px so wide layouts don't blow up.
+      // 1 bridge → 48 (baseline)
+      // 2 bridges → 62
+      // 3 bridges → 76
+      // 4+ bridges → 90 / 96 (cap)
+      var DYNAMIC_GAP_BASE = 48;
+      var DYNAMIC_GAP_STEP = 14;
+      var DYNAMIC_GAP_CAP  = 96;
+      var dynamicInnerGap = Math.min(
+        DYNAMIC_GAP_CAP,
+        DYNAMIC_GAP_BASE + DYNAMIC_GAP_STEP * Math.max(0, bridgeDensity - 1)
+      );
 
       // Render columns
       columns.forEach(function(col, ci) {
@@ -818,8 +1342,12 @@
           boundary.innerHTML = '<div class="platform-label">Snowflake Data Cloud</div>';
           var innerGrid = document.createElement('div');
           innerGrid.style.display = 'grid';
-          innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', minmax(0, 1fr))';
-          innerGrid.style.gap = '48px';
+          // Use min-content as the lower bound so a zone that holds an
+          // intra-zone fan-out (and therefore needs extra width to host
+          // multiple sub-columns) can expand its track instead of being
+          // clipped by 1fr's default min:0 sizing.
+          innerGrid.style.gridTemplateColumns = 'repeat(' + (snowEnd - snowStart + 1) + ', minmax(min-content, 1fr))';
+          innerGrid.style.gap = dynamicInnerGap + 'px';
           innerGrid.style.alignItems = 'start';
           innerGrid.style.overflow = 'hidden';
 
@@ -839,11 +1367,31 @@
 
         // External / non-snow columns render directly
         col.forEach(function(z) { colEl.appendChild(buildZoneEl(z)); });
+        // When there is a platform-boundary, columns rendered OUTSIDE
+        // the boundary (e.g. External Sources) start at the rank-row
+        // top while columns INSIDE the boundary start ~30px lower
+        // (the boundary's `border: 2px` + `padding-top: 28px`). That
+        // 30px offset misaligns cards row-by-row across boundary /
+        // non-boundary zones — every cross-boundary connector becomes
+        // a small L-turn. Match the total inset (border + padding)
+        // here so zone tops line up.
+        if (snowStart >= 0) {
+          colEl.style.paddingTop = '30px';
+        }
         flow.appendChild(colEl);
       });
 
-      // Draw connectors after layout settles
-      setTimeout(function() { renderConnectors(state); }, 100);
+      // Draw connectors after layout settles. We first equalize the
+      // height of cards at the SAME row index across every zone so that
+      // a card at "row N" in zone A has its center y at the same height
+      // as a card at "row N" in zone B. This eliminates the unnecessary
+      // L-shaped turns on cross-zone connectors that would otherwise
+      // be forced by content-driven height differences (e.g., a long
+      // policy description vs a short BI tool label).
+      setTimeout(function() {
+        alignRowsAcrossZones();
+        renderConnectors(state);
+      }, 100);
       return;
     }
 
@@ -870,6 +1418,100 @@
   }
 
   // ────────────────────────────────────────────────────────
+  // Row alignment across zones
+  // ────────────────────────────────────────────────────────
+  // For every card that lives in some zone, determine its row index
+  // (the visual row it occupies inside its zone-body grid). Cards at
+  // the same row index across DIFFERENT zones may have different
+  // heights because their text content differs — a long policy
+  // description vs a short tool label. Without intervention, "row 1"
+  // of zone A starts at a different y than "row 1" of zone B, and a
+  // cross-zone edge between two same-row cards is forced into an
+  // unnecessary L-shape just to land on the cardinal port.
+  //
+  // To prevent that we equalize the per-row card height across every
+  // zone: for each row index N, we find the tallest card at row N
+  // anywhere in the diagram, and apply that as a min-height to every
+  // card at row N. After this pass the "row N" track is the same
+  // height in every zone (assuming uniform zone-header height, which
+  // is enforced via CSS), so the center y of "row N" cards is equal
+  // across zones — and a same-row cross-zone edge becomes a true
+  // straight horizontal between cardinal ports.
+  function alignRowsAcrossZones() {
+    var cards = document.querySelectorAll('.zone .zone-body .flow-node');
+    if (!cards.length) return;
+
+    // First pass — determine each card's row index and measure its
+    // current height.
+    function rowIndexOf(card) {
+      // Fan-out zones set explicit grid-row on the card.
+      var gr = card.style && card.style.gridRow;
+      if (gr) {
+        var n = parseInt(gr, 10);
+        if (!isNaN(n) && n > 0) return n - 1;
+      }
+      // Otherwise the card's row is its DOM order within its zone.
+      var body = card.parentNode;
+      if (!body) return 0;
+      var siblings = body.querySelectorAll('.flow-node');
+      for (var i = 0; i < siblings.length; i++) {
+        if (siblings[i] === card) return i;
+      }
+      return 0;
+    }
+
+    var maxByRow = {};
+    var rowOf = [];
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      // Reset any prior min-height we set so the natural height is
+      // measured (idempotent re-layout).
+      card.style.minHeight = '';
+      var ri = rowIndexOf(card);
+      rowOf.push(ri);
+      var h = card.getBoundingClientRect().height;
+      if (!(ri in maxByRow) || h > maxByRow[ri]) maxByRow[ri] = h;
+    }
+
+    // Second pass — apply uniform min-height. We round up by 1px to
+    // avoid sub-pixel rounding leaving a 0.x px gap that breaks the
+    // straight-horizontal cardinal-port test in renderConnectors.
+    for (var j = 0; j < cards.length; j++) {
+      var rj = rowOf[j];
+      var target = Math.ceil(maxByRow[rj]);
+      cards[j].style.minHeight = target + 'px';
+    }
+
+    // Third pass — equalize zone-body heights and distribute cards
+    // using `align-content: space-around` so a source zone with 2
+    // cards lining up to a downstream zone with 4 cards positions
+    // its cards at row centroids 0.5 and 2.5 of the larger zone.
+    // This eliminates the L-shaped turns that would otherwise be
+    // forced by source.center_y misaligned with target.center_y.
+    var bodies = document.querySelectorAll('.zone .zone-body');
+    var maxBodyH = 0;
+    bodies.forEach(function(b) {
+      // Reset any prior min-height before measuring (idempotent re-layout).
+      b.style.minHeight = '';
+      var h = b.getBoundingClientRect().height;
+      if (h > maxBodyH) maxBodyH = h;
+    });
+    if (maxBodyH > 0) {
+      bodies.forEach(function(b) {
+        // Skip consolidated zones with sub-groups (sub-columns) since
+        // they manage their own internal grid. Skip zones already at
+        // max height — `space-around` would re-distribute their cards
+        // and break the row-aligned baseline established in pass 2.
+        if (b.getAttribute('data-sub-groups')) return;
+        var bodyH = b.getBoundingClientRect().height;
+        if (Math.abs(bodyH - maxBodyH) < 2) return;
+        b.style.minHeight = Math.ceil(maxBodyH) + 'px';
+        b.style.alignContent = 'space-around';
+      });
+    }
+  }
+
+  // ────────────────────────────────────────────────────────
   // SVG Connector Rendering — orthogonal routing with deconfliction
   // ────────────────────────────────────────────────────────
   function renderConnectors(state) {
@@ -878,16 +1520,663 @@
     if (!svg || !card) return;
 
     // Clear previous elements (keep <defs>)
-    svg.querySelectorAll('.connector-path, .connector-dot').forEach(function(p) { p.remove(); });
+    svg.querySelectorAll('.connector-group, .connector-path, .connector-dot').forEach(function(p) { p.remove(); });
+
+    // Path data collected during edge routing for crossing detection
+    var collectedPaths = [];
 
     const edges = state.edges || [];
     if (!edges.length) return;
 
     const cardRect = card.getBoundingClientRect();
 
-    // Pre-pass: count edges per zone-pair to compute lane offsets
-    var gapCounts = {};  // "srcZoneId|tgtZoneId" → count
-    var gapIndex = {};   // edgeIdx → index within its gap group
+    // ── Cache zone + card geometry for gap-snap and obstacle detection ──
+    // Cross-zone H-V-H paths place a V-column at trackX. If trackX falls
+    // inside an intermediate zone, the V slices through that zone's cards.
+    // Cache zone rects (sorted by left edge) and compute inter-zone "gap"
+    // rects so we can snap trackX to a clear gap. Cache flow-node rects
+    // for obstacle detection on H segments that cross intermediate cards
+    // at the same y as the source/target row.
+    var zoneRects = Array.prototype.map.call(card.querySelectorAll('.zone'), function(zEl) {
+      var r = zEl.getBoundingClientRect();
+      var nameEl = zEl.querySelector('.zone-name');
+      // Some zone wrappers (flex/grid containers with min-width:0) can
+      // be a few px narrower than the cards inside. Use the bounding
+      // box of the contained cards as the canonical x extent so
+      // routing's "is this rail inside src/tgt zone" check uses the
+      // ACTUAL visible right/left edge of the zone.
+      var nodeEls = zEl.querySelectorAll('.flow-node');
+      var minLeft = r.left, maxRight = r.right;
+      for (var i = 0; i < nodeEls.length; i++) {
+        var nr = nodeEls[i].getBoundingClientRect();
+        if (nr.left  < minLeft)  minLeft  = nr.left;
+        if (nr.right > maxRight) maxRight = nr.right;
+      }
+      return {
+        el: zEl,
+        name: nameEl ? nameEl.textContent.trim() : '',
+        left: minLeft - cardRect.left,
+        right: maxRight - cardRect.left,
+        top: r.top - cardRect.top,
+        bottom: r.bottom - cardRect.top
+      };
+    }).sort(function(a, b) { return a.left - b.left; });
+    var nodeRects = Array.prototype.map.call(card.querySelectorAll('.flow-node'), function(nEl) {
+      var r = nEl.getBoundingClientRect();
+      var zEl = nEl.closest('.zone');
+      var zNameEl = zEl ? zEl.querySelector('.zone-name') : null;
+      return {
+        id: nEl.getAttribute('data-node-id'),
+        zoneName: zNameEl ? zNameEl.textContent.trim() : '',
+        left: r.left - cardRect.left,
+        right: r.right - cardRect.left,
+        top: r.top - cardRect.top,
+        bottom: r.bottom - cardRect.top
+      };
+    });
+    // Quick lookup: node id → zone name
+    var nodeIdToZoneName = {};
+    var nodeRectsById = {};
+    nodeRects.forEach(function(nr) {
+      nodeIdToZoneName[nr.id] = nr.zoneName;
+      nodeRectsById[nr.id] = nr;
+    });
+
+    // ── Sub-column geometry ──
+    // Consolidated zones (e.g. "Ingestion" with AWS / AZURE sub-columns)
+    // contain multiple .sub-group-col children. For routing purposes,
+    // each sub-column acts like a mini-zone — a connector targeting a
+    // node in one sub-column must NOT slice through siblings in other
+    // sub-columns of the same parent zone. Cache sub-column rects with
+    // their parent-zone name and the set of node ids they contain.
+    var subColRects = Array.prototype.map.call(card.querySelectorAll('.sub-group-col'), function(sgEl) {
+      var parentZ = sgEl.closest('.zone');
+      var pName = parentZ ? (parentZ.querySelector('.zone-name') || {}).textContent : '';
+      // Use the bounding box of the contained .flow-node cards as the
+      // obstacle rect (NOT the wrapper sgEl's box). The wrapper can be
+      // a few px narrower than its cards depending on flex/min-width
+      // resolution, which causes routing to think the right edge is
+      // clear when a card actually still extends past it.
+      var nodeEls = sgEl.querySelectorAll('.flow-node');
+      var nodeIds = Array.prototype.map.call(nodeEls, function(n) { return n.getAttribute('data-node-id'); });
+      var minLeft = Infinity, maxRight = -Infinity, minTop = Infinity, maxBottom = -Infinity;
+      for (var i = 0; i < nodeEls.length; i++) {
+        var nr = nodeEls[i].getBoundingClientRect();
+        if (nr.left   < minLeft)   minLeft   = nr.left;
+        if (nr.right  > maxRight)  maxRight  = nr.right;
+        if (nr.top    < minTop)    minTop    = nr.top;
+        if (nr.bottom > maxBottom) maxBottom = nr.bottom;
+      }
+      // Fallback to sgEl rect if there are no cards inside (defensive)
+      if (!isFinite(minLeft)) {
+        var sr = sgEl.getBoundingClientRect();
+        minLeft = sr.left; maxRight = sr.right; minTop = sr.top; maxBottom = sr.bottom;
+      }
+      return {
+        el: sgEl,
+        parentZoneName: (pName || '').trim(),
+        nodeIds: nodeIds,
+        left: minLeft - cardRect.left,
+        right: maxRight - cardRect.left,
+        top: minTop - cardRect.top,
+        bottom: maxBottom - cardRect.top
+      };
+    });
+    // Quick lookup: node id → sub-column index in subColRects
+    var nodeIdToSubColIdx = {};
+    subColRects.forEach(function(sc, idx) {
+      sc.nodeIds.forEach(function(id) { nodeIdToSubColIdx[id] = idx; });
+    });
+    // Compute inter-zone gap rects (clear vertical channels between zones).
+    var zoneGaps = [];
+    for (var zi = 0; zi < zoneRects.length - 1; zi++) {
+      var lz = zoneRects[zi], rz = zoneRects[zi + 1];
+      if (rz.left > lz.right) {
+        zoneGaps.push({ left: lz.right, right: rz.left, center: (lz.right + rz.left) / 2 });
+      }
+    }
+
+    // Returns trackX snapped to the nearest clear inter-zone gap when the
+    // computed trackX would land inside any zone's x-range. Returns the
+    // input unchanged when it's already in a gap or outside all zones.
+    function snapToGap(trackX, x1, x2) {
+      var inside = false;
+      for (var i = 0; i < zoneRects.length; i++) {
+        if (trackX > zoneRects[i].left + 2 && trackX < zoneRects[i].right - 2) {
+          inside = true; break;
+        }
+      }
+      if (!inside) return trackX;
+      // Find candidate gaps along the source→target span.
+      var loX = Math.min(x1, x2), hiX = Math.max(x1, x2);
+      var candidates = zoneGaps.filter(function(g) {
+        return g.center >= loX - 4 && g.center <= hiX + 4;
+      });
+      if (!candidates.length) return trackX;
+      // Pick the gap whose center is closest to the original trackX.
+      var best = candidates[0], bestDist = Math.abs(candidates[0].center - trackX);
+      for (var k = 1; k < candidates.length; k++) {
+        var dist = Math.abs(candidates[k].center - trackX);
+        if (dist < bestDist) { best = candidates[k]; bestDist = dist; }
+      }
+      return best.center;
+    }
+
+    // Returns an array of node-rect obstacles that an H segment from
+    // (xa, y) to (xb, y) crosses, excluding the endpoints' own cards.
+    // The H is "blocked" when y is strictly inside a card's vertical
+    // extent and the card's x-range overlaps the H's x-range.
+    function obstaclesOnH(xa, xb, y, srcId, tgtId) {
+      var loX = Math.min(xa, xb), hiX = Math.max(xa, xb);
+      var hits = [];
+      for (var i = 0; i < nodeRects.length; i++) {
+        var nr = nodeRects[i];
+        if (nr.id === srcId || nr.id === tgtId) continue;
+        if (y <= nr.top + 2 || y >= nr.bottom - 2) continue;
+        // Card horizontally inside the H's x-range (with small margin).
+        if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
+        hits.push(nr);
+      }
+      hits.sort(function(a, b) { return a.left - b.left; });
+      return hits;
+    }
+
+    // Build a poly-line that detours an H segment around obstacle cards.
+    // Returns an array of points [[x,y], [x,y], ...] starting from
+    // (xa, y) and ending at (xb, y).
+    //
+    // Routing philosophy: real architects don't zigzag through tight
+    // gaps next to every obstacle. They sweep cleanly around all
+    // obstacles in a single detour, with maximum clearance from
+    // unrelated components and the minimum number of corners. So when
+    // ANY obstacle exists on the path, we use ONE rectangular detour:
+    //   H out a stub → V to a clear channel → H across in the channel
+    //   → V back to the original y → H into the destination
+    // The channel y is positioned ~36px clear of the FURTHEST obstacle
+    // on the path (top or bottom, whichever side has more breathing
+    // room), rather than tight-jogging individual cards.
+    function detourH(xa, xb, y, srcId, tgtId) {
+      var hits = obstaclesOnH(xa, xb, y, srcId, tgtId);
+      if (!hits.length) {
+        return [[xa, y], [xb, y]];
+      }
+      var goingRight = (xb > xa);
+      var clearance = 36; // ample space — no tight jogs
+
+      // Find the farthest top edge and farthest bottom edge among
+      // obstacles to compute candidate detour y's on each side.
+      var minTop = hits[0].top, maxBottom = hits[0].bottom;
+      for (var i = 1; i < hits.length; i++) {
+        if (hits[i].top    < minTop)    minTop    = hits[i].top;
+        if (hits[i].bottom > maxBottom) maxBottom = hits[i].bottom;
+      }
+      var aboveY = minTop - clearance;
+      var belowY = maxBottom + clearance;
+
+      // Verify each candidate is itself clear of OTHER cards (no card
+      // sitting in the detour rail). Re-using obstaclesOnH at the
+      // candidate y across the same x-span checks this in one call.
+      function railClear(railY) {
+        var conflicts = obstaclesOnH(xa, xb, railY, srcId, tgtId);
+        return conflicts.length === 0;
+      }
+      var detourY;
+      var belowOK = belowY > 0 && railClear(belowY);
+      var aboveOK = aboveY > 0 && railClear(aboveY);
+      if (belowOK && aboveOK) {
+        // Both clear — pick whichever is closer to y (less detour).
+        detourY = (Math.abs(belowY - y) <= Math.abs(aboveY - y)) ? belowY : aboveY;
+      } else if (belowOK) {
+        detourY = belowY;
+      } else if (aboveOK) {
+        detourY = aboveY;
+      } else {
+        // Both rails have conflicts. Push further until clear (search
+        // outward in the chosen direction). Bias DOWN — diagrams flow
+        // top-to-bottom in this layout style.
+        detourY = belowY;
+        for (var step = 1; step <= 6 && !railClear(detourY); step++) {
+          detourY = maxBottom + clearance + step * 28;
+        }
+      }
+
+      // Stub length: horizontal distance from source/target before the
+      // V turn. Larger stub = arrow exit/entry feels deliberate, not
+      // crowded against the card edge.
+      var stub = Math.min(28, Math.abs(xb - xa) / 4);
+      var enterX = goingRight ? xa + stub : xa - stub;
+      var exitX  = goingRight ? xb - stub : xb + stub;
+      // Guard: if the source/target are very close horizontally, the
+      // stubs could overlap — clamp so enterX < exitX (going right) or
+      // enterX > exitX (going left).
+      if (goingRight && enterX > exitX) { enterX = xa; exitX = xb; }
+      if (!goingRight && enterX < exitX) { enterX = xa; exitX = xb; }
+
+      return [
+        [xa,     y],
+        [enterX, y],
+        [enterX, detourY],
+        [exitX,  detourY],
+        [exitX,  y],
+        [xb,     y]
+      ];
+    }
+
+    // Encode an array of points as an SVG path "d" string.
+    function pointsToD(pts) {
+      if (!pts.length) return '';
+      var s = 'M' + pts[0][0] + ',' + pts[0][1];
+      for (var i = 1; i < pts.length; i++) {
+        s += ' L' + pts[i][0] + ',' + pts[i][1];
+      }
+      return s;
+    }
+
+    // Build a clean cross-zone path from (x1, y1) to (x2, y2) given a
+    // preferred V-trunk X (trackX). Three cases:
+    //
+    //   1. No obstacles on either H segment → standard H-V-H with the
+    //      caller's trackX. Two corners. Cleanest possible path.
+    //
+    //   2. Obstacles on one or both H segments → single big U-shaped
+    //      detour through a clear horizontal channel that clears ALL
+    //      obstacles in the bounding rectangle (x1..x2, y1..y2).
+    //      Five corners total: stub out, V to channel, H across in
+    //      channel, V to dest row, stub in. No zigzags around individual
+    //      cards — one decisive sweep, ample clearance.
+    //
+    //   3. Same row (y1 ≈ y2), obstacles → channel detour collapses to
+    //      a U-shape that re-enters at the same y. Five corners.
+    function routeOrthogonal(x1, y1, x2, y2, trackX, srcId, tgtId) {
+      // Look up source and target zone names so we can exclude them when
+      // checking for crossing obstacles. The path is allowed to traverse
+      // its own endpoint zones (briefly, near the cardinal port).
+      var srcZoneName = nodeIdToZoneName[srcId] || '';
+      var tgtZoneName = nodeIdToZoneName[tgtId] || '';
+      var srcSubIdx = nodeIdToSubColIdx[srcId];
+      var tgtSubIdx = nodeIdToSubColIdx[tgtId];
+
+      // Returns "obstacle rects" the H segment from (xa,y)→(xb,y) crosses.
+      // Treats both top-level zones AND sub-columns within consolidated
+      // zones as obstacles. A connector targeting node N in sub-column S
+      // of zone Z must NOT cross other sub-columns of Z — those siblings
+      // (e.g. AWS sub-col when target is in AZURE sub-col) are obstacles
+      // even though they share the same parent zone. Endpoint zones and
+      // each endpoint's own sub-column are excluded.
+      function zonesOnH(xa, xb, y) {
+        var loX = Math.min(xa, xb), hiX = Math.max(xa, xb);
+        var hits = [];
+        // Top-level zones (excluding source / target zones).
+        for (var i = 0; i < zoneRects.length; i++) {
+          var zr = zoneRects[i];
+          if (zr.name === srcZoneName || zr.name === tgtZoneName) continue;
+          if (y <= zr.top + 2 || y >= zr.bottom - 2) continue;
+          if (zr.right < loX + 2 || zr.left > hiX - 2) continue;
+          hits.push(zr);
+        }
+        // Sub-columns within consolidated zones. Skip the sub-column that
+        // contains the source or target node. All other sub-columns of
+        // the source/target zone (and any sub-columns of intermediate
+        // zones) count as obstacles.
+        for (var s = 0; s < subColRects.length; s++) {
+          if (s === srcSubIdx || s === tgtSubIdx) continue;
+          var sc = subColRects[s];
+          if (y <= sc.top + 2 || y >= sc.bottom - 2) continue;
+          if (sc.right < loX + 2 || sc.left > hiX - 2) continue;
+          hits.push(sc);
+        }
+        return hits;
+      }
+
+      // Test for ZONE-level obstacles on the natural H-V-H legs. A line
+      // is "blocked" if it crosses through any non-endpoint zone's body.
+      // This is stricter than card-level checking — even if no card is
+      // hit, crossing a zone's bounding box is forbidden because it
+      // visually overlays unrelated componentry.
+      var zHits1 = zonesOnH(x1, trackX, y1);
+      var zHits2 = zonesOnH(trackX, x2, y2);
+      // Also detect CARD-level obstacles on the H stubs. The src zone is
+      // excluded from `zonesOnH`, but cards INSIDE the src/tgt zone that
+      // sit between the source/target node and trackX still need to be
+      // detected (e.g. Polaris and External Spark sitting between S3
+      // and the inter-zone V column for s3->pipe).
+      function cardsOnH(xa, xb, y) {
+        var lo = Math.min(xa, xb), hi = Math.max(xa, xb);
+        var hits = [];
+        for (var i = 0; i < nodeRects.length; i++) {
+          var nr = nodeRects[i];
+          if (nr.id === srcId || nr.id === tgtId) continue;
+          if (y <= nr.top + 2 || y >= nr.bottom - 2) continue;
+          if (nr.right < lo + 2 || nr.left > hi - 2) continue;
+          hits.push(nr);
+        }
+        return hits;
+      }
+      var cHits1 = cardsOnH(x1, trackX, y1);
+      var cHits2 = cardsOnH(trackX, x2, y2);
+      if (!zHits1.length && !zHits2.length && !cHits1.length && !cHits2.length) {
+        // Clean H-V-H. Two corners. Adjacent zones, no zones between.
+        return [
+          [x1, y1],
+          [trackX, y1],
+          [trackX, y2],
+          [x2, y2]
+        ];
+      }
+
+      // Obstacles present — sweep around all crossed zones via a single
+      // U-shape detour through a horizontal channel positioned ABOVE or
+      // BELOW the union of zone bounding boxes in the path. This is the
+      // architect-style "route around layers" rule: connections must
+      // never pass through unrelated zones.
+      var goingRight = (x2 > x1);
+      var loX = Math.min(x1, x2), hiX = Math.max(x1, x2);
+      var allZoneHits = [];
+      var pathTopBand = Math.min(y1, y2);
+      var pathBotBand = Math.max(y1, y2);
+      for (var zi = 0; zi < zoneRects.length; zi++) {
+        var zr2 = zoneRects[zi];
+        if (zr2.name === srcZoneName || zr2.name === tgtZoneName) continue;
+        if (zr2.right < loX + 2 || zr2.left > hiX - 2) continue;
+        // Only zones whose vertical range overlaps the bounding band of
+        // the path. A path between two y's only encounters zones whose
+        // y-range intersects [min(y1,y2), max(y1,y2)] OR encloses one.
+        var overlaps = !(zr2.bottom < pathTopBand || zr2.top > pathBotBand);
+        var enclosesY1 = zr2.top < y1 && zr2.bottom > y1;
+        var enclosesY2 = zr2.top < y2 && zr2.bottom > y2;
+        if (!overlaps && !enclosesY1 && !enclosesY2) continue;
+        allZoneHits.push(zr2);
+      }
+      // Also include non-endpoint sub-columns whose path-band overlaps —
+      // a connector targeting Snowpipe(Azure) inside the AZURE sub-col
+      // must detour around the AWS sub-col of the same parent zone.
+      for (var sci = 0; sci < subColRects.length; sci++) {
+        if (sci === srcSubIdx || sci === tgtSubIdx) continue;
+        var sc2 = subColRects[sci];
+        if (sc2.right < loX + 2 || sc2.left > hiX - 2) continue;
+        var scOverlaps = !(sc2.bottom < pathTopBand || sc2.top > pathBotBand);
+        var scEnclosesY1 = sc2.top < y1 && sc2.bottom > y1;
+        var scEnclosesY2 = sc2.top < y2 && sc2.bottom > y2;
+        if (!scOverlaps && !scEnclosesY1 && !scEnclosesY2) continue;
+        allZoneHits.push(sc2);
+      }
+      // If after path-band filtering there are no zone hits but we got
+      // here from zHits1/zHits2 (at exact y1/y2), use those instead.
+      if (!allZoneHits.length) {
+        zHits1.forEach(function(z) { allZoneHits.push(z); });
+        zHits2.forEach(function(z) {
+          if (allZoneHits.indexOf(z) < 0) allZoneHits.push(z);
+        });
+      }
+      // If still empty (only CARD-level obstacles triggered the detour
+      // — e.g. cards inside src/tgt zone between source and the
+      // inter-zone V column), seed from card hits so that maxBottom
+      // and obsLeft/obsRight have a basis.
+      if (!allZoneHits.length) {
+        var seedCards = cHits1.concat(cHits2);
+        seedCards.forEach(function(c) {
+          if (allZoneHits.indexOf(c) < 0) allZoneHits.push(c);
+        });
+      }
+
+      var clearance = 24;
+      var minTop = allZoneHits[0].top, maxBottom = allZoneHits[0].bottom;
+      for (var j = 1; j < allZoneHits.length; j++) {
+        if (allZoneHits[j].top    < minTop)    minTop    = allZoneHits[j].top;
+        if (allZoneHits[j].bottom > maxBottom) maxBottom = allZoneHits[j].bottom;
+      }
+      var aboveY = minTop - clearance;
+      var belowY = maxBottom + clearance;
+
+      // Inter-row channels: clear horizontal bands BETWEEN rows of cards.
+      // These are the architect-style "lane gaps" — wider than the
+      // 24px above/below buffer and entirely INSIDE the layout's
+      // content area, so a detour rail placed in one doesn't run on
+      // top of the platform-boundary border. Cluster cards by their
+      // vertical center, then between adjacent clusters compute the
+      // gap [maxBottomOfClusterI, minTopOfClusterI+1] and use the
+      // center as a candidate rail.
+      function buildRowChannels() {
+        if (!nodeRects.length) return [];
+        var rows = nodeRects.map(function(nr) { return { top: nr.top, bottom: nr.bottom, cy: (nr.top + nr.bottom) / 2 }; });
+        rows.sort(function(a, b) { return a.cy - b.cy; });
+        // Cluster: any cards within 20px center-y are the "same row"
+        var clusters = [];
+        rows.forEach(function(r) {
+          if (!clusters.length || (r.cy - clusters[clusters.length - 1].cy > 20)) {
+            clusters.push({ top: r.top, bottom: r.bottom, cy: r.cy });
+          } else {
+            var last = clusters[clusters.length - 1];
+            if (r.top    < last.top)    last.top    = r.top;
+            if (r.bottom > last.bottom) last.bottom = r.bottom;
+            last.cy = (last.top + last.bottom) / 2;
+          }
+        });
+        var channels = [];
+        for (var ci = 0; ci < clusters.length - 1; ci++) {
+          var top = clusters[ci].bottom;
+          var bot = clusters[ci + 1].top;
+          if (bot - top >= 12) channels.push((top + bot) / 2);
+        }
+        return channels;
+      }
+      var rowChannels = buildRowChannels();
+
+      function railClearOfZones(railY) {
+        if (zonesOnH(loX, hiX, railY).length !== 0) return false;
+        // ALSO require that the rail clears all non-endpoint cards by
+        // at least 12px (so the H rail doesn't run flush against a
+        // card's top or bottom edge — e.g. a "below Spark" rail at
+        // y=Spark.bottom+24 lining up with Trino.top would be
+        // visually flush against Trino).
+        var pad = 12;
+        for (var i = 0; i < nodeRects.length; i++) {
+          var nr = nodeRects[i];
+          if (nr.id === srcId || nr.id === tgtId) continue;
+          if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
+          // Reject if rail is within `pad` of card's top or bottom,
+          // or inside the card's body.
+          if (railY > nr.top - pad && railY < nr.bottom + pad) return false;
+        }
+        return true;
+      }
+      // For inter-row channels, the rail sits INSIDE a zone's vertical
+      // span (between rows of cards) so zonesOnH always reports a hit.
+      // Use a card-level check instead: the rail at railY is clear if
+      // it doesn't intersect any card's body in the path's x range
+      // (excluding source/target cards, which the path's stub Hs cross).
+      function railClearOfCards(railY) {
+        for (var i = 0; i < nodeRects.length; i++) {
+          var nr = nodeRects[i];
+          if (nr.id === srcId || nr.id === tgtId) continue;
+          if (railY <= nr.top + 2 || railY >= nr.bottom - 2) continue;
+          if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
+          return false;
+        }
+        return true;
+      }
+      var detourY;
+      var refY = (y1 + y2) / 2;
+      // Priority order:
+      //   1. Rail BELOW all zones (clears every zone box, but stays
+      //      inside the platform-boundary because the boundary
+      //      extends past zone bottoms by the boundary's own bottom
+      //      padding). This is architect-style "go under" routing.
+      //   2. Rail ABOVE all zones (similar but rare — usually outside
+      //      the boundary because zone tops are grid-aligned to the
+      //      boundary header band).
+      //   3. Inter-row channel — last resort because it crosses zone
+      //      borders. Only used when above/below would push the rail
+      //      outside the platform-boundary.
+      function railInsideBoundary(railY) {
+        var pb = card.querySelector('.platform-boundary');
+        if (!pb) return true;
+        var pbR = pb.getBoundingClientRect();
+        var bTop = pbR.top - cardRect.top;
+        var bBot = pbR.bottom - cardRect.top;
+        return railY > bTop + 8 && railY < bBot - 8;
+      }
+      var belowOK = belowY > 0 && railClearOfZones(belowY) && railInsideBoundary(belowY);
+      var aboveOK = aboveY > 0 && railClearOfZones(aboveY) && railInsideBoundary(aboveY);
+      // First preference: above/below ALL zones (clean routing around
+      // every zone). Pick whichever is closer to refY.
+      if (belowOK && aboveOK) {
+        detourY = (Math.abs(belowY - refY) <= Math.abs(aboveY - refY)) ? belowY : aboveY;
+      } else if (belowOK) {
+        detourY = belowY;
+      } else if (aboveOK) {
+        detourY = aboveY;
+      } else {
+        // Fallback: inter-row channel (crosses zone borders but doesn't
+        // cut cards). Better than running outside the boundary.
+        var bestChannelY = null, bestChannelDist = Infinity;
+        for (var rc = 0; rc < rowChannels.length; rc++) {
+          var ry = rowChannels[rc];
+          if (!railClearOfCards(ry)) continue;
+          var d = Math.abs(ry - refY);
+          if (d < bestChannelDist) { bestChannelDist = d; bestChannelY = ry; }
+        }
+        if (bestChannelY !== null) {
+          detourY = bestChannelY;
+        } else {
+        // Final fallback — push outward (preferring below).
+        detourY = belowY;
+        for (var step = 1; step <= 8 && !railClearOfZones(detourY); step++) {
+          detourY = maxBottom + clearance + step * 28;
+        }
+        }
+      }
+
+      // Stubs: deliberate exit/entry from cardinal ports before turning.
+      // For the U-shape detour, the V columns must sit in clear x-space
+      // BEFORE the first obstacle (entry) and AFTER the last obstacle
+      // (exit) so the source-stub H and target-stub H don't cut through
+      // obstacle cards. We deliberately do NOT call snapToGap here —
+      // snapping into an inter-zone gap can place enterX/exitX on the
+      // far side of an obstacle, which makes the stub H pass through it.
+      // 12px visual breathing room between V columns and adjacent
+      // cards. 4px would be technically clear but visually reads as
+      // the line "hugging" the card edge — 12px puts the V close to
+      // the inter-card gap midpoint.
+      var clearanceX = 12;
+      var obsLeft = Infinity, obsRight = -Infinity;
+      for (var oi = 0; oi < allZoneHits.length; oi++) {
+        if (allZoneHits[oi].left  < obsLeft)  obsLeft  = allZoneHits[oi].left;
+        if (allZoneHits[oi].right > obsRight) obsRight = allZoneHits[oi].right;
+      }
+      // ALSO include card-level obstacles for cards that the V column at
+      // enterX/exitX could cross. A card blocks a V column if its
+      // y-range overlaps the V column's y-range (between the card's
+      // row and the detour rail), AND it sits between source and
+      // target horizontally. This catches cards INSIDE the source or
+      // target zone (which are excluded from allZoneHits) — e.g.
+      // External Spark sitting between Polaris and the inter-zone gap.
+      var vYTop = Math.min(y1, y2, detourY);
+      var vYBot = Math.max(y1, y2, detourY);
+      for (var ni = 0; ni < nodeRects.length; ni++) {
+        var ncard = nodeRects[ni];
+        if (ncard.id === srcId || ncard.id === tgtId) continue;
+        // Card must overlap the V column's y-range
+        if (ncard.bottom < vYTop || ncard.top > vYBot) continue;
+        // Card must be horizontally between source and target
+        if (goingRight) {
+          if (ncard.right <= x1 || ncard.left >= x2) continue;
+        } else {
+          if (ncard.left >= x1 || ncard.right <= x2) continue;
+        }
+        if (ncard.left  < obsLeft)  obsLeft  = ncard.left;
+        if (ncard.right > obsRight) obsRight = ncard.right;
+      }
+      var stubMin = 2;
+      // Squeeze detection on TARGET only: when target.left is within
+      // (stubMin + clearanceX) of obstacle.right, there is no x-room for
+      // a clean V column to land outside the obstacle and stub right
+      // into target's LEFT port. In that case enter via TOP/BOTTOM port:
+      // place V over target.center_x and terminate the path on
+      // target.top or target.bottom (whichever the detour rail is on).
+      var tgtRect = nodeRectsById[tgtId];
+      var tgtSqueezed = false;
+      if (tgtRect) {
+        if (goingRight) {
+          tgtSqueezed = (x2 - obsRight) < (stubMin + clearanceX);
+        } else {
+          tgtSqueezed = (obsLeft - x2) < (stubMin + clearanceX);
+        }
+      }
+      var enterX, exitX;
+      if (goingRight) {
+        // Place enterX just past source, but no further than just before
+        // the leftmost obstacle (zone OR card). With card obstacles
+        // included, this naturally lands enterX in the inter-card
+        // column gap when there are cards in source zone to the right
+        // of the source node (e.g. External Spark sitting between
+        // Polaris and the inter-zone gap).
+        enterX = Math.max(x1 + stubMin, Math.min(x1 + 28, obsLeft - clearanceX));
+        if (tgtSqueezed) {
+          exitX = (tgtRect.left + tgtRect.right) / 2;
+        } else {
+          // exitX should be PAST last obstacle but before target.
+          exitX = Math.min(x2 - stubMin, Math.max(x2 - 28, obsRight + clearanceX));
+        }
+        if (enterX > exitX) { enterX = x1 + stubMin; exitX = (tgtSqueezed ? exitX : x2 - stubMin); }
+      } else {
+        enterX = Math.min(x1 - stubMin, Math.max(x1 - 28, obsRight + clearanceX));
+        if (tgtSqueezed) {
+          exitX = (tgtRect.left + tgtRect.right) / 2;
+        } else {
+          exitX = Math.max(x2 + stubMin, Math.min(x2 + 28, obsLeft - clearanceX));
+        }
+        if (enterX < exitX) { enterX = x1 - stubMin; exitX = (tgtSqueezed ? exitX : x2 + stubMin); }
+      }
+
+      if (tgtSqueezed && tgtRect) {
+        // TOP/BOTTOM port entry: terminate path at target's nearest
+        // horizontal edge over its center (no final stub H).
+        var endY = (detourY < y2) ? tgtRect.top : tgtRect.bottom;
+        return [
+          [x1,     y1],
+          [enterX, y1],
+          [enterX, detourY],
+          [exitX,  detourY],
+          [exitX,  endY]
+        ];
+      }
+      return [
+        [x1,     y1],
+        [enterX, y1],
+        [enterX, detourY],
+        [exitX,  detourY],
+        [exitX,  y2],
+        [x2,     y2]
+      ];
+    }
+
+    // Pre-pass: collect edges per zone-pair gap, sort by avgY for track assignment
+    var gapEdges = {};   // "srcZoneName|tgtZoneName" → [{edgeIdx, avgY}]
+    var gapIndex = {};   // edgeIdx → sorted index within its gap group
+    var gapKey = {};     // edgeIdx → gap key string
+    var gapCounts = {};  // gap key → total edges in that gap
+    // Separate pool that ONLY counts V-needing edges (rowDiff >= 1).
+    // L-shape and channel-track share this pool so their V columns are
+    // distributed evenly across the gap and never collide at the same X.
+    var vGapEdges = {};
+    var vGapIndex = {};
+    var vGapKey = {};
+    var vGapCounts = {};
+    // Per-node fan-in/fan-out for Y staggering
+    var nodeOutCount = {};
+    var nodeOutIdx = {};
+    var nodeInCount = {};
+    var nodeInIdx = {};
+    function rowIdxOfPre(el) {
+      var zoneEl = el.closest('.zone');
+      if (!zoneEl) return -1;
+      var nodes = zoneEl.querySelectorAll('.flow-node');
+      for (var i = 0; i < nodes.length; i++) {
+        if (nodes[i] === el) return i;
+      }
+      return -1;
+    }
     edges.forEach(function(edge, idx) {
       var s = card.querySelector('[data-node-id="' + edge.source + '"]');
       var t = card.querySelector('[data-node-id="' + edge.target + '"]');
@@ -895,9 +2184,121 @@
       var sz = s.closest('.zone'), tz = t.closest('.zone');
       if (!sz || !tz || sz === tz) return;
       var key = (sz.querySelector('.zone-name') || {}).textContent + '|' + (tz.querySelector('.zone-name') || {}).textContent;
-      if (!gapCounts[key]) gapCounts[key] = 0;
-      gapIndex[idx] = gapCounts[key];
-      gapCounts[key]++;
+      var srcCy = s.getBoundingClientRect().top + s.getBoundingClientRect().height / 2;
+      var tgtCy = t.getBoundingClientRect().top + t.getBoundingClientRect().height / 2;
+      if (!gapEdges[key]) gapEdges[key] = [];
+      gapEdges[key].push({ idx: idx, avgY: (srcCy + tgtCy) / 2 });
+      gapKey[idx] = key;
+      // V-needing pool: only edges that will produce a vertical column
+      // (different rows in their respective zones).
+      var srcRowIdx = rowIdxOfPre(s);
+      var tgtRowIdx = rowIdxOfPre(t);
+      var rowDiff = (srcRowIdx >= 0 && tgtRowIdx >= 0)
+        ? Math.abs(srcRowIdx - tgtRowIdx)
+        : 0;
+      if (rowDiff >= 1) {
+        if (!vGapEdges[key]) vGapEdges[key] = [];
+        vGapEdges[key].push({
+          idx: idx,
+          avgY: (srcCy + tgtCy) / 2,
+          srcY: srcCy,
+          tgtY: tgtCy
+        });
+        vGapKey[idx] = key;
+      }
+      // Fan-out tracking
+      if (!nodeOutCount[edge.source]) nodeOutCount[edge.source] = 0;
+      nodeOutIdx[idx] = nodeOutCount[edge.source];
+      nodeOutCount[edge.source]++;
+      // Fan-in tracking
+      if (!nodeInCount[edge.target]) nodeInCount[edge.target] = 0;
+      nodeInIdx[idx] = nodeInCount[edge.target];
+      nodeInCount[edge.target]++;
+    });
+    // Sort each gap's edges by avgY (top-to-bottom) and assign track indices
+    Object.keys(gapEdges).forEach(function(key) {
+      var group = gapEdges[key];
+      group.sort(function(a, b) { return a.avgY - b.avgY; });
+      gapCounts[key] = group.length;
+      group.forEach(function(item, sortedIdx) {
+        gapIndex[item.idx] = sortedIdx;
+      });
+    });
+    Object.keys(vGapEdges).forEach(function(key) {
+      var group = vGapEdges[key];
+      // Sort with corner-proximity awareness so we avoid the visual
+      // "stairstep" pattern where one connector's terminal H ends near
+      // another connector's source H. Each L-shape has two corners:
+      //   - source corner: H points LEFT (toward x1)  ─── "Left H"
+      //   - terminal corner: H points RIGHT (toward x2) ─── "Right H"
+      // When a Right-H corner of A is close in Y to a Left-H corner of
+      // B, the two H stubs would overlap in X range, looking like a
+      // single zigzag path. To prevent overlap we want A's stubX > B's
+      // stubX (Right-H connector turns AFTER Left-H connector), so
+      // their H stubs land in disjoint X ranges.
+      // Falls back to avgY ascending when no close-corner pair exists.
+      var Y_THRESHOLD = 30;
+      group.sort(function(a, b) {
+        // a's terminal corner (Right-H) close to b's source corner (Left-H)
+        // → a should turn AFTER b (a.stubX > b.stubX → larger idx)
+        if (Math.abs(a.tgtY - b.srcY) < Y_THRESHOLD) return 1;
+        // a's source corner (Left-H) close to b's terminal corner (Right-H)
+        // → a should turn BEFORE b (a.stubX < b.stubX → smaller idx)
+        if (Math.abs(a.srcY - b.tgtY) < Y_THRESHOLD) return -1;
+        return a.avgY - b.avgY;
+      });
+      vGapCounts[key] = group.length;
+      group.forEach(function(item, sortedIdx) {
+        vGapIndex[item.idx] = sortedIdx;
+      });
+    });
+
+    // ── H-track allocation for BRIDGED routes ─────────────────────
+    // Each bridged H-V-H-V-H route's middle H rail rides at midY in
+    // the inter-zone gap between source and target. When N bridged
+    // edges share the same (source-zone → target-zone) pair, they
+    // would all compute midY = (y1+y2)/2 and stack on top of each
+    // other — causing the visible "rail clutter" in dense sections.
+    //
+    // Mirror the V-column allocator: group candidate-bridged edges
+    // by zone-pair key, distribute their midY values across the
+    // available y band so each rail gets a unique track. The actual
+    // bridge-vs-fallback decision still happens at routing time
+    // (bridgeCollides may force a fallback for any specific edge);
+    // here we only PRE-ASSIGN tracks for the candidates so siblings
+    // that DO bridge come out evenly spaced.
+    var hTrackKey = {};      // edgeIdx → "src_zone|tgt_zone"
+    var hTrackIndex = {};    // edgeIdx → assigned slot (0..N-1)
+    var hTrackCounts = {};   // key → N
+    var hTrackEdges = {};    // key → [{idx, srcY, tgtY}]
+    edges.forEach(function(edge, idx) {
+      if ((nodeOutCount[edge.source] || 0) <= 1) return;
+      if ((nodeInCount[edge.target] || 0) <= 1) return;
+      var s = card.querySelector('[data-node-id="' + edge.source + '"]');
+      var t = card.querySelector('[data-node-id="' + edge.target + '"]');
+      if (!s || !t) return;
+      var sz = s.closest('.zone'), tz = t.closest('.zone');
+      if (!sz || !tz || sz === tz) return;
+      var key = (sz.querySelector('.zone-name') || {}).textContent + '|' +
+                (tz.querySelector('.zone-name') || {}).textContent;
+      if (!hTrackEdges[key]) hTrackEdges[key] = [];
+      var srcCy = s.getBoundingClientRect().top + s.getBoundingClientRect().height / 2;
+      var tgtCy = t.getBoundingClientRect().top + t.getBoundingClientRect().height / 2;
+      hTrackEdges[key].push({ idx: idx, srcY: srcCy, tgtY: tgtCy });
+      hTrackKey[idx] = key;
+    });
+    Object.keys(hTrackEdges).forEach(function(key) {
+      var group = hTrackEdges[key];
+      // Sort by source Y first, then target Y — this groups edges
+      // that flow in the same direction together so adjacent tracks
+      // also have similar trajectories.
+      group.sort(function(a, b) {
+        return (a.srcY - b.srcY) || (a.tgtY - b.tgtY);
+      });
+      hTrackCounts[key] = group.length;
+      group.forEach(function(item, sortedIdx) {
+        hTrackIndex[item.idx] = sortedIdx;
+      });
     });
 
     edges.forEach(function(edge, edgeIdx) {
@@ -909,105 +2310,454 @@
       const tgtZone = tgtEl.closest('.zone');
       const sameZone = srcZone && tgtZone && srcZone === tgtZone;
 
-      // Lane offset: only apply when multiple edges share the same zone pair gap
-      // For most edges (unique gap), offset is 0 — connector stays centered
-      var laneOffset = 0;
-      if (gapIndex[edgeIdx] !== undefined) {
-        var key = ((srcZone.querySelector('.zone-name') || {}).textContent || '') + '|' + ((tgtZone.querySelector('.zone-name') || {}).textContent || '');
-        var total = gapCounts[key] || 1;
-        if (total > 1) {
-          laneOffset = (gapIndex[edgeIdx] - (total - 1) / 2) * 6;
-        }
-      }
-
       var x1, y1, x2, y2, d;
+      var useFixedArrow = false;  // true → use direction-locked marker
+      var arrowDir = 'right';     // 'right' or 'left' for fixed-orientation arrows
 
       if (sameZone) {
-        // Within-zone: straight vertical from node bottom to node top
+        // Within-zone routing.
+        // First check intra-zone column position. When the zone uses
+        // sub-columns (intra-zone fan-out detected), edges between nodes
+        // in DIFFERENT sub-columns must route HORIZONTALLY (not vertically).
+        var srcCol = parseInt(srcEl.getAttribute('data-zone-col') || '0', 10);
+        var tgtCol = parseInt(tgtEl.getAttribute('data-zone-col') || '0', 10);
         const srcRect = srcEl.getBoundingClientRect();
         const tgtRect = tgtEl.getBoundingClientRect();
-        x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
-        y1 = srcRect.bottom - cardRect.top;
-        x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
-        y2 = tgtRect.top - cardRect.top;
-        d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+
+        if (srcCol !== tgtCol) {
+          // Intra-zone cross-column — horizontal H-V-H routing.
+          // Source exits its right edge at center y; target receives at
+          // its left edge at center y. A vertical bend in the gap between
+          // columns handles row offset.
+          var dirRight = (tgtCol > srcCol);
+          if (dirRight) {
+            x1 = srcRect.right - cardRect.left;
+            x2 = tgtRect.left - cardRect.left;
+          } else {
+            x1 = srcRect.left - cardRect.left;
+            x2 = tgtRect.right - cardRect.left;
+          }
+          y1 = (srcRect.top + srcRect.height / 2) - cardRect.top;
+          y2 = (tgtRect.top + tgtRect.height / 2) - cardRect.top;
+          // Bias the V-segment toward the SOURCE side so the L-turn
+          // happens shortly after the line exits the source — instead
+          // of approaching the target's left edge before turning, which
+          // visually crowds the target. 28-44px past the source's right
+          // edge, staggered per edge to avoid overlapping V segments.
+          var midX;
+          if (dirRight) {
+            midX = x1 + 28 + (edgeIdx % 4) * 5;
+            if (midX > x2 - 18) midX = x2 - 18; // safety: keep clear of target
+          } else {
+            midX = x1 - 28 - (edgeIdx % 4) * 5;
+            if (midX < x2 + 18) midX = x2 + 18;
+          }
+          if (Math.abs(y2 - y1) < 1) {
+            // Same row — straight horizontal.
+            d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+          } else {
+            d = 'M' + x1 + ',' + y1 +
+                ' L' + midX + ',' + y1 +
+                ' L' + midX + ',' + y2 +
+                ' L' + x2 + ',' + y2;
+          }
+          useFixedArrow = true;
+          arrowDir = dirRight ? 'right' : 'left';
+        } else {
+          // Same sub-column — vertical routing logic.
+          // Adjacent rows within a column = clean vertical line. Non-adjacent
+          // = side-channel detour with side entry into target's right edge
+          // (so it cannot be confused with an adjacent vertical edge).
+
+          // Compute row indices of src and tgt within the shared zone.
+          // Restrict to nodes in the SAME sub-column for accurate row indexing.
+          var sameColNodes = Array.prototype.filter.call(
+            srcZone.querySelectorAll('.flow-node'),
+            function(el) { return parseInt(el.getAttribute('data-zone-col') || '0', 10) === srcCol; }
+          );
+          var srcRow = -1, tgtRow = -1;
+          for (var zi = 0; zi < sameColNodes.length; zi++) {
+            if (sameColNodes[zi] === srcEl) srcRow = zi;
+            if (sameColNodes[zi] === tgtEl) tgtRow = zi;
+          }
+          var rowGap = (srcRow >= 0 && tgtRow >= 0) ? Math.abs(tgtRow - srcRow) : 1;
+          var goingDownward = (srcRow >= 0 && tgtRow >= 0)
+            ? (tgtRow > srcRow)
+            : (tgtRect.top > srcRect.top);
+
+          // Cardinal ports based on direction so the line stays in the gap
+          // between cards instead of crossing through their bodies.
+          x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
+          x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
+          if (goingDownward) {
+            y1 = srcRect.bottom - cardRect.top;   // exit src bottom port
+            y2 = tgtRect.top - cardRect.top;      // enter tgt top port
+          } else {
+            y1 = srcRect.top - cardRect.top;      // exit src top port
+            y2 = tgtRect.bottom - cardRect.top;   // enter tgt bottom port
+          }
+
+        if (rowGap <= 1) {
+            // Detect a bidirectional pair (a reverse edge in the same column
+            // between the same two nodes). Offset each direction's vertical
+            // channel so the two arrows don't visually overlap.
+            var hasReverse = (state.edges || []).some(function(e2) {
+              return e2.source === edge.target && e2.target === edge.source;
+            });
+            if (hasReverse) {
+              var laneOffset = goingDownward ? -10 : 10; // down-left, up-right
+              x1 += laneOffset;
+              x2 += laneOffset;
+            }
+          d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
+        } else {
+          var nextRow = goingDownward ? srcRow + 1 : srcRow - 1;
+            var nextEl = (nextRow >= 0 && nextRow < sameColNodes.length) ? sameColNodes[nextRow] : null;
+          var stubBendY;
+          if (nextEl) {
+            var nextRect = nextEl.getBoundingClientRect();
+            if (goingDownward) {
+              stubBendY = (y1 + (nextRect.top - cardRect.top)) / 2;
+            } else {
+              stubBendY = (y1 + (nextRect.bottom - cardRect.top)) / 2;
+            }
+          } else {
+            stubBendY = goingDownward ? y1 + 14 : y1 - 14;
+          }
+
+          var nodeRightEdge = srcRect.right - cardRect.left;
+          var sideOffset = 14 + (edgeIdx % 3) * 6;
+          var sideX = nodeRightEdge + sideOffset;
+
+          var tgtRightEdge = tgtRect.right - cardRect.left;
+          var tgtCenterY = (tgtRect.top + tgtRect.height / 2) - cardRect.top;
+
+          d = 'M' + x1 + ',' + y1 +
+              ' L' + x1 + ',' + stubBendY +
+              ' L' + sideX + ',' + stubBendY +
+              ' L' + sideX + ',' + tgtCenterY +
+              ' L' + tgtRightEdge + ',' + tgtCenterY;
+
+          useFixedArrow = true;
+          arrowDir = 'left';
+          }
+        }
       } else {
-        // Cross-zone: orthogonal routing with lane offset
+        // Cross-zone: channel-track orthogonal routing
         const srcZoneRect = srcZone.getBoundingClientRect();
         const tgtZoneRect = tgtZone.getBoundingClientRect();
         const srcRect = srcEl.getBoundingClientRect();
         const tgtRect = tgtEl.getBoundingClientRect();
 
-        // Use NODE centers for Y (so connector starts/ends at the actual node)
-        // Use ZONE edges for X exit/entry points
         var srcNodeCy = srcRect.top + srcRect.height / 2 - cardRect.top;
         var tgtNodeCy = tgtRect.top + tgtRect.height / 2 - cardRect.top;
         var srcZoneCx = srcZoneRect.left + srcZoneRect.width / 2 - cardRect.left;
         var tgtZoneCx = tgtZoneRect.left + tgtZoneRect.width / 2 - cardRect.left;
 
-        // Determine routing direction based on zone gap detection
         var horizontalGap = (tgtZoneRect.left > srcZoneRect.right) || (srcZoneRect.left > tgtZoneRect.right);
         var verticalGap = (tgtZoneRect.top > srcZoneRect.bottom) || (srcZoneRect.top > tgtZoneRect.bottom);
         var useHorizontal = horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20);
 
-        // Margin to prevent lines from hugging zone borders
         var edgeMargin = 8;
 
         if (useHorizontal) {
           var dx = tgtZoneCx - srcZoneCx;
-
-          if (horizontalGap) {
-            // True gap between zones — route through the gap
-            if (dx >= 0) {
-              x1 = srcZoneRect.right - cardRect.left + edgeMargin;
-              x2 = tgtZoneRect.left - cardRect.left - edgeMargin;
-            } else {
-              x1 = srcZoneRect.left - cardRect.left - edgeMargin;
-              x2 = tgtZoneRect.right - cardRect.left + edgeMargin;
-            }
+          if (dx >= 0) {
+            // Exit source RIGHT port (cardinal: right edge, center y).
+            x1 = srcRect.right - cardRect.left + edgeMargin;
+            // Enter target LEFT port (cardinal: left edge, center y).
+            x2 = tgtRect.left - cardRect.left - edgeMargin;
           } else {
-            // Zones overlap horizontally — use node edges
-            if (dx >= 0) {
-              x1 = srcRect.right - cardRect.left + edgeMargin;
-              x2 = tgtRect.left - cardRect.left - edgeMargin;
-            } else {
-              x1 = srcRect.left - cardRect.left - edgeMargin;
-              x2 = tgtRect.right - cardRect.left + edgeMargin;
-            }
+            // Exit source LEFT port; enter target RIGHT port.
+            x1 = srcRect.left - cardRect.left - edgeMargin;
+            x2 = tgtRect.right - cardRect.left + edgeMargin;
           }
-          // Always use node Y-centers so line connects to/from the actual nodes
+          // Cardinal-port constraint: connectors must exit / enter only
+          // at the midpoint of the chosen edge (top, right, bottom, or
+          // left). DO NOT stagger y at the port for fan-in / fan-out;
+          // that would push the entry/exit point off-center along the
+          // card edge. Instead, parallel edges from the same source (or
+          // into the same target) share the cardinal port and only
+          // diverge at the V-channel inside the inter-zone gap.
           y1 = srcNodeCy;
           y2 = tgtNodeCy;
 
-          // Ensure connector always moves in the intended direction
           if (dx >= 0 && x2 <= x1) x2 = x1 + 16;
           if (dx < 0 && x2 >= x1) x2 = x1 - 16;
 
-          // Orthogonal: H → V → H with turn at gap midpoint
-          var turnX = x1 + (x2 - x1) * 0.5 + laneOffset;
-          d = 'M' + x1 + ',' + y1 +
-              ' L' + turnX + ',' + y1 +
-              ' L' + turnX + ',' + y2 +
-              ' L' + x2 + ',' + y2;
+          var vDist = Math.abs(y2 - y1);
+          arrowDir = (dx >= 0) ? 'right' : 'left';
+
+          // Compute row index of source/target within their zones.
+          // Using row INDEX rather than absolute Y distance reliably
+          // identifies "same row" connections even when zones have
+          // different node counts (and thus different row spacing).
+          function rowIdxOf(el) {
+            var zoneEl = el.closest('.zone');
+            if (!zoneEl) return -1;
+            var nodes = zoneEl.querySelectorAll('.flow-node');
+            for (var i = 0; i < nodes.length; i++) {
+              if (nodes[i] === el) return i;
+            }
+            return -1;
+          }
+          var srcRowIdx = rowIdxOf(srcEl);
+          var tgtRowIdx = rowIdxOf(tgtEl);
+          var rowDiff = (srcRowIdx >= 0 && tgtRowIdx >= 0)
+            ? Math.abs(srcRowIdx - tgtRowIdx)
+            : 999;
+
+          // Fan-in convergence: when the target has multiple incoming
+          // edges, every connector that lands on this target's cardinal
+          // LEFT (or RIGHT) port should share the SAME final L-turn
+          // stub-X. That makes the multiple connectors visually merge
+          // onto a single V trunk just before the target instead of
+          // each one taking its own L-turn at a different X. The stub
+          // X is anchored a fixed offset from the target, so any edge
+          // pointing at the same target produces the same value.
+          var tgtFanIn = nodeInCount[edge.target] || 1;
+          var fanInStubX = (dx >= 0) ? (x2 - 24) : (x2 + 24);
+
+          // Fan-out divergence (symmetric to fan-in): when the SOURCE
+          // has multiple outgoing edges that need an L-turn (i.e. the
+          // targets are at different rows), every connector should
+          // exit the source's cardinal port and travel a SHARED
+          // horizontal stub before diverging at a single V column.
+          // Without this, each outgoing edge picks its own V column
+          // and the source visually has multiple parallel exit lines
+          // instead of one trunk that splits. Anchored a fixed offset
+          // from the source so all of its outgoing edges agree.
+          var srcFanOut = nodeOutCount[edge.source] || 1;
+          var fanOutStubX = (dx >= 0) ? (x1 + 24) : (x1 - 24);
+
+          // When BOTH ends have fan-in/fan-out, prefer the fan-in
+          // stub (target-anchored) since convergence is visually more
+          // important for arrowhead clarity. Fan-out only kicks in
+          // when the source has fan-out AND the target does NOT have
+          // fan-in (otherwise we'd have a single shared V channel
+          // for both sides which doesn't reduce ink).
+
+          // When BOTH ends have fan-in/fan-out, the single-stub L-route
+          // would force a precedence choice that sacrifices either
+          // source-side divergence or target-side convergence. Build
+          // a 5-segment BRIDGED route instead so siblings on BOTH ends
+          // share their respective trunks:
+          //   H(x1 → fanOutStubX)      ← shared by source's outgoing
+          //   V(y1 → midY)
+          //   H(fanOutStubX → fanInStubX)
+          //   V(midY → y2)
+          //   H(fanInStubX → x2)        ← shared by target's incoming
+          // The middle H rides at midY = (y1+y2)/2. For ADJACENT-zone
+          // edges that midY is inside the inter-zone gap and clear by
+          // construction. For SKIP-zone edges the H bridge can be long
+          // and cross intermediate cards — in that case we fall back
+          // to the single-stub L-route (fan-in precedence) which is
+          // safer than a guaranteed-crossing bridge.
+          function bridgedRoute(x1, y1, x2, y2, stubSrc, stubTgt) {
+            // Distribute midY across the (y1, y2) band so siblings
+            // sharing the same source/target zone-pair don't all
+            // stack at one midY. Use the pre-assigned hTrackIndex /
+            // hTrackCounts pool. Falls back to (y1+y2)/2 when the
+            // edge isn't in any pool (shouldn't happen for bridged
+            // edges, but defensive).
+            var midY;
+            var hKey = hTrackKey[edgeIdx];
+            var hTotal = hKey ? (hTrackCounts[hKey] || 1) : 1;
+            var hIdx = hTrackIndex[edgeIdx] !== undefined ? hTrackIndex[edgeIdx] : 0;
+            if (hTotal > 1) {
+              // Distribute across the [min(y1,y2)+pad, max(y1,y2)-pad]
+              // band so each track gets its own slot. Pad keeps tracks
+              // away from the V stubs' endpoints.
+              var bandTop = Math.min(y1, y2) + 16;
+              var bandBot = Math.max(y1, y2) - 16;
+              if (bandBot > bandTop) {
+                midY = bandTop + (bandBot - bandTop) * (hIdx + 1) / (hTotal + 1);
+              } else {
+                midY = (y1 + y2) / 2;
+              }
+            } else {
+              midY = (y1 + y2) / 2;
+            }
+            return 'M' + x1 + ',' + y1 +
+                   ' L' + stubSrc + ',' + y1 +
+                   ' L' + stubSrc + ',' + midY +
+                   ' L' + stubTgt + ',' + midY +
+                   ' L' + stubTgt + ',' + y2 +
+                   ' L' + x2 + ',' + y2;
+          }
+          // Bridge collision check: a bridged H-V-H-V-H route has 5
+          // segments. Reject the bridge if ANY segment crosses or
+          // hugs (within 8px halo) a non-endpoint card:
+          //   - segment 3 (middle H rail at midY between fanOutStubX
+          //     and fanInStubX) — long, exposed across the inter-
+          //     zone gap and any intermediate zones
+          //   - segment 2 (V at fanOutStubX from y1 to midY) — runs
+          //     along the source-zone right border; could clip a
+          //     same-zone neighbor card if the stub-X falls inside
+          //     a card's bounding box (e.g., when zone widths force
+          //     the stub-X to land on a card edge)
+          //   - segment 4 (V at fanInStubX from midY to y2) — same
+          //     consideration on the target side
+          // Halo matches railClearOfZones (12px halo for the side V's,
+          // tighter 8px halo for the bridge H so we don't reject too
+          // aggressively when the bridge is in a wide inter-zone gap).
+          function bridgeCollides(stubSrc, stubTgt, midY) {
+            var lo = Math.min(stubSrc, stubTgt);
+            var hi = Math.max(stubSrc, stubTgt);
+            var hHalo = 8;
+            var vHalo = 12;
+            var vTopSrc = Math.min(y1, midY);
+            var vBotSrc = Math.max(y1, midY);
+            var vTopTgt = Math.min(y2, midY);
+            var vBotTgt = Math.max(y2, midY);
+            for (var i = 0; i < nodeRects.length; i++) {
+              var nr = nodeRects[i];
+              if (nr.id === edge.source || nr.id === edge.target) continue;
+              // 1. Middle H rail at midY between [lo, hi]
+              if (nr.right >= lo + 2 && nr.left <= hi - 2 &&
+                  midY > nr.top - hHalo && midY < nr.bottom + hHalo) {
+                return true;
+              }
+              // 2. Source-side V at stubSrc from y1 to midY
+              if (stubSrc > nr.left - vHalo && stubSrc < nr.right + vHalo &&
+                  vBotSrc > nr.top + 2 && vTopSrc < nr.bottom - 2) {
+                return true;
+              }
+              // 3. Target-side V at stubTgt from midY to y2
+              if (stubTgt > nr.left - vHalo && stubTgt < nr.right + vHalo &&
+                  vBotTgt > nr.top + 2 && vTopTgt < nr.bottom - 2) {
+                return true;
+              }
+            }
+            return false;
+          }
+          // Compute the candidate midY here so useBridged check uses
+          // the same value the route will actually be drawn at.
+          var candidateMidY;
+          (function() {
+            var hKey = hTrackKey[edgeIdx];
+            var hTotal = hKey ? (hTrackCounts[hKey] || 1) : 1;
+            var hIdx = hTrackIndex[edgeIdx] !== undefined ? hTrackIndex[edgeIdx] : 0;
+            if (hTotal > 1) {
+              var bandTop = Math.min(y1, y2) + 16;
+              var bandBot = Math.max(y1, y2) - 16;
+              candidateMidY = (bandBot > bandTop)
+                ? bandTop + (bandBot - bandTop) * (hIdx + 1) / (hTotal + 1)
+                : (y1 + y2) / 2;
+            } else {
+              candidateMidY = (y1 + y2) / 2;
+            }
+          })();
+          var useBridged = (srcFanOut > 1 && tgtFanIn > 1 &&
+                            Math.abs(fanOutStubX - fanInStubX) > 8 &&
+                            !bridgeCollides(fanOutStubX, fanInStubX,
+                                            candidateMidY));
+
+          if (rowDiff === 0 && Math.abs(y1 - y2) < 1) {
+            // Same row AND same exact y. For adjacent zones a clean
+            // straight horizontal; for skip-edges, routeOrthogonal sweeps
+            // around obstacles via a single clear channel.
+            // Pass trackX = mid of source-target so the no-obstacle path
+            // collapses to the straight horizontal (same y, same trackX).
+            d = pointsToD(routeOrthogonal(x1, y1, x2, y2, (x1 + x2) / 2,
+                                           edge.source, edge.target));
+          } else if (useBridged) {
+            // Bridged H-V-H-V-H — preserves source divergence AND
+            // target convergence simultaneously.
+            d = bridgedRoute(x1, y1, x2, y2, fanOutStubX, fanInStubX);
+          } else if (rowDiff === 0) {
+            // Same row index, slightly different y — H-V-H through a
+            // mid-channel that's cardinal-port aligned.
+            // When the source has fan-out OR the target has fan-in,
+            // use the trunk stub-X so this edge shares a divergence /
+            // convergence column with its siblings — even if THIS
+            // particular edge happens to be same-row. (Without this,
+            // a fan-out source with one same-row target and one
+            // adjacent-row target would split into two stub-Xs and
+            // visibly fail to merge.)
+            var sameRowStubX;
+            if (tgtFanIn > 1) {
+              sameRowStubX = fanInStubX;
+            } else if (srcFanOut > 1) {
+              sameRowStubX = fanOutStubX;
+            } else {
+              sameRowStubX = snapToGap((x1 + x2) / 2, x1, x2);
+            }
+            d = pointsToD(routeOrthogonal(x1, y1, x2, y2, sameRowStubX,
+                                           edge.source, edge.target));
+          } else if (rowDiff === 1) {
+            // Adjacent rows — H→V→H L-shape, V column distributed
+            // across the gap based on V-needing edge index.
+            var vKey = vGapKey[edgeIdx];
+            var vTotal = vKey ? (vGapCounts[vKey] || 1) : 1;
+            var vIdx = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
+            var stubMinX = Math.min(x1, x2) + 4;
+            var stubMaxX = Math.max(x1, x2) - 4;
+            var stubX;
+            if (tgtFanIn > 1) {
+              stubX = fanInStubX;
+            } else if (srcFanOut > 1) {
+              stubX = fanOutStubX;
+            } else if (stubMaxX > stubMinX) {
+              stubX = stubMinX + (stubMaxX - stubMinX) * (vIdx + 1) / (vTotal + 1);
+              stubX = snapToGap(stubX, x1, x2);
+            } else {
+              stubX = (x1 + x2) / 2;
+            }
+            d = pointsToD(routeOrthogonal(x1, y1, x2, y2, stubX,
+                                           edge.source, edge.target));
+          } else {
+            // 2+ rows apart — channel-track H→V→H, sharing the V-needing
+            // stagger pool with L-shape so their V columns coordinate.
+            var vKey2 = vGapKey[edgeIdx];
+            var vTotal2 = vKey2 ? (vGapCounts[vKey2] || 1) : 1;
+            var vIdx2 = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
+            var trackMinX = Math.min(x1, x2) + 4;
+            var trackMaxX = Math.max(x1, x2) - 4;
+            var trackX;
+            if (tgtFanIn > 1) {
+              trackX = fanInStubX;
+            } else if (srcFanOut > 1) {
+              trackX = fanOutStubX;
+            } else if (trackMaxX > trackMinX) {
+              trackX = trackMinX + (trackMaxX - trackMinX) * (vIdx2 + 1) / (vTotal2 + 1);
+              trackX = snapToGap(trackX, x1, x2);
+            } else {
+              trackX = (x1 + x2) / 2;
+            }
+            d = pointsToD(routeOrthogonal(x1, y1, x2, y2, trackX,
+                                           edge.source, edge.target));
+          }
         } else {
-          // Vertical: exit bottom/top using node centers for X
+          // Vertical: exit source's BOTTOM (or TOP) cardinal port using
+          // the source/target NODE rect — not the zone rect — so the
+          // line is rooted on the card edge itself, not at the bottom
+          // of the whole zone (which would put the visible exit point
+          // beyond the source's lower edge when the source isn't the
+          // bottom-most node).
           var dy = tgtNodeCy - srcNodeCy;
           if (dy >= 0) {
-            y1 = srcZoneRect.bottom - cardRect.top + edgeMargin;
-            y2 = tgtZoneRect.top - cardRect.top - edgeMargin;
+            y1 = srcRect.bottom - cardRect.top + edgeMargin;
+            y2 = tgtRect.top - cardRect.top - edgeMargin;
           } else {
-            y1 = srcZoneRect.top - cardRect.top - edgeMargin;
-            y2 = tgtZoneRect.bottom - cardRect.top + edgeMargin;
+            y1 = srcRect.top - cardRect.top - edgeMargin;
+            y2 = tgtRect.bottom - cardRect.top + edgeMargin;
           }
+          // Cardinal port: x is the node CENTER (top/bottom port).
           x1 = srcRect.left + srcRect.width / 2 - cardRect.left;
           x2 = tgtRect.left + tgtRect.width / 2 - cardRect.left;
 
-          // Ensure connector always moves in the intended direction
           if (dy >= 0 && y2 <= y1) y2 = y1 + 16;
           if (dy < 0 && y2 >= y1) y2 = y1 - 16;
 
-          // Orthogonal: V → H → V with turn at midpoint
-          var turnY = y1 + (y2 - y1) * 0.5 + laneOffset;
+          // V→H→V with track from gap geometry
+          var vGapTop = (dy >= 0 ? srcZoneRect.bottom : tgtZoneRect.bottom) - cardRect.top;
+          var vGapBot = (dy >= 0 ? tgtZoneRect.top : srcZoneRect.top) - cardRect.top;
+          var vGapHeight = vGapBot - vGapTop;
+          var eKey = gapKey[edgeIdx];
+          var total = eKey ? (gapCounts[eKey] || 1) : 1;
+          var idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
+          var turnY = vGapTop + vGapHeight * (idx + 1) / (total + 1);
           d = 'M' + x1 + ',' + y1 +
               ' L' + x1 + ',' + turnY +
               ' L' + x2 + ',' + turnY +
@@ -1015,11 +2765,192 @@
         }
       }
 
-      const pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      pathEl.setAttribute('d', d);
+      const markerId = useFixedArrow
+        ? (arrowDir === 'left' ? 'arrowhead-left' : 'arrowhead-right')
+        : 'arrowhead';
+      // Defer rendering: collect path data first so we can detect
+      // V-H crossings between paths and render line jumps (arcs).
+      collectedPaths.push({ d: d, markerId: markerId, source: edge.source, target: edge.target });
+    });
+
+    // ── Phase 2: detect V-H crossings between paths ──
+    // Parse each "M x,y L x,y L ..." into a points array.
+    function parsePath(d) {
+      var pts = [];
+      d.split(/[ML]\s*/).forEach(function(seg) {
+        seg = seg.trim();
+        if (!seg) return;
+        var parts = seg.split(',');
+        if (parts.length === 2) {
+          pts.push([parseFloat(parts[0]), parseFloat(parts[1])]);
+        }
+      });
+      return pts;
+    }
+    collectedPaths.forEach(function(p) {
+      p.points = parsePath(p.d);
+      p.bumps = [];  // [{ segIdx, y }] for V segments that need to arc over crossings
+    });
+    // For each V segment in path A, find each H segment in path B (B != A)
+    // that crosses it. Mark a bump at the crossing Y on the V.
+    for (var i = 0; i < collectedPaths.length; i++) {
+      var A = collectedPaths[i];
+      for (var sa = 0; sa < A.points.length - 1; sa++) {
+        var a1 = A.points[sa], a2 = A.points[sa + 1];
+        if (Math.abs(a1[0] - a2[0]) > 0.5) continue; // not vertical
+        var vx = a1[0];
+        var vyMin = Math.min(a1[1], a2[1]);
+        var vyMax = Math.max(a1[1], a2[1]);
+        for (var j = 0; j < collectedPaths.length; j++) {
+          if (j === i) continue;
+          var B = collectedPaths[j];
+          for (var sb = 0; sb < B.points.length - 1; sb++) {
+            var b1 = B.points[sb], b2 = B.points[sb + 1];
+            if (Math.abs(b1[1] - b2[1]) > 0.5) continue; // not horizontal
+            var hy = b1[1];
+            var hxMin = Math.min(b1[0], b2[0]);
+            var hxMax = Math.max(b1[0], b2[0]);
+            // Crossing if V's X is strictly inside H's X range AND H's Y
+            // is strictly inside V's Y range. Use small margin to avoid
+            // bumping at shared endpoints (corners).
+            if (vx > hxMin + 1 && vx < hxMax - 1 &&
+                hy > vyMin + 1 && hy < vyMax - 1) {
+              A.bumps.push({ segIdx: sa, y: hy });
+            }
+          }
+        }
+      }
+    }
+
+    // ── Phase 3: build SVG path strings with arcs at bumps ──
+    function buildPathD(points, bumps) {
+      var d = 'M' + points[0][0] + ',' + points[0][1];
+      var r = 5; // arc radius for line jumps
+      for (var s = 0; s < points.length - 1; s++) {
+        var p1 = points[s], p2 = points[s + 1];
+        var segBumps = bumps
+          .filter(function(b) { return b.segIdx === s; })
+          .map(function(b) { return b.y; });
+        // V segment with bumps: insert arcs at each crossing
+        if (Math.abs(p1[0] - p2[0]) < 0.5 && segBumps.length > 0) {
+          var goingDown = p2[1] > p1[1];
+          // Deduplicate bumps that fall within `r` of each other so two
+          // crossings at (effectively) the same Y don't produce a pair of
+          // arcs that backtrack. We collapse near-coincident bumps to a
+          // single hop. Iterate bumps in travel order along the V, drop
+          // any whose Y is within 2*r of the previously kept Y.
+          segBumps.sort(function(a, b) { return goingDown ? a - b : b - a; });
+          var dedup = [];
+          for (var bi = 0; bi < segBumps.length; bi++) {
+            if (!dedup.length || Math.abs(segBumps[bi] - dedup[dedup.length - 1]) > r * 2) {
+              dedup.push(segBumps[bi]);
+            }
+          }
+          segBumps = dedup;
+          var x = p1[0];
+          var sweep = goingDown ? 1 : 0; // bump to the RIGHT of travel direction
+          segBumps.forEach(function(by) {
+            var beforeY = goingDown ? by - r : by + r;
+            var afterY = goingDown ? by + r : by - r;
+            d += ' L' + x + ',' + beforeY;
+            d += ' A' + r + ',' + r + ' 0 0 ' + sweep + ' ' + x + ',' + afterY;
+          });
+          d += ' L' + p2[0] + ',' + p2[1];
+        } else {
+          d += ' L' + p2[0] + ',' + p2[1];
+        }
+      }
+      return d;
+    }
+
+    // ── Phase 4: render each connector as a hit-area + visible path group ──
+    collectedPaths.forEach(function(p) {
+      var finalD = buildPathD(p.points, p.bumps);
+      var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'connector-group');
+      // Stamp source/target IDs so node hover can find related connectors
+      // and connector hover can highlight the right endpoint nodes.
+      if (p.source) g.setAttribute('data-source-id', p.source);
+      if (p.target) g.setAttribute('data-target-id', p.target);
+
+      var hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hit.setAttribute('d', finalD);
+      hit.setAttribute('class', 'connector-hit');
+      g.appendChild(hit);
+
+      var pathEl = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      pathEl.setAttribute('d', finalD);
       pathEl.setAttribute('class', 'connector-path');
-      pathEl.setAttribute('marker-end', 'url(#arrowhead)');
-      svg.appendChild(pathEl);
+      pathEl.setAttribute('marker-end', 'url(#' + p.markerId + ')');
+      g.appendChild(pathEl);
+
+      svg.appendChild(g);
+    });
+
+    // ── Connectivity hover wireup ──
+    // Hovering any connector or any node highlights the line, its
+    // arrow (via context-stroke on the marker), the source node, and
+    // the target node together.
+    function activateConnector(group) {
+      group.classList.add('is-active');
+      var srcId = group.getAttribute('data-source-id');
+      var tgtId = group.getAttribute('data-target-id');
+      if (srcId) {
+        var srcEl = card.querySelector('[data-node-id="' + srcId + '"]');
+        if (srcEl) srcEl.classList.add('is-active');
+      }
+      if (tgtId) {
+        var tgtEl = card.querySelector('[data-node-id="' + tgtId + '"]');
+        if (tgtEl) tgtEl.classList.add('is-active');
+      }
+    }
+    function deactivateConnector(group) {
+      group.classList.remove('is-active');
+      var srcId = group.getAttribute('data-source-id');
+      var tgtId = group.getAttribute('data-target-id');
+      if (srcId) {
+        var srcEl = card.querySelector('[data-node-id="' + srcId + '"]');
+        if (srcEl) srcEl.classList.remove('is-active');
+      }
+      if (tgtId) {
+        var tgtEl = card.querySelector('[data-node-id="' + tgtId + '"]');
+        if (tgtEl) tgtEl.classList.remove('is-active');
+      }
+    }
+    svg.querySelectorAll('.connector-group').forEach(function(group) {
+      group.addEventListener('mouseenter', function() { activateConnector(group); });
+      group.addEventListener('mouseleave', function() { deactivateConnector(group); });
+    });
+    // Hovering a node activates every connector incident to it (and
+    // therefore the connector's other endpoint too).
+    card.querySelectorAll('.flow-node[data-node-id]').forEach(function(nodeEl) {
+      var nodeId = nodeEl.getAttribute('data-node-id');
+      if (!nodeId) return;
+      // Remove any previous listeners by cloning the node — actually
+      // simpler: rely on a single attached handler per render. Since
+      // renderConnectors is called on resize, we attach fresh each
+      // time but the previous listeners stay attached on the same
+      // element. Use a flag to avoid double-binding.
+      if (nodeEl.__connHover) return;
+      nodeEl.__connHover = true;
+      nodeEl.addEventListener('mouseenter', function() {
+        // Mark THIS card as the primary focus (distinct color from its
+        // connected neighbors).
+        nodeEl.classList.add('is-primary');
+        var groups = svg.querySelectorAll(
+          '.connector-group[data-source-id="' + nodeId + '"], ' +
+          '.connector-group[data-target-id="' + nodeId + '"]'
+        );
+        groups.forEach(activateConnector);
+      });
+      nodeEl.addEventListener('mouseleave', function() {
+        nodeEl.classList.remove('is-primary');
+        var groups = svg.querySelectorAll(
+          '.connector-group[data-source-id="' + nodeId + '"], ' +
+          '.connector-group[data-target-id="' + nodeId + '"]'
+        );
+        groups.forEach(deactivateConnector);
+      });
     });
   }
 
@@ -1099,10 +3030,6 @@
       const a = document.createElement('a');
       a.download = safeName() + '.png'; a.href = dataUrl; a.click();
     } catch (e) { alert('PNG export failed: ' + (e.message || e)); }
-  });
-  document.getElementById('btn-html').addEventListener('click', () => {
-    const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-    download(safeName() + '.html', new Blob([html], { type: 'text/html;charset=utf-8' }));
   });
 
   // Boot
