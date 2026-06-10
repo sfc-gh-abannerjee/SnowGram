@@ -1,0 +1,40 @@
+/* citations.css — "Documentation" panel rendered below a diagram.
+ *
+ * Extracted from the SnowGram viewer (assets/viewer/index.html). CSS vars
+ * carry fallbacks so this works standalone (no viewer theme required);
+ * override the vars to theme it. Author: Abhinav Bannerjee
+ */
+
+.citations {
+  background: var(--surface, #ffffff);
+  border-radius: var(--radius-card, 12px);
+  box-shadow: var(--shadow-card, 0 1px 3px rgba(0,0,0,0.08));
+  border: 1px solid var(--border-subtle, rgba(0,53,69,0.08));
+  padding: 22px 24px;
+  margin-top: 20px;            /* sits below the diagram card */
+  transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+.citations h2 {
+  font-size: 12px;
+  color: var(--sf-blue, #29B5E8);
+  margin: 0 0 14px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.citation { padding: 10px 0; border-bottom: 1px solid var(--border-subtle, rgba(0,53,69,0.08)); }
+.citation:last-child { border-bottom: none; }
+.citation a {
+  color: var(--sf-blue, #1A8AB6);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 13px;
+}
+.citation a:hover { text-decoration: underline; }
+.citation .excerpt {
+  font-size: 12px;
+  color: var(--text-secondary, #5b6b78);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+.citations-empty { color: var(--text-muted, #98a4ae); font-style: italic; font-size: 13px; }

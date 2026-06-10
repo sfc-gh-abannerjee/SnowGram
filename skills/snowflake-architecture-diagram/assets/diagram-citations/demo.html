@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!--
+  demo.html — standalone proof of the citations panel.
+  Open in a browser: the "Documentation" panel renders below the (stub)
+  diagram from the embedded citation data. No build step, no deps.
+  Author: Abhinav Bannerjee
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SnowGram diagram citations — demo</title>
+  <link rel="stylesheet" href="citations.css">
+  <style>
+    body { background:#0f1720; color:#e7eef6; font-family: system-ui, sans-serif; margin:0; padding:40px; }
+    .diagram-card { background:#16212e; border:1px solid rgba(41,181,232,0.25); border-radius:12px;
+                    padding:40px; text-align:center; }
+    /* dark-theme overrides for the citations panel */
+    :root { --surface:#16212e; --border-subtle:rgba(255,255,255,0.08); --text-secondary:#9fb0bd; }
+  </style>
+</head>
+<body>
+  <div class="diagram-card" data-diagram-root>[ diagram would render here ]</div>
+
+  <!-- citation data the agent/skill would emit alongside the diagram -->
+  <script type="application/json" data-diagram-citations>
+  [
+    {"url":"https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro","title":"Snowpipe","excerpt":"Continuous, file-based data ingestion."},
+    {"url":"https://docs.snowflake.com/en/user-guide/dynamic-tables-about","title":"Dynamic Tables","excerpt":"Declarative, automatically-refreshed transformations."},
+    {"url":"https://docs.snowflake.com/en/user-guide/views-introduction","title":"Views","excerpt":"Serving curated, business-ready data."}
+  ]
+  </script>
+
+  <script src="citations.js"></script>
+  <script>SnowGramCitations.autoRenderOnReady();</script>
+</body>
+</html>
