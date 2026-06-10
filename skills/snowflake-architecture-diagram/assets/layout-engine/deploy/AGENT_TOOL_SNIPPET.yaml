@@ -1,0 +1,44 @@
+# Layout-engine tool — merge these into the agent's LIVE spec.
+#
+# Self-contained delta for adding SNOWGRAM_DB.CORE.LAYOUT_DIAGRAM as a Cortex
+# Agent custom tool. CoCo merges these three pieces into the agent's CURRENT
+# live specification (captured via DESCRIBE AGENT) and submits the COMPLETE
+# merged spec — see AGENT_INTEGRATION_RUNBOOK.md.
+#
+# Author: Abhinav Bannerjee
+
+# ── 1. Append this object to the spec's `tools:` array ──
+tools_entry:
+  tool_spec:
+    type: generic
+    name: LAYOUT_DIAGRAM
+    description: |
+      Computes deterministic node positions and orthogonal edge paths for an
+      architecture diagram. Pass the Graph Metadata JSON you produced
+      (nodes + edges) as a JSON string. Returns JSON with positioned nodes
+      ({id,x,y,w,h}), edge paths ({from,to,d,points}), zones, and canvas
+      size. Call AFTER producing the graph to get render-ready coordinates.
+    input_schema:
+      type: object
+      properties:
+        GRAPH_JSON:
+          description: JSON string of {nodes:[{id,label,componentType,boundary}], edges:[{from,to}]} OR a mermaid string.
+          type: string
+      required:
+        - GRAPH_JSON
+
+# ── 2. Add this key under the spec's `tool_resources:` map ──
+tool_resources_entry:
+  LAYOUT_DIAGRAM:
+    type: function
+    identifier: SNOWGRAM_DB.CORE.LAYOUT_DIAGRAM
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE_WH   # substitute the target account's warehouse if different
+
+# ── 3. Append this sentence to instructions.orchestration ──
+# (Without it the tool is registered but the agent never calls it.)
+orchestration_instruction: >
+  After producing the Graph Metadata JSON, call LAYOUT_DIAGRAM with that JSON
+  (stringified) to obtain positioned nodes and orthogonal edge paths, and
+  include the returned layout JSON in your response.
