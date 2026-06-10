@@ -1,0 +1,93 @@
+/* interactivity.css — motion + component highlighting for SnowGram diagrams.
+ *
+ * Extracted from the SnowGram viewer (assets/viewer/index.html). Drop this
+ * into any page that renders a diagram with the class contract described in
+ * README.md, then call attachDiagramInteractivity() from interactivity.js.
+ *
+ * Theming: override the CSS variables below (or set them on a parent).
+ * Author: Abhinav Bannerjee
+ */
+
+:root {
+  --connector-color: #8aa0b4;     /* idle connector stroke */
+  --accent: #6cb9ff;              /* highlighted (connected) elements */
+  --primary-hover: #ffb454;       /* the element the cursor is directly over */
+}
+
+/* ── Connectors ─────────────────────────────────────────────── */
+
+/* Visible animated connector: dashed line whose dashes "flow" toward the
+ * target (the motion). */
+.connector-path {
+  fill: none;
+  stroke: var(--connector-color);
+  stroke-width: 1.3;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.7;
+  animation: connector-flow 1.2s linear infinite;
+  transition: stroke-width 120ms ease, opacity 120ms ease, stroke 120ms ease;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* Wider invisible hit area paired with each visible connector so the thin
+ * dashed stroke is easy to hover. */
+.connector-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* Hovering anywhere in the group (hit area or path) — or the group being
+ * marked .is-active by JS — highlights the visible connector: accent color,
+ * thicker, solid, motion paused. */
+.connector-group:hover .connector-path,
+.connector-group.is-active .connector-path {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+  opacity: 1;
+  stroke-dasharray: none;
+  animation: none;
+}
+
+.connector-dot {
+  fill: var(--connector-color);
+  opacity: 0.8;
+}
+
+@keyframes connector-flow { to { stroke-dashoffset: -20; } }
+
+/* ── Component (node) highlighting ──────────────────────────── */
+
+.flow-node {
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+}
+
+/* A node connected to the hovered element. */
+.flow-node.is-active {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 18px rgba(108, 185, 255, 0.45);
+  border-color: var(--accent);
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+  cursor: pointer;
+}
+
+/* The node the cursor is directly over — distinct color so the focus is
+ * obvious vs. its merely-connected neighbors. Wins over .is-active. */
+.flow-node.is-primary,
+.flow-node.is-active.is-primary {
+  box-shadow:
+    0 0 0 2px var(--primary-hover),
+    0 0 22px rgba(255, 180, 84, 0.55);
+  border-color: var(--primary-hover);
+  transition: box-shadow 120ms ease, border-color 120ms ease;
+  cursor: pointer;
+}
+
+/* Respect users who prefer reduced motion: stop the flowing dashes. */
+@media (prefers-reduced-motion: reduce) {
+  .connector-path { animation: none; }
+}

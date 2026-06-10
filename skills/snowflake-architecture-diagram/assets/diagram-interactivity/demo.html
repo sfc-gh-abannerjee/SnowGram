@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!--
+  demo.html — standalone proof of the interactivity layer.
+  Open in a browser: hover the cards or the dashed connectors.
+   - dashes flow toward the target (motion)
+   - hovering a connector highlights it + both endpoint cards
+   - hovering a card marks it primary (orange) + lights up every
+     connector touching it and those connectors' far endpoints
+  No build step, no dependencies. Author: Abhinav Bannerjee
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SnowGram diagram interactivity — demo</title>
+  <link rel="stylesheet" href="interactivity.css">
+  <style>
+    body { background:#0f1720; color:#e7eef6; font-family: system-ui, sans-serif; margin:0; padding:40px; }
+    h1 { font-size:16px; font-weight:600; margin:0 0 20px; }
+    .stage { position:relative; width:760px; height:200px; }
+    .stage svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+    .flow-node {
+      position:absolute; width:150px; padding:14px 12px; border-radius:8px;
+      background:#16212e; border:1.5px solid rgba(41,181,232,0.25);
+      text-align:center; font-size:13px;
+    }
+    .flow-node .detail { font-size:10.5px; opacity:.65; margin-top:3px; }
+  </style>
+</head>
+<body>
+  <h1>Hover the cards or the dashed connectors</h1>
+  <div class="stage" id="stage">
+    <!-- connectors first (behind cards visually is fine; hit area is wide) -->
+    <svg id="connectors">
+      <g class="connector-group" data-source-id="s3" data-target-id="bronze">
+        <path class="connector-hit" d="M160,60 L300,60"/>
+        <path class="connector-path" d="M160,60 L300,60" marker-end=""/>
+      </g>
+      <g class="connector-group" data-source-id="bronze" data-target-id="gold">
+        <path class="connector-hit" d="M450,60 L590,60"/>
+        <path class="connector-path" d="M450,60 L590,60"/>
+      </g>
+      <g class="connector-group" data-source-id="s3" data-target-id="gold">
+        <path class="connector-hit" d="M160,80 L230,140 L520,140 L590,80"/>
+        <path class="connector-path" d="M160,80 L230,140 L520,140 L590,80"/>
+      </g>
+    </svg>
+
+    <div class="flow-node" data-node-id="s3" style="left:10px; top:30px;">AWS S3<div class="detail">Data lake</div></div>
+    <div class="flow-node" data-node-id="bronze" style="left:300px; top:30px;">Bronze<div class="detail">Raw tables</div></div>
+    <div class="flow-node" data-node-id="gold" style="left:590px; top:30px;">Gold<div class="detail">Aggregates</div></div>
+  </div>
+
+  <script src="interactivity.js"></script>
+  <script>
+    attachDiagramInteractivity(
+      document.getElementById('stage'),
+      document.getElementById('connectors')
+    );
+  </script>
+</body>
+</html>
