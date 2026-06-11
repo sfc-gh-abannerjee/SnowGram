@@ -451,6 +451,387 @@
         }
       ],
       "timestamp": 1778787390.017567
+    },
+    "generic_f763ef7e9984": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Data Source",
+          "detail": "External system",
+          "zone": "External Sources",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/multi-location-resilience-data-pipelines"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe",
+          "detail": "Automated ingestion",
+          "zone": "Ingestion",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-classic-overview"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Landing Table",
+          "detail": "Raw, unprocessed data",
+          "zone": "Raw Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Declarative transformation",
+          "zone": "Transformation",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Consumption-ready output",
+          "zone": "Serving Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "Dashboards & reports",
+          "zone": "Consumption",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+        }
+      ],
+      "timestamp": 1778870797.477833
+    },
+    "security_3affdf9722d7": {
+      "spec": [
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Base Table",
+          "detail": "Source data with PII",
+          "zone": "Raw Layer",
+          "doc_url": "https://docs.snowflake.com/en/sql-reference/sql/create-table"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "MASKING_POLICY",
+          "label": "Masking Policy",
+          "detail": "Column-level dynamic masking",
+          "zone": "Security & Governance",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/security-column-ddm-intro"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "ROW_ACCESS_POLICY",
+          "label": "Row Access Policy",
+          "detail": "Row-level security",
+          "zone": "Security & Governance",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/security-row-intro"
+        },
+        {
+          "stage": "serving",
+          "object_type": "SECURE_VIEW",
+          "label": "Secure View",
+          "detail": "Policy-enforced access",
+          "zone": "Access Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/views-secure"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "Role-scoped dashboards",
+          "zone": "Consumption",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+        }
+      ],
+      "timestamp": 1778870798.881387
+    },
+    "generic_cd3f75b6cb98": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Data Source",
+          "detail": "External system",
+          "zone": "External Sources",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/multi-location-resilience-data-pipelines"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe",
+          "detail": "Automated ingestion",
+          "zone": "Ingestion",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-classic-overview"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Landing Table",
+          "detail": "Raw, unprocessed data",
+          "zone": "Raw Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Declarative transformation",
+          "zone": "Transformation",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Consumption-ready output",
+          "zone": "Serving Layer",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Analytics",
+          "detail": "Dashboards & reports",
+          "zone": "Consumption",
+          "doc_url": "https://docs.snowflake.com/en/user-guide/odbc-download"
+        }
+      ],
+      "timestamp": 1778870803.128574
+    },
+    "ml_bc6acfe86352": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "S3",
+          "label": "Training Data",
+          "detail": "Historical labeled examples",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe Streaming",
+          "detail": "Live event ingest",
+          "zone": "Ingestion"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Raw Events",
+          "detail": "Append-only events",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "FEATURE_STORE",
+          "label": "Feature Store",
+          "detail": "Versioned feature views",
+          "zone": "Feature Engineering"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "SNOWPARK_ML",
+          "label": "Snowpark ML",
+          "detail": "scikit-learn / XGBoost training",
+          "zone": "Model Training"
+        },
+        {
+          "stage": "serving",
+          "object_type": "MODEL_REGISTRY",
+          "label": "Model Registry",
+          "detail": "Versioned model artifacts",
+          "zone": "Model Management"
+        },
+        {
+          "stage": "serving",
+          "object_type": "SPCS",
+          "label": "Inference Service",
+          "detail": "Snowpark Container Services",
+          "zone": "Serving Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "STREAMLIT",
+          "label": "ML App",
+          "detail": "Predictions dashboard",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778877134.9400058
+    },
+    "cleanroom_6fb68e651799": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "DATA_SHARE",
+          "label": "Provider Data",
+          "detail": "Party A contribution",
+          "zone": "Provider Sources"
+        },
+        {
+          "stage": "source",
+          "object_type": "DATA_SHARE",
+          "label": "Partner Data",
+          "detail": "Party B contribution",
+          "zone": "Provider Sources"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "CLEANROOM",
+          "label": "Data Clean Room",
+          "detail": "Cross-party joint analysis",
+          "zone": "Clean Room"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "ROW_ACCESS_POLICY",
+          "label": "Row Access Policy",
+          "detail": "Per-party row scoping",
+          "zone": "Security & Governance"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "MASKING_POLICY",
+          "label": "Differential Privacy",
+          "detail": "Noise on aggregations",
+          "zone": "Security & Governance"
+        },
+        {
+          "stage": "serving",
+          "object_type": "SECURE_VIEW",
+          "label": "Approved Output",
+          "detail": "Aggregate-only results",
+          "zone": "Access Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "STREAMLIT",
+          "label": "Cohort Explorer",
+          "detail": "Joint analytics app",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778877135.007563
+    },
+    "marketing_c83d000be44e": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "WEB_APP",
+          "label": "Clickstream",
+          "detail": "Web / app events",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "source",
+          "object_type": "SALESFORCE",
+          "label": "CRM",
+          "detail": "Salesforce contacts & opps",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe Streaming",
+          "detail": "Event ingest",
+          "zone": "Ingestion"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "CONNECTOR",
+          "label": "Salesforce Connector",
+          "detail": "Native CRM sync",
+          "zone": "Ingestion"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Events",
+          "detail": "Raw clickstream",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Contacts",
+          "detail": "CRM dimension",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Attribution DT",
+          "detail": "Event-time join & scoring",
+          "zone": "Transformation"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Attribution Mart",
+          "detail": "Per-customer scores",
+          "zone": "Serving Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "BI_TOOL",
+          "label": "Marketing BI",
+          "detail": "Growth team dashboards",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778877135.0844831
+    },
+    "streaming_3eb5503f2937": {
+      "spec": [
+        {
+          "stage": "source",
+          "object_type": "KAFKA",
+          "label": "Kafka",
+          "detail": "Streaming topic",
+          "zone": "External Sources"
+        },
+        {
+          "stage": "ingestion",
+          "object_type": "PIPE",
+          "label": "Snowpipe Streaming",
+          "detail": "Sub-second row-level ingest",
+          "zone": "Ingestion"
+        },
+        {
+          "stage": "raw_storage",
+          "object_type": "TABLE",
+          "label": "Staging Table",
+          "detail": "Landing zone for streaming data",
+          "zone": "Raw Layer"
+        },
+        {
+          "stage": "transformation",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Incremental aggregation",
+          "zone": "Transformation"
+        },
+        {
+          "stage": "serving",
+          "object_type": "DYNAMIC_TABLE",
+          "label": "Dynamic Table",
+          "detail": "Real-time serving layer",
+          "zone": "Serving Layer"
+        },
+        {
+          "stage": "consumption",
+          "object_type": "STREAMLIT",
+          "label": "Streamlit App",
+          "detail": "Real-time dashboard",
+          "zone": "Consumption"
+        }
+      ],
+      "timestamp": 1778877832.882972
     }
   },
   "created_at": 0

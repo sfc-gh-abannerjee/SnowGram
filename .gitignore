@@ -141,6 +141,16 @@ backend/tests/.ralph/
 # Cortex Code stash backups (auto-generated patch archives)
 .cortex/stash_backups/
 
+# Cortex Code eval baselines (auto-generated harness output)
+.cortex/baselines/
+
+# Snowflake brand kit — track only web-deliverable assets (PNG/SVG);
+# exclude print/design-source formats (EPS/AI) and guidelines PDF to keep repo lean
+frontend/public/icons/Snowflake Logo/Print/
+frontend/public/icons/Snowflake Logo/**/AI/
+frontend/public/icons/Snowflake Logo/**/EPS/
+frontend/public/icons/Snowflake Logo/*.pdf
+
 
 
 
