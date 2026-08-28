@@ -33,6 +33,12 @@ today's fixes for reported clutter/crowding/bad-routing issues.
   project-scoped enforced rule): never declare a layout/render change done
   without the user's explicit visual sign-off on the regenerated review
   package.
+- A Commit Wrap-Up Gate (`.cortex/hooks.json` + `AGENTS.md` + a
+  project-scoped enforced rule): a `Stop` hook that gives the existing,
+  deliberately non-blocking `ctx-tracker-reminder.sh` actual teeth for this
+  repo -- blocks ending the turn after a commit until the ctx tracker is
+  reconciled and living docs are either updated or explicitly acknowledged
+  as not applicable.
 
 ### Fixed
 - Intra-zone chain edges could get reordered out of sequence by the
