@@ -105,6 +105,9 @@ tests/
 !backend/tests/
 !backend/tests/agent/
 backend/tests/agent/results/
+# Keep the layout-engine's own test harness (determinism/geometry/crossing
+# invariants) -- it is real, meaningful CI-able coverage, not a scratch dir.
+!skills/snowflake-architecture-diagram/assets/layout-engine/tests/
 
 # Local setup helpers
 setup_user_access.sql

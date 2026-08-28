@@ -280,10 +280,24 @@ export function route(model, packed, opts = {}) {
     const chain = edgeChains && edgeChains[edgeIdx];
     if (chain && chain.length) {
       const rects = chain.map(id => nodeRectsById[id]).filter(Boolean);
+      // The dummy-chain spine assumes source, dummies, and target all sit on
+      // one shared lane row within a SINGLE row of zones. Row-wrap can place
+      // the dummies' zones on a different wrap-row than the source/target
+      // (rank-adjacency and wrap-row are independent), which would draw the
+      // spine's straight sweep through an unrelated row's cards. Guard: only
+      // trust the spine when its lane sits plausibly between source and
+      // target vertically; otherwise fall through to the general
+      // obstacle-aware router below.
       if (rects.length) {
-        const d = pointsToD(spineThroughChain(s, t, rects));
-        collected.push({ source: edge.source, target: edge.target, d, markerId: 'arrowhead' });
-        return;
+        const laneY = (rects[0].top + rects[0].bottom) / 2;
+        const sy = cy(s), ty = cy(t);
+        const tol = Math.max(s.bottom - s.top, t.bottom - t.top);
+        const laneOnPath = laneY >= Math.min(sy, ty) - tol && laneY <= Math.max(sy, ty) + tol;
+        if (laneOnPath) {
+          const d = pointsToD(spineThroughChain(s, t, rects));
+          collected.push({ source: edge.source, target: edge.target, d, markerId: 'arrowhead' });
+          return;
+        }
       }
     }
     const sameZone = s.zoneName === t.zoneName;
@@ -328,7 +342,14 @@ export function route(model, packed, opts = {}) {
       const srcZoneCx = (sz.left + sz.right) / 2, tgtZoneCx = (tz.left + tz.right) / 2;
       const horizontalGap = (tz.left > sz.right) || (sz.left > tz.right);
       const verticalGap = (tz.top > sz.bottom) || (sz.top > tz.bottom);
-      const useHorizontal = horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20);
+      // Diagonal case (row-wrap can place two zones on different wrap-rows
+      // AND different columns): both gaps are real, so prefer whichever
+      // corridor is actually clear/wider rather than defaulting to
+      // horizontal, which used to sweep straight through an unrelated row's
+      // cards when the vertical wrap-gutter was the safe path.
+      const useHorizontal = (horizontalGap && verticalGap)
+        ? (Math.abs(tgtZoneCx - srcZoneCx) >= Math.abs(tgtNodeCy - srcNodeCy))
+        : (horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20));
       const edgeMargin = 8;
 
       if (useHorizontal) {

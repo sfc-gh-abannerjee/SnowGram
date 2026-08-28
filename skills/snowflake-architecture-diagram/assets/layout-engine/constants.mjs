@@ -81,6 +81,14 @@ export const LAYOUT = {
   // outside-boundary columns get paddingTop:30 to align zone tops with
   // the boundary's border+padding inset.
   outsidePadTop: 30,
+  // ── row-wrapping (Phase 1) ──
+  // When the running row width would exceed this, wrap remaining placement
+  // units (outside columns, and the whole platform-boundary block) onto a
+  // new row instead of growing the canvas unboundedly to the right. Keeps
+  // the canvas a sane 2D shape regardless of node/zone count. Override via
+  // opts.maxCanvasWidth.
+  maxCanvasWidth: 1600,
+  rowWrapGap: 56,
 };
 
 // Categories considered INSIDE the Snowflake Data Cloud boundary.

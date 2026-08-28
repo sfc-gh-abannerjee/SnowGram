@@ -23,6 +23,37 @@ function maxOf(arr, seed) {
   return m;
 }
 
+// ── Generic row-wrap primitive (Phase 1) ──
+// Greedily packs a list of {width,height} items, in order, into rows: a new
+// row starts whenever the running row width would exceed maxWidth (never on
+// the FIRST item of a row, so one oversized item still makes progress
+// instead of looping forever). Mutates each item with .rowIdx/.xInRow and
+// returns row Y-offsets + overall size. Used at TWO levels: the outer
+// placement (outside columns + the whole platform-boundary block as one
+// atomic unit) and, recursively, for the zones packed WITHIN the boundary
+// — so a diagram with many nodes all inside one Snowflake account wraps
+// just as well as one with many external zones. This is deliberately
+// style-agnostic: it only bounds aspect ratio/width, never dictates a
+// particular visual arrangement.
+function wrapUnits(items, maxWidth, colGap, rowGap) {
+  let rowX = 0, rowIdx = 0;
+  const rowHeights = [];
+  items.forEach(u => {
+    if (rowX > 0 && rowX + u.width > maxWidth) { rowIdx++; rowX = 0; }
+    u.rowIdx = rowIdx;
+    u.xInRow = rowX;
+    rowX += u.width + colGap;
+    if (rowHeights[rowIdx] === undefined || u.height > rowHeights[rowIdx]) rowHeights[rowIdx] = u.height;
+  });
+  const rowYOffset = [];
+  let acc = 0;
+  for (let r = 0; r < rowHeights.length; r++) { rowYOffset[r] = acc; acc += (rowHeights[r] || 0) + rowGap; }
+  let totalWidth = 0;
+  items.forEach(u => { const right = u.xInRow + u.width; if (right > totalWidth) totalWidth = right; });
+  const totalHeight = rowHeights.length ? acc - rowGap : 0;
+  return { rowYOffset, totalWidth, totalHeight, numRows: rowHeights.length };
+}
+
 // ── Zone consolidation (port of renderFlow lines ~816-934) ──────────
 function consolidateZones(zones, nodesById, edges, opts) {
   if (opts.consolidate === false || zones.length <= 1) return zones;
@@ -388,48 +419,85 @@ export function pack(model, opts = {}) {
   const maxGap = Object.keys(perGap).reduce((m, g) => Math.max(m, perGap[g]), 0);
   const dynInnerGap = Math.min(LAYOUT.dynGapCap, LAYOUT.dynGapBase + LAYOUT.dynGapStep * Math.max(0, maxGap - 1));
 
-  const insideZoneTop = hasBoundary ? (LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop) : 0;
   const outsideZoneTop = hasBoundary ? LAYOUT.outsidePadTop : 0;
+  const maxCanvasWidth = (opts && opts.maxCanvasWidth) || LAYOUT.maxCanvasWidth;
 
-  const zoneRects = [];
-  const placedByZone = {};
-  let x = 0;
-  let boundaryLeft = null, boundaryRight = null, maxInsideBottom = 0;
-
+  // ── Phase 1a: build placement UNITS in original left-to-right order ──
+  // A unit is either one outside column (its zones placed side-by-side, as
+  // before) or, atomically, the WHOLE platform-boundary block (all snow
+  // columns snowStart..snowEnd, itself internally row-wrapped — see below).
+  // Units carry their own width/height so a row-wrap pass (1b) can decide,
+  // per unit, whether it still fits the current row or must start a new
+  // one — instead of one ever-growing x.
+  const units = [];
   for (let ci = 0; ci < columns.length; ci++) {
     if (!columns[ci].length) continue;
     if (hasBoundary && ci === snowStart) {
-      // open boundary; render snow columns snowStart..snowEnd inside
-      boundaryLeft = x;
-      let ix = x + LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide;
+      const boundaryChromeW = 2 * (LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide);
+      const innerMaxWidth = Math.max(maxCanvasWidth - boundaryChromeW, CARD.width);
+      const zonesInBoundary = [];
       for (let sci = snowStart; sci <= snowEnd; sci++) {
-        columns[sci].forEach(z => {
-          const zs = zoneSize(z);
-          const left = ix, top = insideZoneTop;
-          zoneRects.push({ name: z.name, left, right: left + zs.width, top, bottom: top + zs.height });
-          placedByZone[z.name] = { left, top, zs };
-          if (top + zs.height > maxInsideBottom) maxInsideBottom = top + zs.height;
-          ix += zs.width + dynInnerGap;
-        });
+        columns[sci].forEach(z => { const zs = zoneSize(z); zonesInBoundary.push({ z, zs, width: zs.width, height: zs.height }); });
       }
-      boundaryRight = ix - dynInnerGap + LAYOUT.boundaryPadSide + LAYOUT.boundaryBorder;
-      x = boundaryRight + LAYOUT.outerColGap;
-      ci = snowEnd; // skip the snow columns we just placed
+      const innerWrap = wrapUnits(zonesInBoundary, innerMaxWidth, dynInnerGap, LAYOUT.rowWrapGap);
+      const width = boundaryChromeW + innerWrap.totalWidth;
+      const height = LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop + innerWrap.totalHeight + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
+      units.push({ kind: 'boundary', width, height, zonesInBoundary, innerWrap });
+      ci = snowEnd; // skip the snow columns we just measured
       continue;
     }
-    // outside column
+    let colW = 0;
+    let colH = 0;
+    const zonesInCol = [];
     columns[ci].forEach(z => {
       const zs = zoneSize(z);
-      const left = x, top = outsideZoneTop;
-      zoneRects.push({ name: z.name, left, right: left + zs.width, top, bottom: top + zs.height });
-      placedByZone[z.name] = { left, top, zs };
-      x += zs.width + LAYOUT.outerColGap;
+      zonesInCol.push({ z, zs });
+      colW += zs.width + LAYOUT.outerColGap;
+      if (zs.height > colH) colH = zs.height;
     });
+    colW -= LAYOUT.outerColGap;
+    units.push({ kind: 'outside', width: colW, height: colH, zonesInCol });
   }
 
+  // ── Phase 1b: greedy row-wrap of the outer units ──
+  const outerWrap = wrapUnits(units, maxCanvasWidth, LAYOUT.outerColGap, LAYOUT.rowWrapGap);
+
+  // ── Phase 1c: actual placement using each unit's row/x/y (outer), and,
+  // for the boundary unit, its own inner row/x/y on top of that. ──
+  const zoneRects = [];
+  const placedByZone = {};
+  let boundaryLeft = null, boundaryRight = null, boundaryTop = null, boundaryBottom = null;
+
+  units.forEach(u => {
+    const rowTop = outerWrap.rowYOffset[u.rowIdx] || 0;
+    if (u.kind === 'boundary') {
+      boundaryLeft = u.xInRow;
+      boundaryTop = rowTop;
+      boundaryRight = u.xInRow + u.width;
+      boundaryBottom = rowTop + u.height;
+      const innerOriginX = u.xInRow + LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide;
+      const innerOriginY = rowTop + LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop;
+      u.zonesInBoundary.forEach(item => {
+        const left = innerOriginX + item.xInRow;
+        const top = innerOriginY + (u.innerWrap.rowYOffset[item.rowIdx] || 0);
+        const zs = item.zs;
+        zoneRects.push({ name: item.z.name, left, right: left + zs.width, top, bottom: top + zs.height });
+        placedByZone[item.z.name] = { left, top, zs };
+      });
+    } else {
+      let ix = u.xInRow;
+      const top = rowTop + outsideZoneTop;
+      u.zonesInCol.forEach(({ z, zs }) => {
+        const left = ix;
+        zoneRects.push({ name: z.name, left, right: left + zs.width, top, bottom: top + zs.height });
+        placedByZone[z.name] = { left, top, zs };
+        ix += zs.width + LAYOUT.outerColGap;
+      });
+    }
+  });
+
   const platformBoundary = hasBoundary ? {
-    left: boundaryLeft, right: boundaryRight,
-    top: 0, bottom: maxInsideBottom + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder,
+    left: boundaryLeft, right: boundaryRight, top: boundaryTop, bottom: boundaryBottom,
   } : null;
 
   // ── place node cards within each zone ──
@@ -488,16 +556,20 @@ export function pack(model, opts = {}) {
     if (rz.left > lz.right) zoneGaps.push({ left: lz.right, right: rz.left, center: (lz.right + rz.left) / 2 });
   }
 
-  // extend the platform boundary to enclose the dummy-lane bus channel that sits
-  // below the (now compact) zone boxes.
+  // extend the platform boundary to enclose the dummy-lane bus channel that
+  // sits below the (now compact) zone boxes -- only for dummy nodes that
+  // actually live in an inside-the-boundary zone (row-wrap can place other
+  // dummy lanes, e.g. in an outside column, on a completely different row).
   if (platformBoundary) {
+    const insideZoneNames = {};
+    units.forEach(u => { if (u.kind === 'boundary') u.zonesInBoundary.forEach(({ z }) => { insideZoneNames[z.name] = true; }); });
     let deepest = 0;
-    nodeRects.forEach(nr => { if (nr.dummy && nr.bottom > deepest) deepest = nr.bottom; });
+    nodeRects.forEach(nr => { if (nr.dummy && insideZoneNames[nr.zoneName] && nr.bottom > deepest) deepest = nr.bottom; });
     const need = deepest + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
     if (deepest > 0 && need > platformBoundary.bottom) platformBoundary.bottom = need;
   }
 
-  const width = maxOf(zoneRects.map(z => z.right), Math.max(x, platformBoundary ? platformBoundary.right : 0));
+  const width = maxOf(zoneRects.map(z => z.right), platformBoundary ? platformBoundary.right : 0);
   const height = maxOf(zoneRects.map(z => z.bottom), platformBoundary ? platformBoundary.bottom : 0);
 
   return {

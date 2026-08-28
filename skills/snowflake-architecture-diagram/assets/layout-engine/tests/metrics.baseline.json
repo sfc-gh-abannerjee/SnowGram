@@ -1,0 +1,6 @@
+{
+  "_note": "Phase-0 baseline for connector-routing-layered-rework. Captured before any layered-drawing changes. nodeStyle: wide. Lower is better (except determinism). Re-run `node tests/metrics.mjs` after each phase and compare.",
+  "captured": "2026-06-22 pre-Phase-1",
+  "stress19": { "logical_inversions": 1, "crossing_edge_pairs": 12, "total_bends": 28, "bus_stagger": 517, "multi_zone_edges": 6 },
+  "medallion8": { "logical_inversions": 0, "crossing_edge_pairs": 0, "total_bends": 4, "bus_stagger": 39, "multi_zone_edges": 0 }
+}
