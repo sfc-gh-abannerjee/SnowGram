@@ -189,6 +189,8 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
             edge_labels[f"{s}|{t}"] = e["label"]
 
     base_graph = {"nodes": g_nodes, "edges": g_edges}
+    if model.get("containers"):
+        base_graph["containers"] = model["containers"]
 
     # narrow geometry (svg/drawio/mmd) + wide geometry (HTML icon-left)
     layout = _run_layout(json.dumps(base_graph), wide=False)

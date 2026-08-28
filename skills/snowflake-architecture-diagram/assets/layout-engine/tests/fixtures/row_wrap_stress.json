@@ -1,0 +1,182 @@
+{
+  "nodes": [
+    {
+      "id": "synapse",
+      "label": "Azure Synapse",
+      "componentType": "azure_synapse",
+      "zone": "Apex Azure Sources"
+    },
+    {
+      "id": "azsql",
+      "label": "Azure SQL",
+      "componentType": "azure_sql",
+      "zone": "Apex Azure Sources"
+    },
+    {
+      "id": "blob",
+      "label": "Azure Blob",
+      "componentType": "azure_blob_storage",
+      "zone": "Apex Azure Sources"
+    },
+    {
+      "id": "dbt",
+      "label": "dbt",
+      "componentType": "dbt",
+      "zone": "Apex Transform"
+    },
+    {
+      "id": "adf",
+      "label": "Azure Data Factory",
+      "componentType": "azure_data_factory",
+      "zone": "Apex Ingestion"
+    },
+    {
+      "id": "pl",
+      "label": "Azure Private Link",
+      "componentType": "azure_private_link",
+      "zone": "Private Connectivity"
+    },
+    {
+      "id": "arcadia",
+      "label": "Arcadia Health",
+      "componentType": "snowflake_account",
+      "zone": "External Snowflake Provider"
+    },
+    {
+      "id": "pipe",
+      "label": "Snowpipe",
+      "componentType": "snowpipe",
+      "zone": "Ingest"
+    },
+    {
+      "id": "bronze",
+      "label": "Bronze",
+      "componentType": "dynamic_table",
+      "zone": "Medallion"
+    },
+    {
+      "id": "silver",
+      "label": "Silver",
+      "componentType": "dynamic_table",
+      "zone": "Medallion"
+    },
+    {
+      "id": "gold",
+      "label": "Gold",
+      "componentType": "dynamic_table",
+      "zone": "Medallion"
+    },
+    {
+      "id": "wh",
+      "label": "Warehouse",
+      "componentType": "warehouse",
+      "zone": "Compute"
+    },
+    {
+      "id": "gov",
+      "label": "Horizon Governance",
+      "componentType": "governance",
+      "zone": "Compute"
+    },
+    {
+      "id": "share",
+      "label": "Secure Data Sharing",
+      "componentType": "secure_view",
+      "zone": "Sharing"
+    },
+    {
+      "id": "cortex",
+      "label": "Cortex Cowork",
+      "componentType": "cortex",
+      "zone": "Apps"
+    },
+    {
+      "id": "streamlit",
+      "label": "Streamlit/React",
+      "componentType": "streamlit",
+      "zone": "Apps"
+    },
+    {
+      "id": "analysts",
+      "label": "Apex Analysts",
+      "componentType": "user",
+      "zone": "Consumers"
+    },
+    {
+      "id": "pbi",
+      "label": "Power BI (legacy)",
+      "componentType": "power_bi",
+      "zone": "Consumers"
+    }
+  ],
+  "edges": [
+    {
+      "from": "synapse",
+      "to": "adf"
+    },
+    {
+      "from": "azsql",
+      "to": "adf"
+    },
+    {
+      "from": "blob",
+      "to": "adf"
+    },
+    {
+      "from": "dbt",
+      "to": "adf"
+    },
+    {
+      "from": "adf",
+      "to": "pl"
+    },
+    {
+      "from": "pl",
+      "to": "pipe"
+    },
+    {
+      "from": "arcadia",
+      "to": "share"
+    },
+    {
+      "from": "pipe",
+      "to": "bronze"
+    },
+    {
+      "from": "bronze",
+      "to": "silver"
+    },
+    {
+      "from": "silver",
+      "to": "gold"
+    },
+    {
+      "from": "share",
+      "to": "gold"
+    },
+    {
+      "from": "gold",
+      "to": "wh"
+    },
+    {
+      "from": "wh",
+      "to": "gov"
+    },
+    {
+      "from": "wh",
+      "to": "cortex"
+    },
+    {
+      "from": "cortex",
+      "to": "streamlit"
+    },
+    {
+      "from": "streamlit",
+      "to": "analysts"
+    },
+    {
+      "from": "pl",
+      "to": "pbi"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "nodes": [
+    {
+      "id": "kinesis",
+      "label": "Kinesis",
+      "category": "onprem",
+      "zone": "AWS Ingestion"
+    },
+    {
+      "id": "lambda",
+      "label": "AWS Lambda",
+      "category": "onprem",
+      "zone": "AWS Ingestion"
+    },
+    {
+      "id": "glue",
+      "label": "AWS Glue",
+      "category": "onprem",
+      "zone": "AWS Processing"
+    },
+    {
+      "id": "emr",
+      "label": "EMR",
+      "category": "onprem",
+      "zone": "AWS Processing"
+    },
+    {
+      "id": "pipe",
+      "label": "Snowpipe",
+      "componentType": "pipe",
+      "zone": "Ingest"
+    },
+    {
+      "id": "bronze",
+      "label": "Bronze",
+      "componentType": "dynamic_table",
+      "zone": "Medallion"
+    },
+    {
+      "id": "bi",
+      "label": "BI Tool",
+      "componentType": "bi_tool",
+      "zone": "Consumption"
+    }
+  ],
+  "edges": [
+    {
+      "from": "kinesis",
+      "to": "lambda"
+    },
+    {
+      "from": "lambda",
+      "to": "glue"
+    },
+    {
+      "from": "glue",
+      "to": "emr"
+    },
+    {
+      "from": "emr",
+      "to": "pipe"
+    },
+    {
+      "from": "pipe",
+      "to": "bronze"
+    },
+    {
+      "from": "bronze",
+      "to": "bi"
+    }
+  ],
+  "containers": [
+    {
+      "id": "aws_account",
+      "label": "AWS Account",
+      "container_ids": [
+        "aws_vpc"
+      ]
+    },
+    {
+      "id": "aws_vpc",
+      "label": "AWS VPC",
+      "zone_names": [
+        "AWS Ingestion",
+        "AWS Processing"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+{
+  "nodes": [
+    {
+      "id": "src1",
+      "label": "Source A",
+      "componentType": "s3",
+      "zone": "Sources"
+    },
+    {
+      "id": "src2",
+      "label": "Source B",
+      "componentType": "kafka",
+      "zone": "Sources"
+    },
+    {
+      "id": "proc1",
+      "label": "Transform 1",
+      "componentType": "task",
+      "zone": "Processing"
+    },
+    {
+      "id": "proc2",
+      "label": "Transform 2",
+      "componentType": "task",
+      "zone": "Processing"
+    },
+    {
+      "id": "proc3",
+      "label": "Transform 3",
+      "componentType": "task",
+      "zone": "Processing"
+    },
+    {
+      "id": "sink1",
+      "label": "Gold A",
+      "componentType": "dynamic_table",
+      "zone": "Serving"
+    },
+    {
+      "id": "sink2",
+      "label": "Gold B",
+      "componentType": "dynamic_table",
+      "zone": "Serving"
+    }
+  ],
+  "edges": [
+    {
+      "from": "src1",
+      "to": "proc1"
+    },
+    {
+      "from": "src1",
+      "to": "proc2"
+    },
+    {
+      "from": "src1",
+      "to": "proc3"
+    },
+    {
+      "from": "src2",
+      "to": "proc1"
+    },
+    {
+      "from": "src2",
+      "to": "proc2"
+    },
+    {
+      "from": "proc1",
+      "to": "sink1"
+    },
+    {
+      "from": "proc2",
+      "to": "sink1"
+    },
+    {
+      "from": "proc3",
+      "to": "sink2"
+    },
+    {
+      "from": "src1",
+      "to": "sink2"
+    }
+  ]
+}

@@ -109,6 +109,10 @@ backend/tests/agent/results/
 # invariants) -- it is real, meaningful CI-able coverage, not a scratch dir.
 !skills/snowflake-architecture-diagram/assets/layout-engine/tests/
 
+# Review harness output (regenerable build artifacts -- screenshots + HTML;
+# the harness script itself and its fixtures ARE tracked, this output isn't)
+skills/snowflake-architecture-diagram/review-runs/
+
 # Local setup helpers
 setup_user_access.sql
 

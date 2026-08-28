@@ -1,0 +1,90 @@
+{
+  "nodes": [
+    {
+      "id": "s3",
+      "label": "AWS S3",
+      "detail": "Data lake",
+      "componentType": "s3",
+      "zone": "External Sources"
+    },
+    {
+      "id": "kafka",
+      "label": "Kafka",
+      "detail": "Event stream",
+      "componentType": "kafka",
+      "zone": "External Sources"
+    },
+    {
+      "id": "pipe",
+      "label": "Snowpipe",
+      "detail": "Auto-ingest",
+      "componentType": "pipe",
+      "zone": "Ingestion"
+    },
+    {
+      "id": "bronze",
+      "label": "Bronze Tables",
+      "detail": "Raw VARIANT",
+      "componentType": "table",
+      "zone": "Bronze Layer"
+    },
+    {
+      "id": "stream",
+      "label": "Bronze Stream",
+      "detail": "CDC",
+      "componentType": "stream",
+      "zone": "Bronze Layer"
+    },
+    {
+      "id": "silver",
+      "label": "Silver Tables",
+      "detail": "Cleaned & conformed",
+      "componentType": "dynamic_table",
+      "zone": "Silver Layer"
+    },
+    {
+      "id": "gold",
+      "label": "Gold Tables",
+      "detail": "Business aggregates",
+      "componentType": "dynamic_table",
+      "zone": "Gold Layer"
+    },
+    {
+      "id": "bi",
+      "label": "BI Platform",
+      "detail": "Dashboards",
+      "componentType": "bi_tool",
+      "zone": "Consumption"
+    }
+  ],
+  "edges": [
+    {
+      "from": "s3",
+      "to": "pipe"
+    },
+    {
+      "from": "kafka",
+      "to": "pipe"
+    },
+    {
+      "from": "pipe",
+      "to": "bronze"
+    },
+    {
+      "from": "bronze",
+      "to": "stream"
+    },
+    {
+      "from": "stream",
+      "to": "silver"
+    },
+    {
+      "from": "silver",
+      "to": "gold"
+    },
+    {
+      "from": "gold",
+      "to": "bi"
+    }
+  ]
+}
