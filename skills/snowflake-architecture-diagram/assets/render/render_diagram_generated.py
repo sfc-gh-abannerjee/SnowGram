@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
 # Canonical source: /Users/abannerjee/Documents/snowgram-eng/backend/sql/dev_temp_abannerjee/render_diagram.dev.sql
-# sha256(source): e9cb700a78855ad7d6729092d9d3da43fc0d8f9f43bd7ec37c19087e81d9257d
-# generated: 2026-06-25T23:36:17+00:00
+# sha256(source): e89c6ee158ba9535fa23db871b3a0acc612be7ad8477c9d718b9ae9c36db9ac2
+# generated: 2026-08-28T16:59:27+00:00
 
 
 import json, base64
@@ -65,6 +65,30 @@ def _drawio_img(uri):
 
 def _pal(cat):
     return PAL.get(cat or 'default', PAL['default'])
+
+
+def _containers_sorted(layout):
+    """Containers ordered shallow-to-deep (top-level first, nested last),
+    so a render loop draws outer boxes before inner ones -- guarantees an
+    inner box/label is never visually buried under one drawn later on top.
+    """
+    cs = layout.get('containers', []) or []
+    by_id = {c.get('id'): c for c in cs}
+    depth_cache = {}
+
+    def depth(cid, seen=None):
+        if cid in depth_cache:
+            return depth_cache[cid]
+        seen = seen or set()
+        if cid is None or cid in seen or cid not in by_id:
+            return 0
+        seen.add(cid)
+        parent = by_id[cid].get('parentId')
+        d = 0 if parent is None else 1 + depth(parent, seen)
+        depth_cache[cid] = d
+        return d
+
+    return sorted(cs, key=lambda c: depth(c.get('id')))
 
 
 def _wrap(s, n=20):
@@ -145,6 +169,10 @@ def _svg(layout, icons, edge_labels, title, doc):
         body.append('<rect x="' + str(X(b['x'])) + '" y="' + str(Y(b['y'])) + '" width="' + str(round(b['w'], 1)) +
                     '" height="' + str(round(b['h'], 1)) + '" rx="14" fill="none" stroke="#29B5E8" stroke-width="2" stroke-dasharray="8 5"/>')
         body.append('<text x="' + str(X(b['x']) + 12) + '" y="' + str(Y(b['y']) + 20) + '" font-size="12" font-weight="bold" fill="#29B5E8">Snowflake Data Cloud</text>')
+    for c in _containers_sorted(layout):
+        body.append('<rect x="' + str(X(c['x'])) + '" y="' + str(Y(c['y'])) + '" width="' + str(round(c['w'], 1)) +
+                    '" height="' + str(round(c['h'], 1)) + '" rx="12" fill="none" stroke="#7C5CFC" stroke-width="1.75" stroke-dasharray="5 3"/>')
+        body.append('<text x="' + str(X(c['x']) + 12) + '" y="' + str(Y(c['y']) + 18) + '" font-size="11" font-weight="bold" fill="#7C5CFC" letter-spacing="0.4">' + _xesc(str(c.get('label') or c['id']).upper()) + '</text>')
     for z in layout.get('zones', []):
         fill, stroke = _pal(z.get('category'))
         body.append('<rect x="' + str(X(z['x'])) + '" y="' + str(Y(z['y'])) + '" width="' + str(round(z['w'], 1)) +
@@ -272,6 +300,10 @@ def _drawio(layout, icons, edge_labels, title, doc):
     if b:
         st = 'rounded=1;dashed=1;fillColor=none;strokeColor=#29B5E8;verticalAlign=top;fontColor=#29B5E8;fontStyle=1;'
         cells.append('<mxCell id="boundary" value="Snowflake Data Cloud" style="' + _xesc(st) + '" vertex="1" parent="1">' + geo(b['x'], b['y'], b['w'], b['h']) + '</mxCell>')
+    for c in _containers_sorted(layout):
+        st = 'rounded=1;dashed=1;dashPattern=5 3;fillColor=none;strokeColor=#7C5CFC;verticalAlign=top;fontColor=#7C5CFC;fontStyle=1;'
+        cid = 'container_' + _sid(c['id'])
+        cells.append('<mxCell id="' + cid + '" value="' + _xesc(str(c.get('label') or c['id'])) + '" style="' + _xesc(st) + '" vertex="1" parent="1">' + geo(c['x'], c['y'], c['w'], c['h']) + '</mxCell>')
     for i, z in enumerate(layout.get('zones', [])):
         fill, stroke = _pal(z.get('category'))
         st = 'rounded=1;fillColor=' + fill + ';strokeColor=' + stroke + ';verticalAlign=top;fontStyle=1;whiteSpace=wrap;html=1;'
@@ -488,11 +520,11 @@ _THEME_CSS = (
     ':root{--bg:#eef2f7;--fg:#16203a;--header-c1:#2aa3df;--header-c2:#1366b3;--header-grad:linear-gradient(120deg,var(--header-c1),var(--header-c2));'
     '--border:#dbe3ee;--panel-bg:#ffffff;--panel-fg:#16203a;--muted:#5b6678;--link:#1763c6;'
     '--paper:#f7f9fc;--node-bg:#ffffff;--node-border:#c9d4e3;--node-fg:#16203a;--zone-label:#5b6678;'
-    '--legend-bg:#ffffff;--connector-color:#7587a0;--accent:#1763c6;--primary-hover:#e0820b}'
+    '--legend-bg:#ffffff;--connector-color:#7587a0;--accent:#1763c6;--primary-hover:#e0820b;--container-color:#7C5CFC}'
     ':root[data-theme="dark"]{--bg:#070b18;--fg:#e8edf6;--header-c1:#0b5874;--header-c2:#0a1733;--header-grad:linear-gradient(120deg,var(--header-c1),var(--header-c2));'
     '--border:#23304f;--panel-bg:#0e1730;--panel-fg:#e8edf6;--muted:#93a0b8;--link:#7cc0ff;'
     '--paper:#0b1326;--node-bg:#13203c;--node-border:#26375c;--node-fg:#eef3fc;--zone-label:#aab8d4;'
-    '--legend-bg:#0e1730;--connector-color:#8aa0b4;--accent:#6cb9ff;--primary-hover:#ffb454}'
+    '--legend-bg:#0e1730;--connector-color:#8aa0b4;--accent:#6cb9ff;--primary-hover:#ffb454;--container-color:#a78bfa}'
     'html,body{margin:0}'
     'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;'
     'background:var(--bg);color:var(--fg);transition:background .25s,color .25s}'
@@ -518,6 +550,7 @@ _THEME_CSS = (
     '.connectors{position:absolute;left:0;top:0;overflow:visible}'
     '.z-label{font-weight:700;font-size:11px;fill:var(--zone-label);letter-spacing:.8px}'
     '.b-rect{stroke:var(--accent-2)}.b-label{font-weight:800;font-size:11.5px;fill:var(--accent-2);letter-spacing:.9px}'
+    '.container-rect{stroke:var(--container-color);stroke-width:1.75px;stroke-dasharray:5 3}.container-label{font-weight:700;font-size:10px;fill:var(--container-color);letter-spacing:.6px}'
     '.conn-arrow{fill:var(--connector-color)}'
     '.flow-node{position:absolute;box-sizing:border-box;background:var(--node-bg);border:1px solid var(--node-border);'
     'border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 7px;'
@@ -563,7 +596,7 @@ _THEME_CSS = (
     # canonical tunable set (driven by the Customize panel) — node typography/spacing/icon/motion/color
     '--font-title:var(--font);--font-sub:var(--font);--title-weight:700;--sub-weight:600;'
     '--title-size:11.5px;--sub-size:8.5px;--title-track:-.1px;--sub-track:.6px;--node-line:1.15;--title-gap:1px;'
-    '--node-gap:10px;--node-px:12px;--icon-size:26px;--icon-pad:6px;--icon-radius:11px;'
+    '--node-gap:10px;--node-px:13px;--icon-size:26px;--icon-pad:6px;--icon-radius:11px;'
     '--node-radius:16px;--connector-dur:1.6s;--accent-2:#29B5E8}'
     'html{background:var(--bg)}'
     # aurora runs in BOTH themes (matches the reference deck); body is transparent so html bg + aurora show through
@@ -593,7 +626,7 @@ _THEME_CSS = (
     '.canvas{padding:40px 40px 30px}'
     # ===== items 5/6: icon-left (wide) node + uppercase tracked subhead =====
     '.nodes-wide .flow-node{flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;'
-    'gap:var(--node-gap);padding:8px var(--node-px);border-radius:var(--node-radius);'
+    'gap:var(--node-gap);padding:var(--node-px);border-radius:var(--node-radius);'
     'box-shadow:0 1px 2px rgba(10,30,60,.08),0 10px 24px rgba(10,30,60,.13),inset 0 1px 0 rgba(255,255,255,.10)}'
     '.nodes-wide .flow-node::before{content:"";position:absolute;left:0;right:0;top:0;height:3px;'
     'background:linear-gradient(90deg,var(--accent-2),rgba(113,211,220,.5),transparent);opacity:.85}'
@@ -891,7 +924,7 @@ _PANEL_JS = (
     "['Spacing',["
     "{k:'title-gap',t:'range',label:'Title → sub gap',min:-6,max:8,step:0.5,def:1,unit:'px'},"
     "{k:'node-gap',t:'range',label:'Icon → text gap',min:4,max:20,step:0.5,def:10,unit:'px'},"
-    "{k:'node-px',t:'range',label:'Node h-padding',min:6,max:24,step:0.5,def:12,unit:'px'}]],"
+    "{k:'node-px',t:'range',label:'Node h-padding',min:6,max:24,step:0.5,def:13,unit:'px'}]],"
     "['Icon',["
     "{k:'icon-size',t:'range',label:'Icon size',min:14,max:40,step:1,def:26,unit:'px'},"
     "{k:'icon-pad',t:'range',label:'Icon padding',min:2,max:12,step:0.5,def:6,unit:'px'},"
@@ -1035,6 +1068,11 @@ def _html(layout, icons, edge_labels, title, doc):
                  'stroke-width="2" stroke-dasharray="8 5"/>')
         s.append('<text class="b-label" x="' + str(round(b['x'] + 12, 1)) + '" y="' + str(round(b['y'] + 20, 1)) +
                  '">SNOWFLAKE DATA CLOUD</text>')
+    for c in _containers_sorted(layout):
+        s.append('<rect class="container-rect" x="' + str(round(c['x'], 1)) + '" y="' + str(round(c['y'], 1)) + '" width="' +
+                 str(round(c['w'], 1)) + '" height="' + str(round(c['h'], 1)) + '" rx="12" fill="none"/>')
+        s.append('<text class="container-label" x="' + str(round(c['x'] + 12, 1)) + '" y="' + str(round(c['y'] + 18, 1)) +
+                 '">' + _xesc(str(c.get('label') or c['id']).upper()) + '</text>')
     for z in zones:
         _f, stroke = _pal(z.get('category'))
         s.append('<rect x="' + str(round(z['x'], 1)) + '" y="' + str(round(z['y'], 1)) + '" width="' +
