@@ -33,6 +33,27 @@ export const CARD = {
   detailLineHeight: 1.4,
 };
 
+// CARD_WIDE — icon-left (wide) card geometry. The icon sits BESIDE the text
+// (not stacked above it), so card height is pad + max(icon, text) + pad rather
+// than pad + icon + text + pad. Tuned to match the renderer's `.nodes-wide`
+// CSS (icon-size 26 + icon-pad 6 -> 38px content box; node padding 8). Keep
+// these in sync with render_diagram's _THEME_CSS .nodes-wide rules so the
+// rendered card fills the engine-sized box (see plan Phase 3).
+export const CARD_WIDE = {
+  padTop: 8,
+  padRight: 12,
+  padBottom: 8,
+  padLeft: 12,
+  width: 160,            // same column width as narrow; wrapWidth subtracts icon+gap
+  iconBox: 38,           // rendered fn-ico content box (--icon-size 26 + --icon-pad 6)
+  iconGap: 10,           // horizontal gap between icon and text
+  labelFont: 12.5,
+  labelLineHeight: 1.2,
+  labelMarginBottom: 1,
+  detailFont: 10,
+  detailLineHeight: 1.3,
+};
+
 export const ZONE = {
   border: 1.5,
   stripe: 4, // .zone-stripe height

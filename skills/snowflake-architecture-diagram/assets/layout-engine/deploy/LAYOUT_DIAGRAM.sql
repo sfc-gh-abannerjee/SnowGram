@@ -55,6 +55,27 @@ const CARD = {
   detailLineHeight: 1.4,
 };
 
+// CARD_WIDE — icon-left (wide) card geometry. The icon sits BESIDE the text
+// (not stacked above it), so card height is pad + max(icon, text) + pad rather
+// than pad + icon + text + pad. Tuned to match the renderer's `.nodes-wide`
+// CSS (icon-size 26 + icon-pad 6 -> 38px content box; node padding 8). Keep
+// these in sync with render_diagram's _THEME_CSS .nodes-wide rules so the
+// rendered card fills the engine-sized box (see plan Phase 3).
+const CARD_WIDE = {
+  padTop: 8,
+  padRight: 12,
+  padBottom: 8,
+  padLeft: 12,
+  width: 160,            // same column width as narrow; wrapWidth subtracts icon+gap
+  iconBox: 38,           // rendered fn-ico content box (--icon-size 26 + --icon-pad 6)
+  iconGap: 10,           // horizontal gap between icon and text
+  labelFont: 12.5,
+  labelLineHeight: 1.2,
+  labelMarginBottom: 1,
+  detailFont: 10,
+  detailLineHeight: 1.3,
+};
+
 const ZONE = {
   border: 1.5,
   stripe: 4, // .zone-stripe height
@@ -132,6 +153,8 @@ function lineCount(text, fontPx, wrapWidth, measureText) {
 // Compute { w, h } for a single node card given its label + detail.
 function measureNode(node, opts = {}) {
   const measureText = opts.measureText || defaultMeasureText;
+  if (opts.nodeStyle === 'wide') return measureNodeWide(node, opts, measureText);
+
   const w = opts.cardWidth || CARD.width;
   const wrapWidth = w - CARD.padLeft - CARD.padRight;
 
@@ -146,6 +169,28 @@ function measureNode(node, opts = {}) {
   const detailH = detailLines * detailLineH;
 
   const h = CARD.padTop + iconH + labelH + detailH + CARD.padBottom;
+  return { w, h: Math.round(h) };
+}
+
+// Wide (icon-left) card: icon sits BESIDE the text, so height is
+// pad + max(icon, label+detail) + pad — not the stacked sum. The text column
+// is the card width minus the icon, gap, and side padding.
+function measureNodeWide(node, opts, measureText) {
+  const C = CARD_WIDE;
+  const w = opts.cardWidth || C.width;
+  const wrapWidth = w - C.padLeft - C.padRight - C.iconBox - C.iconGap;
+
+  const labelLineH = C.labelFont * C.labelLineHeight;
+  const detailLineH = C.detailFont * C.detailLineHeight;
+
+  const labelLines = lineCount(node.label, C.labelFont, wrapWidth, measureText);
+  const detailLines = lineCount(node.detail, C.detailFont, wrapWidth, measureText);
+
+  const labelH = labelLines * labelLineH + (labelLines && detailLines ? C.labelMarginBottom : 0);
+  const detailH = detailLines * detailLineH;
+  const textH = labelH + detailH;
+
+  const h = C.padTop + Math.max(C.iconBox, textH) + C.padBottom;
   return { w, h: Math.round(h) };
 }
 
@@ -245,6 +290,7 @@ function normalize(model) {
     nodes, edges, zones,
     consolidate: model.consolidate !== false,
     consolidate_sub_groups: model.consolidate_sub_groups === true,
+    nodeStyle: model.nodeStyle || null,
   };
 }
 
@@ -508,6 +554,56 @@ function intraLayout(zone, edges) {
   return { col, rowIdx, maxCol, hasFanout };
 }
 
+// ── Cross-zone row ordering (Sugiyama crossing reduction) ──
+// Each zone is its own layer (assignRanks gives unique ranks). Within a zone
+// (and within each intra-zone column), reorder nodes vertically by the median
+// row of their neighbors in adjacent zones, swept down then up, a few passes.
+// This is the deterministic, global version of the manual "reorder a zone"
+// lever — it removes most cross-zone edge crossings. Sub-group zones keep their
+// explicit order (their columns ARE the grouping).
+function orderRowsAcrossZones(zones, zoneInfo, rank, edges, isDummy) {
+  const zoneOf = {};
+  zones.forEach(z => (z.node_ids || []).forEach(id => { zoneOf[id] = z.name; }));
+  const nbrPrev = {}, nbrNext = {};
+  edges.forEach(e => {
+    const sz = zoneOf[e.source], tz = zoneOf[e.target];
+    if (!sz || !tz || sz === tz) return;
+    const sr = rank[sz], tr = rank[tz];
+    if (sr == null || tr == null) return;
+    if (sr < tr) { (nbrNext[e.source] = nbrNext[e.source] || []).push(e.target); (nbrPrev[e.target] = nbrPrev[e.target] || []).push(e.source); }
+    else if (sr > tr) { (nbrPrev[e.source] = nbrPrev[e.source] || []).push(e.target); (nbrNext[e.target] = nbrNext[e.target] || []).push(e.source); }
+  });
+  const rowOf = (id) => { const zi = zoneInfo[zoneOf[id]]; return zi ? (zi.rowIdx[id] || 0) : null; };
+  function median(ids) {
+    const rows = ids.map(rowOf).filter(v => v != null).sort((a, b) => a - b);
+    if (!rows.length) return null;
+    const m = rows.length;
+    return m % 2 ? rows[(m - 1) / 2] : (rows[m / 2 - 1] + rows[m / 2]) / 2;
+  }
+  function reorderZone(z, dir) {
+    const zi = zoneInfo[z.name];
+    if (!zi || zi.subGroups) return;               // sub-group zones keep explicit order
+    const byCol = {};
+    (z.node_ids || []).forEach(id => { if (isDummy && isDummy[id]) return; const c = zi.col[id] || 0; (byCol[c] = byCol[c] || []).push(id); });
+    Object.keys(byCol).forEach(c => {
+      const ids = byCol[c];
+      if (ids.length < 2) return;
+      const nbrMap = dir < 0 ? nbrPrev : nbrNext;
+      const items = ids.map(id => ({ id, b: median(nbrMap[id] || []), orig: zi.rowIdx[id] || 0 }));
+      // nodes without a neighbor on this side stay at their current row (fallback to orig);
+      // stable tie-break by original row keeps determinism.
+      items.sort((p, q) => { const pb = p.b == null ? p.orig : p.b, qb = q.b == null ? q.orig : q.b; return pb !== qb ? pb - qb : p.orig - q.orig; });
+      items.forEach((it, i) => { zi.rowIdx[it.id] = i; });
+    });
+  }
+  const byRank = zones.slice().sort((a, b) => rank[a.name] - rank[b.name]);
+  for (let it = 0; it < 4; it++) {
+    const down = it % 2 === 0;
+    const seq = down ? byRank : byRank.slice().reverse();
+    seq.forEach(z => reorderZone(z, down ? -1 : 1));
+  }
+}
+
 function pack(model, opts = {}) {
   const nodesById = {};
   model.nodes.forEach(n => { nodesById[n.id] = n; });
@@ -516,13 +612,56 @@ function pack(model, opts = {}) {
   zones.forEach(z => { if (!z.node_ids) z.node_ids = model.nodes.filter(n => n.zone === z.name).map(n => n.id); });
 
   const rank = assignRanks(zones, model.edges);
+
+  // ── Phase 2: virtual (dummy) nodes for edges spanning >1 zone-rank ──
+  // Reserve a thin lane in each intermediate zone so the long edge routes as a
+  // straight spine instead of a deep detour. Dummies are INTERNAL: they shape
+  // placement + ordering + routing, then get stripped from the output (RENDER
+  // never sees them).
+  const DUMMY_W = 10, DUMMY_H = 8;
+  const isDummy = {};
+  const dummyZone = {};       // dummyId -> zone name
+  const edgeChains = {};      // edgeIndex -> [dummyId,...] in src->tgt order
+  const orderingEdges = [];   // decomposed edge list (unused for ordering; kept for clarity)
+  {
+    const nodeZone = {};
+    zones.forEach(z => (z.node_ids || []).forEach(id => { nodeZone[id] = z.name; }));
+    const zoneByRank = {};
+    zones.forEach(z => { zoneByRank[rank[z.name]] = z; });
+    let dseq = 0;
+    model.edges.forEach((e, ei) => {
+      const zs = nodeZone[e.source], zt = nodeZone[e.target];
+      if (!zs || !zt || zs === zt) { orderingEdges.push({ source: e.source, target: e.target }); return; }
+      const rs = rank[zs], rt = rank[zt];
+      if (rs == null || rt == null || Math.abs(rs - rt) <= 1) { orderingEdges.push({ source: e.source, target: e.target }); return; }
+      const dir = rs < rt ? 1 : -1;
+      const chain = [];
+      let prev = e.source;
+      for (let r = rs + dir; r !== rt; r += dir) {
+        const Z = zoneByRank[r];
+        if (!Z || Z.sub_groups) continue;          // skip sub-group zones (keep explicit order)
+        const did = '__dummy_' + (dseq++) + '_' + r;
+        (Z.node_ids = Z.node_ids || []).push(did);
+        nodeZone[did] = Z.name;
+        isDummy[did] = true;
+        dummyZone[did] = Z.name;
+        orderingEdges.push({ source: prev, target: did });
+        prev = did;
+        chain.push(did);
+      }
+      orderingEdges.push({ source: prev, target: e.target });
+      if (chain.length) edgeChains[ei] = chain;
+    });
+  }
+
   const colCount = maxOf(zones.map(z => rank[z.name])) + 1;
   const columns = []; for (let r = 0; r < colCount; r++) columns.push([]);
   zones.forEach(z => columns[rank[z.name]].push(z));
 
-  // measure nodes
+  // measure nodes (+ thin size for dummy lane reservations)
   const size = {};
   model.nodes.forEach(n => { size[n.id] = measureNode(n, opts); });
+  Object.keys(isDummy).forEach(did => { size[did] = { w: DUMMY_W, h: DUMMY_H }; });
 
   // intra-zone layout per zone + sub-group handling
   const zoneInfo = {};
@@ -540,15 +679,66 @@ function pack(model, opts = {}) {
     }
   });
 
+  // ── cross-zone crossing reduction: reorder rows within zones by neighbor
+  // median (Sugiyama sweep) before row bands are measured ──
+  orderRowsAcrossZones(zones, zoneInfo, rank, model.edges, isDummy);
+
+  // ── Phase 2: align each dummy chain onto ONE shared row so the long edge
+  // routes as a straight spine. Prefer the source's own row when it is clear of
+  // real nodes through every zone the chain crosses (shallow + straight); else
+  // drop into a fresh lane row below the real content (a tidy parallel bus). ──
+  {
+    const realZoneOf = {};
+    zones.forEach(z => (z.node_ids || []).forEach(id => { if (!isDummy[id]) realZoneOf[id] = z.name; }));
+    const rowOfReal = (id) => { const zn = realZoneOf[id]; const zi = zn ? zoneInfo[zn] : null; return zi ? (zi.rowIdx[id] || 0) : 0; };
+    const realRows = {};   // zoneName -> Set(occupied rowIdx)
+    zones.forEach(z => {
+      const zi = zoneInfo[z.name]; const s = new Set();
+      (z.node_ids || []).forEach(id => { if (!isDummy[id]) s.add(zi.rowIdx[id] || 0); });
+      realRows[z.name] = s;
+    });
+    let realMaxRow = 0;
+    Object.values(realRows).forEach(s => s.forEach(r => { if (r > realMaxRow) realMaxRow = r; }));
+    let nextLane = realMaxRow + 1;
+    const chainKeys = Object.keys(edgeChains).map(Number).sort((a, b) => {
+      const ra = rowOfReal(model.edges[a].source), rb = rowOfReal(model.edges[b].source);
+      if (ra !== rb) return ra - rb;
+      return a - b;
+    });
+    // Phase 3 bus-merging: deep chains that share a source share ONE lane, so
+    // they run as a single trunk and split only at each target's climb.
+    const laneBySource = {};
+    chainKeys.forEach(ei => {
+      const chain = edgeChains[ei], e = model.edges[ei];
+      const sRow = rowOfReal(e.source);
+      const zonesCrossed = chain.map(did => dummyZone[did]);
+      const clear = zonesCrossed.every(zn => !realRows[zn].has(sRow));
+      let laneRow;
+      if (clear) laneRow = sRow;
+      else if (laneBySource[e.source] != null) laneRow = laneBySource[e.source];
+      else { laneRow = nextLane++; laneBySource[e.source] = laneRow; }
+      chain.forEach(did => { zoneInfo[dummyZone[did]].rowIdx[did] = laneRow; });
+      zonesCrossed.forEach(zn => realRows[zn].add(laneRow));
+    });
+  }
+
   // ── global row-band heights (alignRowsAcrossZones) ──
   // Row band r height = max card height of any node at rowIdx r anywhere.
   const rowBand = {};
-  model.nodes.forEach(n => {
-    const zi = zoneInfo[n.zone]; if (!zi) return;
-    const r = zi.rowIdx[n.id] || 0;
-    const h = size[n.id].h;
-    if (!rowBand[r] || h > rowBand[r]) rowBand[r] = h;
+  zones.forEach(z => {
+    const zi = zoneInfo[z.name]; if (!zi) return;
+    (z.node_ids || []).forEach(id => {
+      const r = zi.rowIdx[id] || 0;
+      const h = (size[id] ? size[id].h : 0);
+      if (!rowBand[r] || h > rowBand[r]) rowBand[r] = h;
+    });
   });
+
+  // deepest row across ALL nodes incl. dummy lanes. Zone BOXES ignore lane rows
+  // (they stay compact); the platform boundary extends to cover the lane channel
+  // that sits below the zone boxes.
+  let globalMaxRow = 0;
+  zones.forEach(z => { const zi = zoneInfo[z.name]; if (!zi) return; (z.node_ids || []).forEach(id => { const r = zi.rowIdx[id] || 0; if (r > globalMaxRow) globalMaxRow = r; }); });
 
   // card width per zone column: sub/fanout use narrower min width
   function cardWidth(zi) {
@@ -569,9 +759,10 @@ function pack(model, opts = {}) {
     const cw = cardWidth(zi), cg = colGap(zi);
     const bodyW = ncols * cw + (ncols - 1) * cg;
     const width = bodyW + ZONE.bodyPad * 2 + ZONE.border * 2;
-    // rows present = distinct rowIdx values
+    // rows present = distinct rowIdx of REAL nodes (dummy lanes do NOT inflate
+    // the zone box; they live in the boundary channel below).
     let maxRow = 0;
-    (z.node_ids || []).forEach(id => { const r = zi.rowIdx[id] || 0; if (r > maxRow) maxRow = r; });
+    (z.node_ids || []).forEach(id => { if (isDummy[id]) return; const r = zi.rowIdx[id] || 0; if (r > maxRow) maxRow = r; });
     let bodyH = 0;
     for (let r = 0; r <= maxRow; r++) bodyH += (rowBand[r] || 0) + (r > 0 ? ZONE.rowGap : 0);
     const height = ZONE.border + ZONE.stripe + ZONE.headerMinHeight + ZONE.bodyPad * 2 + bodyH;
@@ -661,15 +852,19 @@ function pack(model, opts = {}) {
     // y offset per row band
     const rowTop = {};
     let acc = 0;
-    for (let r = 0; r <= p.zs.maxRow; r++) { rowTop[r] = bodyTop + acc; acc += (rowBand[r] || 0) + ZONE.rowGap; }
+    // global row table (covers real rows + dummy lane rows below the box)
+    for (let r = 0; r <= globalMaxRow; r++) { rowTop[r] = bodyTop + acc; acc += (rowBand[r] || 0) + ZONE.rowGap; }
 
     const subAccum = {}; // subColIdx -> rect accumulator
     (z.node_ids || []).forEach(id => {
       const c = zi.col[id] || 0;
       const r = zi.rowIdx[id] || 0;
-      const left = bodyLeft + c * (cw + cg);
+      const bandH = (rowBand[r] || (size[id] ? size[id].h : 0));
+      let left = bodyLeft + c * (cw + cg);
+      let right = left + cw;
+      if (isDummy[id]) { const mid = left + cw / 2; left = mid - DUMMY_W / 2; right = mid + DUMMY_W / 2; }
       const top = rowTop[r];
-      const rect = { id, zoneName: z.name, col: c, rowIdx: r, left, right: left + cw, top, bottom: top + (rowBand[r] || size[id].h) };
+      const rect = { id, zoneName: z.name, col: c, rowIdx: r, dummy: !!isDummy[id], left, right, top, bottom: top + bandH };
       nodeRects.push(rect);
       if (zi.subGroups) {
         const sidx = zi.subColOf[id];
@@ -700,6 +895,15 @@ function pack(model, opts = {}) {
     if (rz.left > lz.right) zoneGaps.push({ left: lz.right, right: rz.left, center: (lz.right + rz.left) / 2 });
   }
 
+  // extend the platform boundary to enclose the dummy-lane bus channel that sits
+  // below the (now compact) zone boxes.
+  if (platformBoundary) {
+    let deepest = 0;
+    nodeRects.forEach(nr => { if (nr.dummy && nr.bottom > deepest) deepest = nr.bottom; });
+    const need = deepest + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
+    if (deepest > 0 && need > platformBoundary.bottom) platformBoundary.bottom = need;
+  }
+
   const width = maxOf(zoneRects.map(z => z.right), Math.max(x, platformBoundary ? platformBoundary.right : 0));
   const height = maxOf(zoneRects.map(z => z.bottom), platformBoundary ? platformBoundary.bottom : 0);
 
@@ -707,6 +911,7 @@ function pack(model, opts = {}) {
     zones, rank, columns,
     nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps,
     platformBoundary, snowStart, snowEnd,
+    edgeChains, isDummy,
     width, height,
   };
 }
@@ -725,7 +930,7 @@ function pack(model, opts = {}) {
 
 function route(model, packed, opts = {}) {
   const edges = model.edges || [];
-  const { nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps, platformBoundary } = packed;
+  const { nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps, platformBoundary, edgeChains } = packed;
   if (!edges.length) return [];
 
   const nodeIdToZoneName = {}; nodeRects.forEach(nr => { nodeIdToZoneName[nr.id] = nr.zoneName; });
@@ -750,6 +955,30 @@ function route(model, packed, opts = {}) {
     let s = 'M' + pts[0][0] + ',' + pts[0][1];
     for (let i = 1; i < pts.length; i++) s += ' L' + pts[i][0] + ',' + pts[i][1];
     return s;
+  }
+
+  // Phase 2: route a layer-spanning edge as a straight orthogonal spine in its
+  // reserved lane. Drop into the inter-zone GAP just outside the source (clear
+  // of cards), traverse at the lane y (a reserved/clear row), then climb in the
+  // gap just before the target. Never runs horizontally at a card's row inside
+  // an intermediate zone, so it cannot cross a card.
+  function spineThroughChain(s, t, rects) {
+    const sCx = (s.left + s.right) / 2, tCx = (t.left + t.right) / 2;
+    const goingRight = tCx >= sCx;
+    const laneY = (rects[0].top + rects[0].bottom) / 2;
+    const sy = (s.top + s.bottom) / 2, ty = (t.top + t.bottom) / 2;
+    const sx = goingRight ? s.right : s.left;
+    const ex = goingRight ? t.left : t.right;
+    const firstD = rects[0], lastD = rects[rects.length - 1];
+    const dropX = goingRight ? (s.right + firstD.left) / 2 : (s.left + firstD.right) / 2;
+    const climbX = goingRight ? (lastD.right + t.left) / 2 : (lastD.left + t.right) / 2;
+    const pts = [[sx, sy]];
+    if (Math.abs(dropX - sx) > 0.5) pts.push([dropX, sy]);
+    pts.push([dropX, laneY]);
+    pts.push([climbX, laneY]);
+    pts.push([climbX, ty]);
+    pts.push([ex, ty]);
+    return pts;
   }
 
   // ── routeOrthogonal (cross-zone obstacle-aware) ──
@@ -968,6 +1197,15 @@ function route(model, packed, opts = {}) {
   edges.forEach((edge, edgeIdx) => {
     const s = nodeRectsById[edge.source], t = nodeRectsById[edge.target];
     if (!s || !t) return;
+    const chain = edgeChains && edgeChains[edgeIdx];
+    if (chain && chain.length) {
+      const rects = chain.map(id => nodeRectsById[id]).filter(Boolean);
+      if (rects.length) {
+        const d = pointsToD(spineThroughChain(s, t, rects));
+        collected.push({ source: edge.source, target: edge.target, d, markerId: 'arrowhead' });
+        return;
+      }
+    }
     const sameZone = s.zoneName === t.zoneName;
     let x1, y1, x2, y2, d;
     let arrowDir = 'right', useFixedArrow = false;
@@ -1183,8 +1421,13 @@ function layout(input, opts = {}) {
   if (opts.consolidate === false) model.consolidate = false;
   if (opts.consolidate_sub_groups === true) model.consolidate_sub_groups = true;
 
-  const packed = pack(model, opts);
-  const edges = route(model, packed, opts);
+  // nodeStyle ('wide' | null) may arrive via opts OR ride in the model JSON
+  // (so the 1-arg UDF, which calls layout(input, {}), can still request wide
+  // by setting model.nodeStyle). Thread it down to card measurement.
+  const effOpts = { ...opts, nodeStyle: opts.nodeStyle || model.nodeStyle || null };
+
+  const packed = pack(model, effOpts);
+  const edges = route(model, packed, effOpts);
 
   const zoneByName = {};
   packed.zoneRects.forEach(z => { zoneByName[z.name] = z; });
@@ -1192,7 +1435,7 @@ function layout(input, opts = {}) {
   packed.zones.forEach(z => { zoneCategory[z.name] = z.category; });
 
   return {
-    nodes: packed.nodeRects.map(n => ({
+    nodes: packed.nodeRects.filter(n => !n.dummy).map(n => ({
       id: n.id,
       zone: n.zoneName,
       x: n.left, y: n.top, w: n.right - n.left, h: n.bottom - n.top,

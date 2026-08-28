@@ -33,8 +33,13 @@ export function layout(input, opts = {}) {
   if (opts.consolidate === false) model.consolidate = false;
   if (opts.consolidate_sub_groups === true) model.consolidate_sub_groups = true;
 
-  const packed = pack(model, opts);
-  const edges = route(model, packed, opts);
+  // nodeStyle ('wide' | null) may arrive via opts OR ride in the model JSON
+  // (so the 1-arg UDF, which calls layout(input, {}), can still request wide
+  // by setting model.nodeStyle). Thread it down to card measurement.
+  const effOpts = { ...opts, nodeStyle: opts.nodeStyle || model.nodeStyle || null };
+
+  const packed = pack(model, effOpts);
+  const edges = route(model, packed, effOpts);
 
   const zoneByName = {};
   packed.zoneRects.forEach(z => { zoneByName[z.name] = z; });
@@ -42,7 +47,7 @@ export function layout(input, opts = {}) {
   packed.zones.forEach(z => { zoneCategory[z.name] = z.category; });
 
   return {
-    nodes: packed.nodeRects.map(n => ({
+    nodes: packed.nodeRects.filter(n => !n.dummy).map(n => ({
       id: n.id,
       zone: n.zoneName,
       x: n.left, y: n.top, w: n.right - n.left, h: n.bottom - n.top,

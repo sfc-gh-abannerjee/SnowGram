@@ -12,7 +12,7 @@
 // anywhere` — i.e. text wraps at the content width regardless of word
 // boundaries, so line count is ceil(totalGlyphWidth / wrapWidth).
 
-import { CARD } from './constants.mjs';
+import { CARD, CARD_WIDE } from './constants.mjs';
 
 // Average glyph width as a fraction of font size for the UI font stack.
 // Tuned to a mid value for a typical sans-serif; close enough for line
@@ -35,6 +35,8 @@ function lineCount(text, fontPx, wrapWidth, measureText) {
 // Compute { w, h } for a single node card given its label + detail.
 export function measureNode(node, opts = {}) {
   const measureText = opts.measureText || defaultMeasureText;
+  if (opts.nodeStyle === 'wide') return measureNodeWide(node, opts, measureText);
+
   const w = opts.cardWidth || CARD.width;
   const wrapWidth = w - CARD.padLeft - CARD.padRight;
 
@@ -49,5 +51,27 @@ export function measureNode(node, opts = {}) {
   const detailH = detailLines * detailLineH;
 
   const h = CARD.padTop + iconH + labelH + detailH + CARD.padBottom;
+  return { w, h: Math.round(h) };
+}
+
+// Wide (icon-left) card: icon sits BESIDE the text, so height is
+// pad + max(icon, label+detail) + pad — not the stacked sum. The text column
+// is the card width minus the icon, gap, and side padding.
+function measureNodeWide(node, opts, measureText) {
+  const C = CARD_WIDE;
+  const w = opts.cardWidth || C.width;
+  const wrapWidth = w - C.padLeft - C.padRight - C.iconBox - C.iconGap;
+
+  const labelLineH = C.labelFont * C.labelLineHeight;
+  const detailLineH = C.detailFont * C.detailLineHeight;
+
+  const labelLines = lineCount(node.label, C.labelFont, wrapWidth, measureText);
+  const detailLines = lineCount(node.detail, C.detailFont, wrapWidth, measureText);
+
+  const labelH = labelLines * labelLineH + (labelLines && detailLines ? C.labelMarginBottom : 0);
+  const detailH = detailLines * detailLineH;
+  const textH = labelH + detailH;
+
+  const h = C.padTop + Math.max(C.iconBox, textH) + C.padBottom;
   return { w, h: Math.round(h) };
 }

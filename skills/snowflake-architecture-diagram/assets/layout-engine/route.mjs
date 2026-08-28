@@ -10,7 +10,7 @@
 
 export function route(model, packed, opts = {}) {
   const edges = model.edges || [];
-  const { nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps, platformBoundary } = packed;
+  const { nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps, platformBoundary, edgeChains } = packed;
   if (!edges.length) return [];
 
   const nodeIdToZoneName = {}; nodeRects.forEach(nr => { nodeIdToZoneName[nr.id] = nr.zoneName; });
@@ -35,6 +35,30 @@ export function route(model, packed, opts = {}) {
     let s = 'M' + pts[0][0] + ',' + pts[0][1];
     for (let i = 1; i < pts.length; i++) s += ' L' + pts[i][0] + ',' + pts[i][1];
     return s;
+  }
+
+  // Phase 2: route a layer-spanning edge as a straight orthogonal spine in its
+  // reserved lane. Drop into the inter-zone GAP just outside the source (clear
+  // of cards), traverse at the lane y (a reserved/clear row), then climb in the
+  // gap just before the target. Never runs horizontally at a card's row inside
+  // an intermediate zone, so it cannot cross a card.
+  function spineThroughChain(s, t, rects) {
+    const sCx = (s.left + s.right) / 2, tCx = (t.left + t.right) / 2;
+    const goingRight = tCx >= sCx;
+    const laneY = (rects[0].top + rects[0].bottom) / 2;
+    const sy = (s.top + s.bottom) / 2, ty = (t.top + t.bottom) / 2;
+    const sx = goingRight ? s.right : s.left;
+    const ex = goingRight ? t.left : t.right;
+    const firstD = rects[0], lastD = rects[rects.length - 1];
+    const dropX = goingRight ? (s.right + firstD.left) / 2 : (s.left + firstD.right) / 2;
+    const climbX = goingRight ? (lastD.right + t.left) / 2 : (lastD.left + t.right) / 2;
+    const pts = [[sx, sy]];
+    if (Math.abs(dropX - sx) > 0.5) pts.push([dropX, sy]);
+    pts.push([dropX, laneY]);
+    pts.push([climbX, laneY]);
+    pts.push([climbX, ty]);
+    pts.push([ex, ty]);
+    return pts;
   }
 
   // ── routeOrthogonal (cross-zone obstacle-aware) ──
@@ -253,6 +277,15 @@ export function route(model, packed, opts = {}) {
   edges.forEach((edge, edgeIdx) => {
     const s = nodeRectsById[edge.source], t = nodeRectsById[edge.target];
     if (!s || !t) return;
+    const chain = edgeChains && edgeChains[edgeIdx];
+    if (chain && chain.length) {
+      const rects = chain.map(id => nodeRectsById[id]).filter(Boolean);
+      if (rects.length) {
+        const d = pointsToD(spineThroughChain(s, t, rects));
+        collected.push({ source: edge.source, target: edge.target, d, markerId: 'arrowhead' });
+        return;
+      }
+    }
     const sameZone = s.zoneName === t.zoneName;
     let x1, y1, x2, y2, d;
     let arrowDir = 'right', useFixedArrow = false;

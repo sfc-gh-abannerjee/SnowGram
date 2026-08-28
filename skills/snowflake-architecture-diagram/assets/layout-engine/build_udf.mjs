@@ -97,9 +97,16 @@ const fixture = {
 const fn = new Function('GRAPH_JSON', udfBody);
 const bundledOut = fn(JSON.stringify(fixture));
 const directOut = JSON.stringify(layout(fixture, {}));
-if (bundledOut === directOut) {
-  console.log('SMOKE TEST OK — bundled UDF body matches layout() exactly');
+
+// wide variant: nodeStyle rides in the model JSON (1-arg UDF still honors it)
+const wideFixture = { ...fixture, nodeStyle: 'wide' };
+const bundledWide = fn(JSON.stringify(wideFixture));
+const directWide = JSON.stringify(layout(wideFixture, {}));
+
+if (bundledOut === directOut && bundledWide === directWide) {
+  console.log('SMOKE TEST OK — bundled UDF body matches layout() (narrow + wide)');
 } else {
-  console.error('SMOKE TEST FAILED — bundle diverges from layout()');
+  if (bundledOut !== directOut) console.error('SMOKE TEST FAILED — narrow bundle diverges from layout()');
+  if (bundledWide !== directWide) console.error('SMOKE TEST FAILED — wide bundle diverges from layout()');
   process.exitCode = 1;
 }

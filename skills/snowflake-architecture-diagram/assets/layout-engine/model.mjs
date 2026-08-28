@@ -92,6 +92,7 @@ function normalize(model) {
     nodes, edges, zones,
     consolidate: model.consolidate !== false,
     consolidate_sub_groups: model.consolidate_sub_groups === true,
+    nodeStyle: model.nodeStyle || null,
   };
 }
 
