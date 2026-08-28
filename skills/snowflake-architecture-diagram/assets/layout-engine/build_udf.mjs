@@ -15,8 +15,8 @@ import { layout } from './index.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// dependency order: constants -> measure -> model -> pack -> route -> index
-const ORDER = ['constants.mjs', 'measure.mjs', 'model.mjs', 'pack.mjs', 'route.mjs', 'index.mjs'];
+// dependency order: constants -> measure -> model -> pack -> route -> quality -> index
+const ORDER = ['constants.mjs', 'measure.mjs', 'model.mjs', 'pack.mjs', 'route.mjs', 'quality.mjs', 'index.mjs'];
 
 function stripModule(src) {
   return src

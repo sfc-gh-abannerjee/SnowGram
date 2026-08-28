@@ -26,6 +26,7 @@
 import { toModel } from './model.mjs';
 import { pack } from './pack.mjs';
 import { route } from './route.mjs';
+import { assessQuality } from './quality.mjs';
 
 export function layout(input, opts = {}) {
   const model = toModel(input);
@@ -46,7 +47,7 @@ export function layout(input, opts = {}) {
   const zoneCategory = {};
   packed.zones.forEach(z => { zoneCategory[z.name] = z.category; });
 
-  return {
+  const result = {
     nodes: packed.nodeRects.filter(n => !n.dummy).map(n => ({
       id: n.id,
       zone: n.zoneName,
@@ -64,6 +65,12 @@ export function layout(input, opts = {}) {
     } : null,
     width: packed.width, height: packed.height,
   };
+  // Generic, style-agnostic geometry quality check (Phase 4a) -- free to
+  // compute here since all the geometry already exists; lets a caller (e.g.
+  // GENERATE_DIAGRAM_ARTIFACTS) inspect result.quality without an extra SVG
+  // round-trip, and is the same check tests/run.mjs uses as an invariant.
+  result.quality = assessQuality(result, opts.qualityOpts);
+  return result;
 }
 
 export { toModel, fromGraphJSON, fromMermaid } from './model.mjs';

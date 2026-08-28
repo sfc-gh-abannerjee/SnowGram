@@ -6,6 +6,7 @@
 // the viewer commits cared about ("0 card crossings").
 
 import { layout } from '../index.mjs';
+import { assessQuality } from '../quality.mjs';
 
 let failures = 0;
 function check(name, cond, detail) {
@@ -48,24 +49,6 @@ const mermaidFixture = `flowchart LR
   classDef ext onprem
   class A,B ext`;
 
-// segment vs rect-interior crossing (with tolerance)
-function segCrossesRect(p1, p2, r, tol = 2) {
-  const x1 = p1[0], y1 = p1[1], x2 = p2[0], y2 = p2[1];
-  const L = r.x + tol, R = r.x + r.w - tol, T = r.y + tol, B = r.y + r.h - tol;
-  if (R <= L || B <= T) return false;
-  if (Math.abs(x1 - x2) < 0.5) { // vertical
-    const x = x1; if (x <= L || x >= R) return false;
-    const lo = Math.min(y1, y2), hi = Math.max(y1, y2);
-    return lo < B && hi > T;
-  }
-  if (Math.abs(y1 - y2) < 0.5) { // horizontal
-    const y = y1; if (y <= T || y >= B) return false;
-    const lo = Math.min(x1, x2), hi = Math.max(x1, x2);
-    return lo < R && hi > L;
-  }
-  return false; // diagonal (arcs) — ignore
-}
-
 function run(name, input) {
   console.log('\n# ' + name);
   const a = layout(input);
@@ -84,28 +67,14 @@ function run(name, input) {
     check('snow/bridge/outcome zones inside platform boundary', allIn);
   }
 
-  // routing invariant: no segment crosses a non-endpoint node card
-  const nodeById = Object.fromEntries(a.nodes.map(n => [n.id, n]));
-  let crossings = 0;
-  for (const e of a.edges) {
-    for (let i = 0; i < e.points.length - 1; i++) {
-      for (const n of a.nodes) {
-        if (n.id === e.from || n.id === e.to) continue;
-        if (segCrossesRect(e.points[i], e.points[i + 1], n)) crossings++;
-      }
-    }
-  }
-  check('0 card crossings (non-endpoint)', crossings === 0, crossings + ' crossing(s)');
-
-  // generic space-efficiency guardrail (Phase 1/4): canvas should never grow
-  // unboundedly in one dimension. Loose enough that small, naturally-wide
-  // pipelines (few zones, no wrap needed) still pass; tight enough to catch
-  // the exact pathology measured against the live agent's un-wrapped output
-  // (3486x220px, ~16:1, for an 18-node/9-zone diagram).
-  const aspect = Math.max(a.width / a.height, a.height / a.width);
-  check('bounded aspect ratio (space efficiency)', aspect <= 6, 'aspect=' + aspect.toFixed(2));
-
-  console.log(`  info nodes=${a.nodes.length} edges=${a.edges.length} size=${a.width}x${a.height} boundary=${!!a.platformBoundary}`);
+  // Generic quality gate (Phase 4a) -- same assessQuality() a live caller
+  // (e.g. GENERATE_DIAGRAM_ARTIFACTS) would see on result.quality. Covers:
+  // 0 card crossings (the viewer's original routing invariant), bounded
+  // aspect ratio (the exact 16:1/unbounded-width pathology measured against
+  // the live agent), and packing density (mostly-empty canvas).
+  const q = a.quality || assessQuality(a);
+  check('quality gate passes (crossings/aspect/density)', q.ok, JSON.stringify(q.issues));
+  console.log(`  info nodes=${a.nodes.length} edges=${a.edges.length} size=${a.width}x${a.height} boundary=${!!a.platformBoundary} quality=${JSON.stringify(q.metrics)}`);
 }
 
 // fan-out + fan-in across zones → exercises bridged H-V-H-V-H routing
