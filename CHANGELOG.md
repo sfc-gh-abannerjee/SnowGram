@@ -4,6 +4,59 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-08-28
+
+Track 1 (`skills/snowflake-architecture-diagram/`) doesn't carry its own
+version number yet, so this entry is dated rather than versioned. Covers a
+multi-session effort improving layout/render quality plus, separately,
+today's fixes for reported clutter/crowding/bad-routing issues.
+
+### Added
+- Row-wrapping: bounds canvas aspect ratio instead of growing width
+  unboundedly (`4711b8f`).
+- `quality.mjs`: generic, style-agnostic layout-quality validator (aspect
+  ratio, card crossings, packing density) attached to every `layout()`
+  result (`a243789`).
+- A Layout Quality Gate wired into the live `TEMP.ABANNERJEE.SNOWGRAM_AGENT`
+  orchestration instructions -- reads `quality.ok`/`quality.issues`, retries
+  once with adjusted hints, and discloses rather than hides an unresolved
+  defect (agent spec change, not a git commit).
+- Recursive nested containers: an optional `containers` field on the model
+  for arbitrary-depth grouping boxes (e.g. "AWS VPC" inside "AWS Account"),
+  with collision/cycle guardrails (`797aa30`), rendered in SVG/draw.io/HTML
+  in `snowgram-eng`.
+- `assets/scripts/review_harness.py`: reusable, offline (unless `--live`)
+  visual review harness -- renders every `tests/fixtures/*.json` scenario
+  through the real layout + render pipeline, screenshots each, and folds in
+  `tests/run.mjs`'s output into a generated `REVIEW.md` (`006c5cb`).
+- A Visual Verification Gate (`.cortex/hooks.json` + `AGENTS.md` + a
+  project-scoped enforced rule): never declare a layout/render change done
+  without the user's explicit visual sign-off on the regenerated review
+  package.
+
+### Fixed
+- Intra-zone chain edges could get reordered out of sequence by the
+  cross-zone Sugiyama sweep (e.g. Bronze/Gold/Silver instead of
+  Bronze/Silver/Gold), making a connector visually loop backward. Fixed by
+  making intra-zone edges a hard ordering constraint (`9a8efc7`).
+- Greedy first-fit row-wrap could leave a lone small zone stranded in a
+  mostly-empty trailing row whenever an earlier row was dominated by one
+  much bigger unit (e.g. the whole platform-boundary block). Replaced with
+  a balanced partition (same row count, evenly distributed) plus centering
+  any row narrower than the widest (`9a8efc7`).
+- The router's rail/detour selection only validated candidate paths against
+  obstacles within an edge's own original vertical span, so a detour
+  extending past that span (routine once row-wrapping puts rank-adjacent
+  zones on different physical rows) could still cut through cards outside
+  it. Added a global safety-net pass in `route()` that re-validates every
+  edge's final path against the real obstacle set and locally repairs
+  anything still crossing, regardless of which routing branch produced it
+  (`9a8efc7`). Verified against the live agent: a real Apex Health request
+  went from "2 minor unresolved crossings" to "zero card crossings."
+- `snow sql -f`/`-q` silently corrupts `&&` to `&` in JS/Python UDF bodies
+  unless `--enable-templating NONE` is passed (`1f583c2`) -- documented in
+  `assets/layout-engine/deploy/AGENT_INTEGRATION_RUNBOOK.md`.
+
 ## [1.1.0] - 2026-02-15
 
 ### Added
