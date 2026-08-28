@@ -10,12 +10,19 @@
 
 export function route(model, packed, opts = {}) {
   const edges = model.edges || [];
-  const { nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps, platformBoundary, edgeChains } = packed;
+  const { nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps, platformBoundary, edgeChains, containers } = packed;
   if (!edges.length) return [];
 
   const nodeIdToZoneName = {}; nodeRects.forEach(nr => { nodeIdToZoneName[nr.id] = nr.zoneName; });
   const nodeIdToSubColIdx = {}; nodeRects.forEach(nr => { if (nr.subColIdx != null) nodeIdToSubColIdx[nr.id] = nr.subColIdx; });
   const zoneRectByName = {}; zoneRects.forEach(z => { zoneRectByName[z.name] = z; });
+  // Phase 2: nested containers -- a node's full ancestor chain (immediate
+  // container up through the outermost one), so an edge starting/ending
+  // inside a container is never blocked by that container's OWN wall, only
+  // by OTHER, unrelated container boxes it happens to pass near.
+  const nodeIdToContainerChain = {};
+  nodeRects.forEach(nr => { nodeIdToContainerChain[nr.id] = nr.containerChain || []; });
+  const containerRects = containers || [];
 
   // ── snapToGap ──
   function snapToGap(trackX, x1, x2) {
@@ -67,6 +74,20 @@ export function route(model, packed, opts = {}) {
     const tgtZoneName = nodeIdToZoneName[tgtId] || '';
     const srcSubIdx = nodeIdToSubColIdx[srcId];
     const tgtSubIdx = nodeIdToSubColIdx[tgtId];
+    // Phase 2: containers the edge legitimately starts/ends inside (its own
+    // wall and every ancestor's wall) never count as obstacles for this edge.
+    const srcChain = nodeIdToContainerChain[srcId] || [];
+    const tgtChain = nodeIdToContainerChain[tgtId] || [];
+    function containerHitsOn(loX, hiX, y) {
+      const hits = [];
+      for (const cr of containerRects) {
+        if (srcChain.indexOf(cr.id) !== -1 || tgtChain.indexOf(cr.id) !== -1) continue;
+        if (y <= cr.top + 2 || y >= cr.bottom - 2) continue;
+        if (cr.right < loX + 2 || cr.left > hiX - 2) continue;
+        hits.push(cr);
+      }
+      return hits;
+    }
 
     function zonesOnH(xa, xb, y) {
       const loX = Math.min(xa, xb), hiX = Math.max(xa, xb);
@@ -84,6 +105,7 @@ export function route(model, packed, opts = {}) {
         if (sc.right < loX + 2 || sc.left > hiX - 2) continue;
         hits.push(sc);
       }
+      containerHitsOn(loX, hiX, y).forEach(cr => hits.push(cr));
       return hits;
     }
     function cardsOnH(xa, xb, y) {
@@ -127,6 +149,14 @@ export function route(model, packed, opts = {}) {
       if (!o && !e1 && !e2) continue;
       allZoneHits.push(sc2);
     }
+    for (const cr3 of containerRects) {
+      if (srcChain.indexOf(cr3.id) !== -1 || tgtChain.indexOf(cr3.id) !== -1) continue;
+      if (cr3.right < loX + 2 || cr3.left > hiX - 2) continue;
+      const o = !(cr3.bottom < pathTopBand || cr3.top > pathBotBand);
+      const e1 = cr3.top < y1 && cr3.bottom > y1, e2 = cr3.top < y2 && cr3.bottom > y2;
+      if (!o && !e1 && !e2) continue;
+      allZoneHits.push(cr3);
+    }
     if (!allZoneHits.length) {
       zHits1.forEach(z => allZoneHits.push(z));
       zHits2.forEach(z => { if (allZoneHits.indexOf(z) < 0) allZoneHits.push(z); });
@@ -136,6 +166,7 @@ export function route(model, packed, opts = {}) {
     }
 
     const clearance = 24;
+
     let minTop = allZoneHits[0].top, maxBottom = allZoneHits[0].bottom;
     for (let j = 1; j < allZoneHits.length; j++) { if (allZoneHits[j].top < minTop) minTop = allZoneHits[j].top; if (allZoneHits[j].bottom > maxBottom) maxBottom = allZoneHits[j].bottom; }
     const aboveY = minTop - clearance, belowY = maxBottom + clearance;

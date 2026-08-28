@@ -1,11 +1,20 @@
 // model.mjs — input front-ends. Both accepted:
 //   1. Graph metadata JSON: { nodes:[{id,label,componentType?,boundary?,
-//      zone?,category?,detail?}], edges:[{from,to}|{source,target}], zones? }
+//      zone?,category?,detail?}], edges:[{from,to}|{source,target}], zones?,
+//      containers?:[{id,label,zone_names?,node_ids?,container_ids?}] }
 //   2. Mermaid flowchart string: { mermaid: "flowchart LR ..." }
 //
 // Both normalize to the internal model the layout consumes:
 //   { nodes:[{id,label,detail,category,zone}], edges:[{source,target}],
-//     zones:[{name,category,node_ids}], consolidate, consolidate_sub_groups }
+//     zones:[{name,category,node_ids}], containers:[{id,label,zone_names,
+//     node_ids,container_ids}], consolidate, consolidate_sub_groups }
+//
+// `containers` (Phase 2) are optional, arbitrary-depth grouping boxes (e.g.
+// "AWS VPC", "On-Prem Data Center") layered ON TOP of zones: a container
+// declares which zones (by name) and/or which OTHER containers (by id, for
+// nesting) it wraps. They do not replace zones -- pack.mjs resolves the
+// actual geometry; this layer only carries the declared membership through
+// unchanged, dropping anything malformed rather than throwing.
 //
 // Geometry note: node `icon` does NOT affect layout (the card always
 // reserves a fixed icon box height), so icon resolution is intentionally
@@ -88,8 +97,21 @@ function normalize(model) {
     });
   }
 
+  const nodeIdSet = {}; nodes.forEach(n => { nodeIdSet[n.id] = true; });
+  const containers = Array.isArray(model.containers)
+    ? model.containers
+        .filter(c => c && c.id != null)
+        .map(c => ({
+          id: String(c.id),
+          label: c.label != null ? c.label : String(c.id),
+          zone_names: Array.isArray(c.zone_names) ? c.zone_names.slice() : [],
+          node_ids: Array.isArray(c.node_ids) ? c.node_ids.filter(id => nodeIdSet[id]) : [],
+          container_ids: Array.isArray(c.container_ids) ? c.container_ids.map(String) : [],
+        }))
+    : [];
+
   return {
-    nodes, edges, zones,
+    nodes, edges, zones, containers,
     consolidate: model.consolidate !== false,
     consolidate_sub_groups: model.consolidate_sub_groups === true,
     nodeStyle: model.nodeStyle || null,

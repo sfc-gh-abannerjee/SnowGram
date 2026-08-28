@@ -63,6 +63,13 @@ export function layout(input, opts = {}) {
       w: packed.platformBoundary.right - packed.platformBoundary.left,
       h: packed.platformBoundary.bottom - packed.platformBoundary.top,
     } : null,
+    // Phase 2: nested, arbitrary-depth grouping boxes (e.g. "AWS VPC"). Each
+    // entry's parentId links it to its enclosing container (null if
+    // top-level), so a render engine can draw outer boxes before inner ones.
+    containers: (packed.containers || []).map(c => ({
+      id: c.id, label: c.label, parentId: c.parentId,
+      x: c.left, y: c.top, w: c.right - c.left, h: c.bottom - c.top,
+    })),
     width: packed.width, height: packed.height,
   };
   // Generic, style-agnostic geometry quality check (Phase 4a) -- free to

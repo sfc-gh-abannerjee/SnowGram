@@ -163,5 +163,55 @@ run('row-wrap stress (Apex-Health-scale, 18 nodes / 9 zones)', wideChainGraph);
   console.log(`  info width=${r.width} height=${r.height} aspect=${Math.max(r.width / r.height, r.height / r.width).toFixed(2)}`);
 }
 
+// ── nested containers (Phase 2) ──
+// "AWS Account" (top-level, no zones of its own) wraps a child container
+// "AWS VPC" (which wraps two real zones). Exercises: recursive bottom-up
+// sizing, a pure-wrapper container with no direct zone membership, and
+// route.mjs's container-boundary crossing avoidance (the ingestion chain
+// runs entirely inside the nested boxes before ever reaching the platform
+// boundary).
+const nestedContainerGraph = {
+  nodes: [
+    { id: 'kinesis', label: 'Kinesis', category: 'onprem', zone: 'AWS Ingestion' },
+    { id: 'lambda', label: 'AWS Lambda', category: 'onprem', zone: 'AWS Ingestion' },
+    { id: 'glue', label: 'AWS Glue', category: 'onprem', zone: 'AWS Processing' },
+    { id: 'emr', label: 'EMR', category: 'onprem', zone: 'AWS Processing' },
+    { id: 'pipe', label: 'Snowpipe', componentType: 'pipe', zone: 'Ingest' },
+    { id: 'bronze', label: 'Bronze', componentType: 'dynamic_table', zone: 'Medallion' },
+    { id: 'bi', label: 'BI Tool', componentType: 'bi_tool', zone: 'Consumption' },
+  ],
+  edges: [
+    { from: 'kinesis', to: 'lambda' }, { from: 'lambda', to: 'glue' }, { from: 'glue', to: 'emr' },
+    { from: 'emr', to: 'pipe' }, { from: 'pipe', to: 'bronze' }, { from: 'bronze', to: 'bi' },
+  ],
+  containers: [
+    { id: 'aws_account', label: 'AWS Account', container_ids: ['aws_vpc'] },
+    { id: 'aws_vpc', label: 'AWS VPC', zone_names: ['AWS Ingestion', 'AWS Processing'] },
+  ],
+};
+run('nested containers (AWS Account > AWS VPC > 2 zones)', nestedContainerGraph);
+{
+  const r = layout(nestedContainerGraph);
+  const byId = {}; r.containers.forEach(c => { byId[c.id] = c; });
+  check('both containers present', r.containers.length === 2, JSON.stringify(r.containers.map(c => c.id)));
+  const acct = byId['aws_account'], vpc = byId['aws_vpc'];
+  check('AWS VPC is a child of AWS Account', !!acct && !!vpc && vpc.parentId === 'aws_account');
+  check('AWS Account has no parent (top-level)', !!acct && acct.parentId == null);
+  if (acct && vpc) {
+    const nested = vpc.x >= acct.x && vpc.y >= acct.y && vpc.x + vpc.w <= acct.x + acct.w + 1 && vpc.y + vpc.h <= acct.y + acct.h + 1;
+    check('AWS VPC rect nested fully inside AWS Account rect', nested, JSON.stringify({ acct, vpc }));
+  }
+  const ingestionZones = r.zones.filter(z => z.name === 'AWS Ingestion' || z.name === 'AWS Processing');
+  check('both AWS zones resolved', ingestionZones.length === 2, JSON.stringify(r.zones.map(z => z.name)));
+  if (vpc) {
+    const allInVpc = ingestionZones.every(z => z.x >= vpc.x - 1 && z.y >= vpc.y - 1 && z.x + z.w <= vpc.x + vpc.w + 1 && z.y + z.h <= vpc.y + vpc.h + 1);
+    check('AWS Ingestion/Processing zones sit inside AWS VPC rect', allInVpc);
+  }
+  if (acct && r.platformBoundary) {
+    const overlap = !(acct.x + acct.w < r.platformBoundary.x || acct.x > r.platformBoundary.x + r.platformBoundary.w);
+    check('AWS Account container does not overlap the platform boundary', !overlap);
+  }
+}
+
 console.log('\n' + (failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'));
 process.exit(failures === 0 ? 0 : 1);

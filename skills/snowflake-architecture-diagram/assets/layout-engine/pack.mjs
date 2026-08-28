@@ -54,6 +54,178 @@ function wrapUnits(items, maxWidth, colGap, rowGap) {
   return { rowYOffset, totalWidth, totalHeight, numRows: rowHeights.length };
 }
 
+// ── Nested containers (Phase 2) ──────────────────────────────────────
+// A container is a generalized, USER-declared version of the ONE hardcoded
+// platform boundary above: it sweeps a contiguous rank-column RANGE into one
+// atomic, internally row-wrapped box. Membership is declared (zone_names /
+// node_ids on the container, resolved against the PRE-consolidation zone
+// list so renamed/merged zones still resolve), the swept RANGE is derived
+// from that membership (+ nested child container ranges), and -- exactly
+// like the platform boundary already does for non-snow zones caught between
+// snowStart/snowEnd -- any OTHER zone whose rank falls inside that range is
+// absorbed into the box too, so a real zone can never silently disappear
+// just because a container declaration was ambiguous or incomplete.
+//
+// Guardrail: if two containers (or a container and the platform boundary)
+// would claim overlapping rank ranges, the later one is simply not drawn as
+// a box (its zones fall back to plain rendering) rather than producing
+// corrupted/overlapping geometry. Same for cycles in container_ids: only the
+// first-declared parent wins, so containers always form a proper tree.
+//
+// Returns per-zone container membership (immediate + full ancestor chain,
+// for route.mjs's crossing-avoidance) and a memoized `buildUnit(id)` that
+// recursively computes chrome + wrapUnits(children) bottom-up, mirroring the
+// platformBoundary's own zonesInBoundary/innerWrap pattern one level deeper.
+function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank, zoneSize, maxCanvasWidth) {
+  const empty = {
+    defs: {}, rangeCache: {}, topLevelIds: [],
+    acceptAgainst: () => [],
+    resolveZoneContainerId: () => ({}),
+    makeBuildUnit: () => () => null,
+    chainOf: () => [],
+  };
+  if (!Array.isArray(rawContainers) || !rawContainers.length) return empty;
+
+  const zoneNodeIdsPre = {};
+  preConsolidationZones.forEach(z => { zoneNodeIdsPre[z.name] = z.node_ids || []; });
+
+  const defs = {};
+  rawContainers.forEach(c => {
+    if (!c || c.id == null) return;
+    const seedIds = new Set(c.node_ids || []);
+    (c.zone_names || []).forEach(zn => (zoneNodeIdsPre[zn] || []).forEach(id => seedIds.add(id)));
+    defs[c.id] = { id: c.id, label: c.label || c.id, seedIds, childIds: (c.container_ids || []).filter(cid => cid !== c.id), parentId: null };
+  });
+  // Link parents (first-declared wins), then break any cycles so the
+  // container graph is always a proper tree.
+  Object.keys(defs).forEach(pid => {
+    defs[pid].childIds.forEach(cid => { if (defs[cid] && defs[cid].parentId == null) defs[cid].parentId = pid; });
+  });
+  Object.keys(defs).forEach(id => {
+    const seen = {}; let cur = id;
+    while (defs[cur] && defs[cur].parentId != null) {
+      if (seen[cur]) { defs[cur].parentId = null; break; }
+      seen[cur] = true; cur = defs[cur].parentId;
+    }
+  });
+
+  // Which POST-consolidation zone is a "seed" of which container (majority
+  // of its node_ids overlap that container's declared seed ids).
+  const seedZoneContainer = {};
+  zones.forEach(z => {
+    const ids = z.node_ids || []; if (!ids.length) return;
+    let best = null, bestScore = 0;
+    Object.keys(defs).forEach(cid => {
+      let score = 0; ids.forEach(id => { if (defs[cid].seedIds.has(id)) score++; });
+      if (score > 0 && score >= ids.length / 2 && score > bestScore) { best = cid; bestScore = score; }
+    });
+    if (best) seedZoneContainer[z.name] = best;
+  });
+
+  // Rank range per container = min/max rank of its own seed zones, unioned
+  // with (recursively) its declared children's ranges.
+  const rangeCache = {};
+  function rangeOf(id, guard) {
+    if (rangeCache[id] !== undefined) return rangeCache[id];
+    guard = guard || {};
+    if (guard[id]) return (rangeCache[id] = null);
+    guard[id] = true;
+    let lo = Infinity, hi = -Infinity;
+    zones.forEach(z => { if (seedZoneContainer[z.name] === id) { const r = rank[z.name]; if (r < lo) lo = r; if (r > hi) hi = r; } });
+    (defs[id].childIds || []).forEach(cid => {
+      if (!defs[cid] || defs[cid].parentId !== id) return;
+      const sub = rangeOf(cid, guard);
+      if (sub) { if (sub.lo < lo) lo = sub.lo; if (sub.hi > hi) hi = sub.hi; }
+    });
+    return (rangeCache[id] = (lo === Infinity ? null : { lo, hi }));
+  }
+  Object.keys(defs).forEach(id => rangeOf(id));
+
+  // Accept top-level containers in rank order, skipping any that collide
+  // with an already-claimed range (the platform boundary claims its own
+  // range first -- it is set up by the caller before this point, but we
+  // don't know snowStart/snowEnd here, so the caller passes it in via the
+  // `claimed` seed below).
+  const topLevelIds = Object.keys(defs).filter(id => defs[id].parentId == null && rangeCache[id]);
+  topLevelIds.sort((a, b) => rangeCache[a].lo - rangeCache[b].lo);
+
+  function acceptAgainst(claimedRanges) {
+    const claimed = claimedRanges.slice();
+    const accepted = [];
+    topLevelIds.forEach(id => {
+      const r = rangeCache[id];
+      const collide = claimed.some(c => !(r.hi < c.lo || r.lo > c.hi));
+      if (collide) return;
+      claimed.push(r);
+      accepted.push(id);
+    });
+    return accepted;
+  }
+
+  // zone -> innermost accepted container id (narrowest range containing it)
+  function resolveZoneContainerId(accepted) {
+    const zoneContainerId = {};
+    function subtreeIds(id) {
+      const out = [id];
+      (defs[id].childIds || []).forEach(cid => { if (defs[cid] && defs[cid].parentId === id) out.push.apply(out, subtreeIds(cid)); });
+      return out;
+    }
+    accepted.forEach(id => {
+      const tree = subtreeIds(id); // DFS: id itself first, then children/descendants
+      const topRange = rangeCache[id];
+      zones.forEach(z => {
+        const r = rank[z.name];
+        if (r < topRange.lo || r > topRange.hi) return;
+        // Narrowest range wins; on an exact tie (e.g. a pure-wrapper parent
+        // whose range is entirely inherited from one child) the LATER
+        // (deeper, since DFS visits parent before child) tree member wins
+        // -- so a zone always resolves to its most specific container.
+        let bestId = id, bestSpan = Infinity;
+        tree.forEach(cid => {
+          const cr = rangeCache[cid]; if (!cr) return;
+          if (r >= cr.lo && r <= cr.hi) { const span = cr.hi - cr.lo; if (span <= bestSpan) { bestSpan = span; bestId = cid; } }
+        });
+        zoneContainerId[z.name] = bestId;
+      });
+    });
+    return zoneContainerId;
+  }
+
+  function chainOf(id) {
+    const chain = []; let cur = id;
+    const seen = {};
+    while (cur != null && defs[cur] && !seen[cur]) { chain.push(cur); seen[cur] = true; cur = defs[cur].parentId; }
+    return chain;
+  }
+
+  const unitCache = {};
+  function makeBuildUnit(zoneContainerId) {
+    return function buildUnit(id) {
+      if (unitCache[id] !== undefined) return unitCache[id];
+      const directZones = zones.filter(z => zoneContainerId[z.name] === id).sort((a, b) => rank[a.name] - rank[b.name]);
+      const childIds = (defs[id].childIds || []).filter(cid => defs[cid] && defs[cid].parentId === id);
+      const items = [];
+      directZones.forEach(z => { const zs = zoneSize(z); items.push({ kind: 'zone', z, zs, width: zs.width, height: zs.height, rank: rank[z.name] }); });
+      childIds.forEach(cid => { const cu = buildUnit(cid); if (cu) items.push({ kind: 'container', unit: cu, width: cu.width, height: cu.height, rank: rangeCache[cid] ? rangeCache[cid].lo : 0 }); });
+      if (!items.length) return (unitCache[id] = null);
+      items.sort((a, b) => a.rank - b.rank);
+      const chromeW = 2 * (LAYOUT.containerBorder + LAYOUT.containerPadSide);
+      const chromeH = 2 * LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop + LAYOUT.containerPadBottom;
+      const innerMaxWidth = Math.max(maxCanvasWidth - chromeW, CARD.width);
+      const innerWrap = wrapUnits(items, innerMaxWidth, LAYOUT.outerColGap, LAYOUT.rowWrapGap);
+      const unit = {
+        id, label: defs[id].label, parentId: defs[id].parentId,
+        width: chromeW + innerWrap.totalWidth, height: chromeH + innerWrap.totalHeight,
+        items, innerWrap,
+      };
+      unitCache[id] = unit;
+      return unit;
+    };
+  }
+
+  return { defs, rangeCache, topLevelIds, acceptAgainst, resolveZoneContainerId, makeBuildUnit, chainOf };
+}
+
 // ── Zone consolidation (port of renderFlow lines ~816-934) ──────────
 function consolidateZones(zones, nodesById, edges, opts) {
   if (opts.consolidate === false || zones.length <= 1) return zones;
@@ -401,6 +573,18 @@ export function pack(model, opts = {}) {
   const snowEnd = snowCols.length ? snowCols[snowCols.length - 1] : -1;
   const hasBoundary = snowStart >= 0;
 
+  const maxCanvasWidth = (opts && opts.maxCanvasWidth) || LAYOUT.maxCanvasWidth;
+
+  // ── nested containers (Phase 2): resolve declared membership against the
+  // platform boundary's claimed range, then build recursive units for
+  // whichever top-level containers don't collide with it or each other. ──
+  const containerLayout = buildContainerLayout(model.containers, model.zones, zones, rank, zoneSize, maxCanvasWidth);
+  const acceptedContainerIds = containerLayout.acceptAgainst(hasBoundary ? [{ lo: snowStart, hi: snowEnd }] : []);
+  const zoneContainerId = containerLayout.resolveZoneContainerId(acceptedContainerIds);
+  const buildContainerUnit = containerLayout.makeBuildUnit(zoneContainerId);
+  const containerRangeByStartCi = {};
+  acceptedContainerIds.forEach(id => { containerRangeByStartCi[containerLayout.rangeCache[id].lo] = id; });
+
   // dynamic inner gap (bridge density) — port of lines ~1256-1328
   const nodeZoneMap = {};
   model.nodes.forEach(n => { nodeZoneMap[n.id] = n.zone; });
@@ -420,22 +604,32 @@ export function pack(model, opts = {}) {
   const dynInnerGap = Math.min(LAYOUT.dynGapCap, LAYOUT.dynGapBase + LAYOUT.dynGapStep * Math.max(0, maxGap - 1));
 
   const outsideZoneTop = hasBoundary ? LAYOUT.outsidePadTop : 0;
-  const maxCanvasWidth = (opts && opts.maxCanvasWidth) || LAYOUT.maxCanvasWidth;
 
   // ── Phase 1a: build placement UNITS in original left-to-right order ──
   // A unit is either one outside column (its zones placed side-by-side, as
-  // before) or, atomically, the WHOLE platform-boundary block (all snow
-  // columns snowStart..snowEnd, itself internally row-wrapped — see below).
-  // Units carry their own width/height so a row-wrap pass (1b) can decide,
-  // per unit, whether it still fits the current row or must start a new
-  // one — instead of one ever-growing x.
+  // before), atomically the WHOLE platform-boundary block (all snow columns
+  // snowStart..snowEnd, itself internally row-wrapped — see below), or an
+  // accepted top-level container's own recursive box. Units carry their own
+  // width/height so a row-wrap pass (1b) can decide, per unit, whether it
+  // still fits the current row or must start a new one — instead of one
+  // ever-growing x.
   const units = [];
   for (let ci = 0; ci < columns.length; ci++) {
     if (!columns[ci].length) continue;
+    if (containerRangeByStartCi[ci] != null) {
+      const cid = containerRangeByStartCi[ci];
+      const cu = buildContainerUnit(cid);
+      if (cu) {
+        units.push({ kind: 'containerBox', width: cu.width, height: cu.height, unit: cu });
+        ci = containerLayout.rangeCache[cid].hi;
+        continue;
+      }
+    }
     if (hasBoundary && ci === snowStart) {
       const boundaryChromeW = 2 * (LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide);
       const innerMaxWidth = Math.max(maxCanvasWidth - boundaryChromeW, CARD.width);
       const zonesInBoundary = [];
+
       for (let sci = snowStart; sci <= snowEnd; sci++) {
         columns[sci].forEach(z => { const zs = zoneSize(z); zonesInBoundary.push({ z, zs, width: zs.width, height: zs.height }); });
       }
@@ -466,11 +660,34 @@ export function pack(model, opts = {}) {
   // for the boundary unit, its own inner row/x/y on top of that. ──
   const zoneRects = [];
   const placedByZone = {};
+  const containerRects = [];
   let boundaryLeft = null, boundaryRight = null, boundaryTop = null, boundaryBottom = null;
+
+  // Recursive: places every (zone | nested container) item inside a
+  // container unit, mirroring the boundary's own zonesInBoundary placement
+  // one level deeper. Pushes exactly one containerRects entry per box.
+  function placeContainerUnit(unit, x, y) {
+    const innerOriginX = x + LAYOUT.containerBorder + LAYOUT.containerPadSide;
+    const innerOriginY = y + LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop;
+    unit.items.forEach(item => {
+      const left = innerOriginX + item.xInRow;
+      const top = innerOriginY + (unit.innerWrap.rowYOffset[item.rowIdx] || 0);
+      if (item.kind === 'zone') {
+        const zs = item.zs;
+        zoneRects.push({ name: item.z.name, left, right: left + zs.width, top, bottom: top + zs.height });
+        placedByZone[item.z.name] = { left, top, zs };
+      } else {
+        placeContainerUnit(item.unit, left, top);
+      }
+    });
+    containerRects.push({ id: unit.id, label: unit.label, parentId: unit.parentId, left: x, top: y, right: x + unit.width, bottom: y + unit.height });
+  }
 
   units.forEach(u => {
     const rowTop = outerWrap.rowYOffset[u.rowIdx] || 0;
-    if (u.kind === 'boundary') {
+    if (u.kind === 'containerBox') {
+      placeContainerUnit(u.unit, u.xInRow, rowTop);
+    } else if (u.kind === 'boundary') {
       boundaryLeft = u.xInRow;
       boundaryTop = rowTop;
       boundaryRight = u.xInRow + u.width;
@@ -508,6 +725,7 @@ export function pack(model, opts = {}) {
   zones.forEach(z => {
     const p = placedByZone[z.name]; if (!p) return;
     const zi = zoneInfo[z.name];
+    const containerChain = zoneContainerId[z.name] != null ? containerLayout.chainOf(zoneContainerId[z.name]) : [];
     const { cw, cg } = p.zs;
     const bodyLeft = p.left + ZONE.border + ZONE.bodyPad;
     const bodyTop = p.top + ZONE.border + ZONE.stripe + ZONE.headerMinHeight + ZONE.bodyPad;
@@ -526,7 +744,7 @@ export function pack(model, opts = {}) {
       let right = left + cw;
       if (isDummy[id]) { const mid = left + cw / 2; left = mid - DUMMY_W / 2; right = mid + DUMMY_W / 2; }
       const top = rowTop[r];
-      const rect = { id, zoneName: z.name, col: c, rowIdx: r, dummy: !!isDummy[id], left, right, top, bottom: top + bandH };
+      const rect = { id, zoneName: z.name, col: c, rowIdx: r, dummy: !!isDummy[id], left, right, top, bottom: top + bandH, containerChain };
       nodeRects.push(rect);
       if (zi.subGroups) {
         const sidx = zi.subColOf[id];
@@ -570,13 +788,14 @@ export function pack(model, opts = {}) {
     if (deepest > 0 && need > platformBoundary.bottom) platformBoundary.bottom = need;
   }
 
-  const width = maxOf(zoneRects.map(z => z.right), platformBoundary ? platformBoundary.right : 0);
-  const height = maxOf(zoneRects.map(z => z.bottom), platformBoundary ? platformBoundary.bottom : 0);
+  const width = maxOf(zoneRects.concat(containerRects).map(z => z.right), platformBoundary ? platformBoundary.right : 0);
+  const height = maxOf(zoneRects.concat(containerRects).map(z => z.bottom), platformBoundary ? platformBoundary.bottom : 0);
 
   return {
     zones, rank, columns,
     nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps,
     platformBoundary, snowStart, snowEnd,
+    containers: containerRects,
     edgeChains, isDummy,
     width, height,
   };

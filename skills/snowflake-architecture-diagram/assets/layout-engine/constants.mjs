@@ -89,6 +89,17 @@ export const LAYOUT = {
   // opts.maxCanvasWidth.
   maxCanvasWidth: 1600,
   rowWrapGap: 56,
+  // ── nested containers (Phase 2) ──
+  // Arbitrary user-defined grouping boxes (e.g. "AWS VPC", "On-Prem Data
+  // Center") that wrap a set of zones and/or other containers, recursively.
+  // Deliberately separate from the boundary* constants above so a render
+  // engine can style them distinctly (e.g. dashed vs. solid, different
+  // color) without affecting the Snowflake platform boundary itself.
+  containerBorder: 2,
+  containerHeaderH: 22, // reserved label-stripe height (render engine draws the name here)
+  containerPadTop: 14,
+  containerPadSide: 18,
+  containerPadBottom: 18,
 };
 
 // Categories considered INSIDE the Snowflake Data Cloud boundary.
