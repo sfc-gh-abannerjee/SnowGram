@@ -169,6 +169,27 @@ def _build_compose_state(block_ids: list[str], prompt: str) -> dict[str, Any]:
     }
 
 
+def _render_parity(state: dict[str, Any], out: str, *, online_icons: bool = False, connection: str = "snowhouse") -> int:
+    """Render via the shared SnowGram renderer (render_diagram.run) so the local
+    output is at full feature parity with the agent. Writes .mmd/.svg/.drawio.xml
+    sidecars next to a file output."""
+    render_local = _load_module("render_local", Path(__file__).resolve().parent / "render_local.py")
+    model = render_local.state_to_model(state)
+    title = state.get("title") or "Architecture"
+    result = render_local.build(model, title, None, online_icons=online_icons, connection=connection)
+    html = result.get("html") or ""
+    if out == "-":
+        sys.stdout.write(html)
+        return 0
+    out_path = Path(out)
+    out_path.write_text(html, encoding="utf-8")
+    for key, suffix in (("mmd", ".mmd"), ("svg", ".svg"), ("drawio", ".drawio.xml")):
+        content = result.get(key) or ""
+        if content:
+            out_path.with_suffix(suffix).write_text(content, encoding="utf-8")
+    return 0
+
+
 def _render(state: dict[str, Any], out: str) -> int:
     """Write state to a temp file, pipe through render_static.py, return exit code."""
     with tempfile.NamedTemporaryFile(
@@ -199,6 +220,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="Use the legacy intent_router.route() instead of route_v2")
     ap.add_argument("--no-docs", action="store_true",
                     help="Skip live cortex search docs enrichment in the from_scratch path (use cached/default specs only)")
+    ap.add_argument("--engine", choices=["viewer", "render"], default="viewer",
+                    help="viewer: bake the dev viewer (default). render: full feature-parity HTML via the shared SnowGram renderer (Customize/Present/edit/save).")
+    ap.add_argument("--online-icons", action="store_true",
+                    help="(render engine) allow live ICON_SEARCH (cached) for icons not in the vendored map/vocab")
     args = ap.parse_args(argv)
 
     intent_router = _load_module("intent_router", COMPOSER / "intent_router.py")
@@ -263,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
         "confidence": decision.get("confidence"),
     })
 
+    if args.engine == "render":
+        return _render_parity(state, args.out, online_icons=args.online_icons)
     return _render(state, args.out)
 
 

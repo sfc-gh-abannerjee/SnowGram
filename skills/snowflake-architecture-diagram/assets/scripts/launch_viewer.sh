@@ -10,22 +10,42 @@
 #   launch_viewer.sh                    # default port range, open browser
 #   launch_viewer.sh --no-open          # spawn server, print URL only
 #   launch_viewer.sh --port 4400        # request specific starting port
+#   launch_viewer.sh --parity           # FULL feature-parity viewer (shared renderer)
+#
+# --parity serves the exact full-featured HTML the SnowGram agent produces
+# (Customize panel, Cover + Present mode, hover-focus, inline edit + save,
+# canonical styling) by rendering viewer/state.json through the shared renderer
+# (scripts/serve_viewer.py). Refresh after editing state.json to re-render.
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIEWER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../viewer" && pwd)"
 RUNTIME_DIR="$VIEWER_DIR/.runtime"
 mkdir -p "$RUNTIME_DIR"
 
 START_PORT=4380
 OPEN_BROWSER=1
+PARITY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --no-open) OPEN_BROWSER=0; shift ;;
     --port) START_PORT="$2"; shift 2 ;;
+    --parity) PARITY=1; shift ;;
     *) echo "Unknown flag: $1" >&2; exit 2 ;;
   esac
 done
+
+# Full-parity viewer: render state.json through the shared renderer and serve it.
+if [ "$PARITY" -eq 1 ]; then
+  STATE_FILE="$VIEWER_DIR/state.json"
+  if [ ! -f "$STATE_FILE" ]; then
+    echo "ERROR: $STATE_FILE not found (write state.json first)" >&2; exit 1
+  fi
+  OPEN_ARG=""
+  [ "$OPEN_BROWSER" -eq 0 ] && OPEN_ARG="--no-open"
+  exec python3 "$SCRIPT_DIR/serve_viewer.py" --state "$STATE_FILE" --port "$START_PORT" $OPEN_ARG
+fi
 
 # Find a free port (try up to 20 in sequence)
 port_in_use() {

@@ -1,0 +1,17 @@
+{
+  "source_account": "SFCOGSOPS-SNOWHOUSE_AWS_US_WEST_2",
+  "connection": "snowhouse",
+  "generated": "2026-06-29T22:40:35+00:00",
+  "providers": [
+    "sno-icon",
+    "generic"
+  ],
+  "map_entries": 156,
+  "catalog_paths": 345,
+  "unique_blobs": 345,
+  "intra_catalog_dups_collapsed": 0,
+  "cross_set_overlap_with_skill_icons": 40,
+  "undecodable_skipped": 0,
+  "brand_icons_merged": 1,
+  "blobs_json_mb": 2.03
+}

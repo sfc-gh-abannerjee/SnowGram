@@ -1,0 +1,3 @@
+# Runtime self-curation overlay (live ICON_SEARCH results). Not part of the
+# reproducible build baseline; regenerated on demand at render time.
+resolved_cache.json
