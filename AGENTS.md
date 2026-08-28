@@ -86,6 +86,24 @@ turn or move on to the next phase.
   while `.cortex/PENDING_VISUAL_REVIEW` exists); this rule is the
   human-readable backup for sessions where hooks aren't active.
 
+## Commit Wrap-Up Gate
+
+The global `ctx-tracker-reminder.sh` hook reminds you after every
+`git commit` to reconcile `cortex ctx` (step/task) and update living docs
+(`CHANGELOG.md`/`docs/STATUS.md`/`docs/decisions/`) -- but it is
+deliberately non-blocking (informational only). This repo adds actual
+enforcement on top of it:
+
+- After any `git commit` in this repo, a `Stop` hook refuses to end the
+  turn until BOTH halves are addressed: (a) `cortex ctx step`/`task` has
+  been run for that commit's work, and (b) either a later commit touches
+  `CHANGELOG.md`/`docs/STATUS.md`/`docs/decisions/`, or you explicitly run
+  `touch .cortex/ACK_NO_DOCS_NEEDED` when none genuinely apply.
+- The ACK path exists because not every commit warrants a docs update, and
+  no hook can judge that -- but it forces a deliberate, visible action
+  instead of silently skipping the reminder (which is what happened across
+  several commits before this gate existed).
+
 ---
 
 ## Core Components to Improve

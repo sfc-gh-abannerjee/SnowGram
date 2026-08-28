@@ -117,6 +117,12 @@ skills/snowflake-architecture-diagram/review-runs/
 # see .cortex/hooks.json / AGENTS.md)
 .cortex/PENDING_VISUAL_REVIEW
 
+# Commit wrap-up gate runtime markers (ephemeral, per-session state -- see
+# .cortex/hooks.json / AGENTS.md)
+.cortex/PENDING_CTX_SYNC
+.cortex/PENDING_LIVING_DOCS
+.cortex/ACK_NO_DOCS_NEEDED
+
 # Local setup helpers
 setup_user_access.sql
 
