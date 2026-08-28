@@ -67,6 +67,27 @@ The tracks exist because their audiences have fundamentally different constraint
 
 ---
 
+## Visual Verification Gate (Track 1 layout/render changes)
+
+IMPORTANT: Never mark a `skills/snowflake-architecture-diagram/` layout or
+render change "done," "fixed," or "verified" from your own screenshot
+inspection alone -- the user must confirm it visually before you end the
+turn or move on to the next phase.
+
+- After any change to `assets/layout-engine/*.mjs` or the render pipeline
+  (`render_diagram.dev.sql` / `render_diagram_generated.py`), regenerate the
+  review package (`assets/scripts/review_harness.py`) and present the new
+  screenshot(s).
+- Then call `ask_user_question`, referencing the specific new artifact, and
+  wait for their explicit sign-off before treating the iteration complete.
+- This applies even when `tests/run.mjs` and the quality gate all pass --
+  those catch geometry defects, not whether it LOOKS right to a human.
+- Enforced by `.cortex/hooks.json` (a `Stop` hook blocks ending the turn
+  while `.cortex/PENDING_VISUAL_REVIEW` exists); this rule is the
+  human-readable backup for sessions where hooks aren't active.
+
+---
+
 ## Core Components to Improve
 
 ### 1. Cortex Agent (`SNOWGRAM_DB.AGENTS.SNOWGRAM_AGENT`)

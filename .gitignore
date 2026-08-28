@@ -113,6 +113,10 @@ backend/tests/agent/results/
 # the harness script itself and its fixtures ARE tracked, this output isn't)
 skills/snowflake-architecture-diagram/review-runs/
 
+# Visual-verification-gate runtime marker (ephemeral, per-session state --
+# see .cortex/hooks.json / AGENTS.md)
+.cortex/PENDING_VISUAL_REVIEW
+
 # Local setup helpers
 setup_user_access.sql
 

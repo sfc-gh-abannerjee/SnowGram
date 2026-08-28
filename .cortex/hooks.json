@@ -1,13 +1,45 @@
 {
-  "hooks": [
-    {
-      "matcher": "Bash",
-      "hooks": [
-        {
-          "type": "pre",
-          "command": "bash -c \"echo '$CORTEX_TOOL_INPUT' | grep -qE '(npm run dev|npm start|yarn dev|yarn start|next dev|streamlit run|uvicorn|python.*server|node.*server)' && echo 'BLOCKED: Do not run dev servers. Ask the user to start the server themselves.' && exit 1 || exit 0\""
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c \"echo '$CORTEX_TOOL_INPUT' | grep -qE '(npm run dev|npm start|yarn dev|yarn start|next dev|streamlit run|uvicorn|python.*server|node.*server)' && echo 'BLOCKED: Do not run dev servers. Ask the user to start the server themselves.' && exit 1 || exit 0\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/abannerjee/Documents/SnowGram/.cortex/hooks/visual_gate_post_bash.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/abannerjee/Documents/SnowGram/.cortex/hooks/visual_gate_clear_on_question.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/abannerjee/Documents/SnowGram/.cortex/hooks/visual_gate_stop.sh"
+          }
+        ]
+      }
+    ]
+  }
 }
