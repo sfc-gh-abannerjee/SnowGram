@@ -484,10 +484,11 @@ function maxOf(arr, seed) {
 // style-agnostic: it only bounds aspect ratio/width, never dictates a
 // particular visual arrangement.
 function wrapUnits(items, maxWidth, colGap, rowGap) {
+  const cap = balancedWrapCap(items, maxWidth, colGap);
   let rowX = 0, rowIdx = 0;
   const rowHeights = [];
   items.forEach(u => {
-    if (rowX > 0 && rowX + u.width > maxWidth) { rowIdx++; rowX = 0; }
+    if (rowX > 0 && rowX + u.width > cap) { rowIdx++; rowX = 0; }
     u.rowIdx = rowIdx;
     u.xInRow = rowX;
     rowX += u.width + colGap;
@@ -498,8 +499,44 @@ function wrapUnits(items, maxWidth, colGap, rowGap) {
   for (let r = 0; r < rowHeights.length; r++) { rowYOffset[r] = acc; acc += (rowHeights[r] || 0) + rowGap; }
   let totalWidth = 0;
   items.forEach(u => { const right = u.xInRow + u.width; if (right > totalWidth) totalWidth = right; });
+  // Center any row narrower than the widest one -- otherwise a row left with
+  // just one small trailing item (because a much bigger unit, e.g. the whole
+  // platform-boundary block, already filled most of the row before it) reads
+  // as an accidental leftover stranded in empty space rather than a
+  // deliberate, balanced arrangement.
+  const rowContentWidth = [];
+  items.forEach(u => { const right = u.xInRow + u.width; if (!(rowContentWidth[u.rowIdx] > right)) rowContentWidth[u.rowIdx] = right; });
+  items.forEach(u => { u.xInRow += (totalWidth - rowContentWidth[u.rowIdx]) / 2; });
   const totalHeight = rowHeights.length ? acc - rowGap : 0;
   return { rowYOffset, totalWidth, totalHeight, numRows: rowHeights.length };
+}
+
+// balanced-partition cap: same number of rows a naive greedy-at-maxWidth
+// wrap would need, but the SMALLEST per-row width cap that still achieves
+// that row count -- avoids the classic first-fit flaw where the trailing
+// row ends up with just one item stranded in a sea of empty space, by
+// distributing content as evenly as possible across all rows instead.
+function balancedWrapCap(items, maxWidth, colGap) {
+  const widths = items.map(u => u.width);
+  const n = widths.length;
+  if (!n) return maxWidth;
+  function rowsNeeded(cap) {
+    let rows = 1, cur = widths[0];
+    for (let i = 1; i < n; i++) {
+      const add = widths[i] + colGap;
+      if (cur > 0 && cur + add > cap) { rows++; cur = widths[i]; } else { cur += add; }
+    }
+    return rows;
+  }
+  const maxItemWidth = Math.max.apply(null, widths);
+  const hi0 = Math.max(maxWidth, maxItemWidth);
+  const targetRows = rowsNeeded(hi0);
+  let lo = maxItemWidth, hi = hi0;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (rowsNeeded(mid) <= targetRows) hi = mid; else lo = mid + 1;
+  }
+  return lo;
 }
 
 // ── Nested containers (Phase 2) ──────────────────────────────────────
@@ -824,9 +861,42 @@ function orderRowsAcrossZones(zones, zoneInfo, rank, edges, isDummy) {
     const m = rows.length;
     return m % 2 ? rows[(m - 1) / 2] : (rows[m / 2 - 1] + rows[m / 2]) / 2;
   }
+  // Intra-zone chain edges (e.g. Bronze -> Silver -> Gold, all one zone/
+  // column) are a HARD ordering constraint: cross-zone median alignment
+  // below is a soft preference and must never flip a node above something
+  // that feeds it, or the connector visually loops backward.
+  const zoneOf2 = zoneOf;
+  const precedesWithinZone = {}; // zoneName -> Set("sourceId|targetId")
+  edges.forEach(e => {
+    const sz = zoneOf2[e.source], tz = zoneOf2[e.target];
+    if (sz && sz === tz) (precedesWithinZone[sz] = precedesWithinZone[sz] || new Set()).add(e.source + '|' + e.target);
+  });
+  function constrainedOrder(items, precedesSet) {
+    // items already carry a "desired" row (median-based); this performs the
+    // smallest possible topological repair -- among items with no
+    // unplaced intra-zone predecessor, pick the one with the lowest desired
+    // row, exactly reproducing a plain sort when there are no constraints.
+    const remaining = items.slice();
+    const placed = [];
+    const placedIds = new Set();
+    while (remaining.length) {
+      let bestIdx = -1;
+      for (let i = 0; i < remaining.length; i++) {
+        const blocked = remaining.some((other, j) => j !== i && precedesSet.has(other.id + '|' + remaining[i].id));
+        if (blocked) continue;
+        if (bestIdx === -1 || remaining[i].desired < remaining[bestIdx].desired) bestIdx = i;
+      }
+      if (bestIdx === -1) bestIdx = 0; // cycle guard (shouldn't occur for a DAG): never hang
+      placed.push(remaining[bestIdx]);
+      placedIds.add(remaining[bestIdx].id);
+      remaining.splice(bestIdx, 1);
+    }
+    return placed;
+  }
   function reorderZone(z, dir) {
     const zi = zoneInfo[z.name];
     if (!zi || zi.subGroups) return;               // sub-group zones keep explicit order
+    const precedesSet = precedesWithinZone[z.name] || new Set();
     const byCol = {};
     (z.node_ids || []).forEach(id => { if (isDummy && isDummy[id]) return; const c = zi.col[id] || 0; (byCol[c] = byCol[c] || []).push(id); });
     Object.keys(byCol).forEach(c => {
@@ -837,7 +907,9 @@ function orderRowsAcrossZones(zones, zoneInfo, rank, edges, isDummy) {
       // nodes without a neighbor on this side stay at their current row (fallback to orig);
       // stable tie-break by original row keeps determinism.
       items.sort((p, q) => { const pb = p.b == null ? p.orig : p.b, qb = q.b == null ? q.orig : q.b; return pb !== qb ? pb - qb : p.orig - q.orig; });
-      items.forEach((it, i) => { zi.rowIdx[it.id] = i; });
+      const ranked = items.map((it, i) => ({ id: it.id, desired: i }));
+      const fixed = precedesSet.size ? constrainedOrder(ranked, precedesSet) : ranked;
+      fixed.forEach((it, i) => { zi.rowIdx[it.id] = i; });
     });
   }
   const byRank = zones.slice().sort((a, b) => rank[a.name] - rank[b.name]);
@@ -1290,6 +1362,35 @@ function route(model, packed, opts = {}) {
     return best.center;
   }
 
+  // Used by the "vertical V-H-V" branch below (edges whose zones are
+  // primarily separated vertically -- routine once row-wrapping puts
+  // rank-adjacent zones on different physical rows): checks a candidate
+  // vertical leg at a fixed X for any zone/card/container obstacle in its
+  // way, so that branch can fall back to the fully obstacle-aware
+  // routeOrthogonal instead of sailing straight through something.
+  function verticalSegmentClear(x, ya, yb, excludeZoneNames, excludeCardIds, excludeContainerChain) {
+    const loY = Math.min(ya, yb), hiY = Math.max(ya, yb);
+    for (const zr of zoneRects) {
+      if (excludeZoneNames.indexOf(zr.name) !== -1) continue;
+      if (x <= zr.left + 2 || x >= zr.right - 2) continue;
+      if (zr.bottom < loY + 2 || zr.top > hiY - 2) continue;
+      return false;
+    }
+    for (const nr of nodeRects) {
+      if (excludeCardIds.indexOf(nr.id) !== -1) continue;
+      if (x <= nr.left + 2 || x >= nr.right - 2) continue;
+      if (nr.bottom < loY + 2 || nr.top > hiY - 2) continue;
+      return false;
+    }
+    for (const cr of containerRects) {
+      if (excludeContainerChain.indexOf(cr.id) !== -1) continue;
+      if (x <= cr.left + 2 || x >= cr.right - 2) continue;
+      if (cr.bottom < loY + 2 || cr.top > hiY - 2) continue;
+      return false;
+    }
+    return true;
+  }
+
   function pointsToD(pts) {
     if (!pts.length) return '';
     let s = 'M' + pts[0][0] + ',' + pts[0][1];
@@ -1377,14 +1478,18 @@ function route(model, packed, opts = {}) {
     const zHits2 = zonesOnH(trackX, x2, y2);
     const cHits1 = cardsOnH(x1, trackX, y1);
     const cHits2 = cardsOnH(trackX, x2, y2);
-    if (!zHits1.length && !zHits2.length && !cHits1.length && !cHits2.length) {
-      return [[x1, y1], [trackX, y1], [trackX, y2], [x2, y2]];
-    }
 
+    // Thorough obstacle scan across the FULL rectangle spanned by the path
+    // (not just narrow slices at y1/y2) -- this is what actually protects
+    // the long vertical middle leg of an H-V-H path. The zHits/cHits checks
+    // above only see obstacles exactly at the two endpoints' heights, so a
+    // long vertical run (e.g. between two very different wrapped rows) with
+    // clear ends but something in the middle used to sail straight through
+    // it undetected.
     const goingRight = (x2 > x1);
     const loX = Math.min(x1, x2), hiX = Math.max(x1, x2);
-    const allZoneHits = [];
     const pathTopBand = Math.min(y1, y2), pathBotBand = Math.max(y1, y2);
+    const allZoneHits = [];
     for (const zr2 of zoneRects) {
       if (zr2.name === srcZoneName || zr2.name === tgtZoneName) continue;
       if (zr2.right < loX + 2 || zr2.left > hiX - 2) continue;
@@ -1410,6 +1515,23 @@ function route(model, packed, opts = {}) {
       if (!o && !e1 && !e2) continue;
       allZoneHits.push(cr3);
     }
+    // Individual cards too (defense in depth beyond their enclosing zone
+    // rect -- e.g. a card whose own zone rect happens to sit right at the
+    // band edge and got excluded by the +/-2px tolerance above).
+    const allCardHits = [];
+    for (const nr of nodeRects) {
+      if (nr.id === srcId || nr.id === tgtId) continue;
+      if (nr.right < loX + 2 || nr.left > hiX - 2) continue;
+      const o = !(nr.bottom < pathTopBand || nr.top > pathBotBand);
+      const e1 = nr.top < y1 && nr.bottom > y1, e2 = nr.top < y2 && nr.bottom > y2;
+      if (!o && !e1 && !e2) continue;
+      allCardHits.push(nr);
+    }
+
+    if (!allZoneHits.length && !allCardHits.length) {
+      return [[x1, y1], [trackX, y1], [trackX, y2], [x2, y2]];
+    }
+    allCardHits.forEach(c => { if (allZoneHits.indexOf(c) < 0) allZoneHits.push(c); });
     if (!allZoneHits.length) {
       zHits1.forEach(z => allZoneHits.push(z));
       zHits2.forEach(z => { if (allZoneHits.indexOf(z) < 0) allZoneHits.push(z); });
@@ -1715,7 +1837,22 @@ function route(model, packed, opts = {}) {
         const total = eKey ? (gapCounts[eKey] || 1) : 1;
         const idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
         const turnY = vGapTop + vGapHeight * (idx + 1) / (total + 1);
-        d = 'M' + x1 + ',' + y1 + ' L' + x1 + ',' + turnY + ' L' + x2 + ',' + turnY + ' L' + x2 + ',' + y2;
+        const srcChainV = nodeIdToContainerChain[edge.source] || [];
+        const tgtChainV = nodeIdToContainerChain[edge.target] || [];
+        const legAClear = verticalSegmentClear(x1, y1, turnY, [s.zoneName], [edge.source, edge.target], srcChainV);
+        const legBClear = verticalSegmentClear(x2, turnY, y2, [t.zoneName], [edge.source, edge.target], tgtChainV);
+        if (legAClear && legBClear) {
+          d = 'M' + x1 + ',' + y1 + ' L' + x1 + ',' + turnY + ' L' + x2 + ',' + turnY + ' L' + x2 + ',' + y2;
+        } else {
+          // A vertical leg here would cut through something (typically a
+          // zone/card left behind on a different wrapped row) -- fall back
+          // to the fully obstacle-aware H-V-H router instead.
+          const fx1 = x1 < x2 ? s.right + edgeMargin : s.left - edgeMargin;
+          const fx2 = x1 < x2 ? t.left - edgeMargin : t.right + edgeMargin;
+          const fy1 = cy(s), fy2 = cy(t);
+          const fTrackX = snapToGap((fx1 + fx2) / 2, fx1, fx2);
+          d = pointsToD(routeOrthogonal(fx1, fy1, fx2, fy2, fTrackX, edge.source, edge.target));
+        }
       }
     }
 
@@ -1730,6 +1867,72 @@ function route(model, packed, opts = {}) {
     return pts;
   }
   collected.forEach(p => { p.points = parsePath(p.d); p.bumps = []; });
+
+  // ── Final safety net: repair any card/zone/container crossing left by
+  // whichever branch produced this edge's path. The branches above each
+  // make LOCAL decisions (rail selection, chain spines, zone-center
+  // shortcuts, etc.) checked against only the obstacle set THAT branch
+  // happened to consider -- e.g. a chosen detour row can be clear of
+  // everything within the edge's original y-range yet still cut through a
+  // card that lives further out once the detour extends past it. This pass
+  // re-validates every segment against the actual, global obstacle set and
+  // nudges just the offending segment sideways, regardless of which branch
+  // produced it. Bounded passes: never loops forever, and if a segment truly
+  // can't be resolved it's left as-is (assessQuality/the Layout Quality Gate
+  // is the backstop that discloses this rather than hiding it).
+  function segCrossesRect(x1, y1, x2, y2, rect) {
+    const lo = { x: Math.min(x1, x2), y: Math.min(y1, y2) };
+    const hi = { x: Math.max(x1, x2), y: Math.max(y1, y2) };
+    return !(hi.x <= rect.left + 1 || lo.x >= rect.right - 1 || hi.y <= rect.top + 1 || lo.y >= rect.bottom - 1);
+  }
+  const REPAIR_CLEARANCE = 10;
+  for (let pass = 0; pass < 4; pass++) {
+    let fixedAny = false;
+    collected.forEach(item => {
+      const srcId = item.source, tgtId = item.target;
+      const srcZoneName = nodeIdToZoneName[srcId] || '';
+      const tgtZoneName = nodeIdToZoneName[tgtId] || '';
+      const srcChainR = nodeIdToContainerChain[srcId] || [];
+      const tgtChainR = nodeIdToContainerChain[tgtId] || [];
+      const pts = item.points;
+      for (let si = 0; si < pts.length - 1; si++) {
+        const x1s = pts[si][0], y1s = pts[si][1], x2s = pts[si + 1][0], y2s = pts[si + 1][1];
+        const vertical = Math.abs(x1s - x2s) < 0.5 && Math.abs(y1s - y2s) >= 0.5;
+        const horizontal = Math.abs(y1s - y2s) < 0.5 && Math.abs(x1s - x2s) >= 0.5;
+        if (!vertical && !horizontal) continue;
+        let hit = null;
+        for (const nr of nodeRects) {
+          if (nr.id === srcId || nr.id === tgtId) continue;
+          if (segCrossesRect(x1s, y1s, x2s, y2s, nr)) { hit = nr; break; }
+        }
+        if (!hit) {
+          for (const zr of zoneRects) {
+            if (zr.name === srcZoneName || zr.name === tgtZoneName) continue;
+            if (segCrossesRect(x1s, y1s, x2s, y2s, zr)) { hit = zr; break; }
+          }
+        }
+        if (!hit) {
+          for (const cr of containerRects) {
+            if (srcChainR.indexOf(cr.id) !== -1 || tgtChainR.indexOf(cr.id) !== -1) continue;
+            if (segCrossesRect(x1s, y1s, x2s, y2s, cr)) { hit = cr; break; }
+          }
+        }
+        if (!hit) continue;
+        if (vertical) {
+          const shiftLeft = hit.left - REPAIR_CLEARANCE, shiftRight = hit.right + REPAIR_CLEARANCE;
+          const newX = Math.abs(shiftLeft - x1s) <= Math.abs(shiftRight - x1s) ? shiftLeft : shiftRight;
+          pts[si][0] = newX; pts[si + 1][0] = newX;
+        } else {
+          const shiftUp = hit.top - REPAIR_CLEARANCE, shiftDown = hit.bottom + REPAIR_CLEARANCE;
+          const newY = Math.abs(shiftUp - y1s) <= Math.abs(shiftDown - y1s) ? shiftUp : shiftDown;
+          pts[si][1] = newY; pts[si + 1][1] = newY;
+        }
+        fixedAny = true;
+      }
+    });
+    if (!fixedAny) break;
+  }
+
   for (let i = 0; i < collected.length; i++) {
     const A = collected[i];
     for (let sa = 0; sa < A.points.length - 1; sa++) {

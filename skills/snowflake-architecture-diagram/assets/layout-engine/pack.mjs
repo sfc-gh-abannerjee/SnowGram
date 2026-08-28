@@ -36,10 +36,11 @@ function maxOf(arr, seed) {
 // style-agnostic: it only bounds aspect ratio/width, never dictates a
 // particular visual arrangement.
 function wrapUnits(items, maxWidth, colGap, rowGap) {
+  const cap = balancedWrapCap(items, maxWidth, colGap);
   let rowX = 0, rowIdx = 0;
   const rowHeights = [];
   items.forEach(u => {
-    if (rowX > 0 && rowX + u.width > maxWidth) { rowIdx++; rowX = 0; }
+    if (rowX > 0 && rowX + u.width > cap) { rowIdx++; rowX = 0; }
     u.rowIdx = rowIdx;
     u.xInRow = rowX;
     rowX += u.width + colGap;
@@ -50,8 +51,44 @@ function wrapUnits(items, maxWidth, colGap, rowGap) {
   for (let r = 0; r < rowHeights.length; r++) { rowYOffset[r] = acc; acc += (rowHeights[r] || 0) + rowGap; }
   let totalWidth = 0;
   items.forEach(u => { const right = u.xInRow + u.width; if (right > totalWidth) totalWidth = right; });
+  // Center any row narrower than the widest one -- otherwise a row left with
+  // just one small trailing item (because a much bigger unit, e.g. the whole
+  // platform-boundary block, already filled most of the row before it) reads
+  // as an accidental leftover stranded in empty space rather than a
+  // deliberate, balanced arrangement.
+  const rowContentWidth = [];
+  items.forEach(u => { const right = u.xInRow + u.width; if (!(rowContentWidth[u.rowIdx] > right)) rowContentWidth[u.rowIdx] = right; });
+  items.forEach(u => { u.xInRow += (totalWidth - rowContentWidth[u.rowIdx]) / 2; });
   const totalHeight = rowHeights.length ? acc - rowGap : 0;
   return { rowYOffset, totalWidth, totalHeight, numRows: rowHeights.length };
+}
+
+// balanced-partition cap: same number of rows a naive greedy-at-maxWidth
+// wrap would need, but the SMALLEST per-row width cap that still achieves
+// that row count -- avoids the classic first-fit flaw where the trailing
+// row ends up with just one item stranded in a sea of empty space, by
+// distributing content as evenly as possible across all rows instead.
+function balancedWrapCap(items, maxWidth, colGap) {
+  const widths = items.map(u => u.width);
+  const n = widths.length;
+  if (!n) return maxWidth;
+  function rowsNeeded(cap) {
+    let rows = 1, cur = widths[0];
+    for (let i = 1; i < n; i++) {
+      const add = widths[i] + colGap;
+      if (cur > 0 && cur + add > cap) { rows++; cur = widths[i]; } else { cur += add; }
+    }
+    return rows;
+  }
+  const maxItemWidth = Math.max.apply(null, widths);
+  const hi0 = Math.max(maxWidth, maxItemWidth);
+  const targetRows = rowsNeeded(hi0);
+  let lo = maxItemWidth, hi = hi0;
+  while (lo < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (rowsNeeded(mid) <= targetRows) hi = mid; else lo = mid + 1;
+  }
+  return lo;
 }
 
 // ── Nested containers (Phase 2) ──────────────────────────────────────
@@ -376,9 +413,42 @@ function orderRowsAcrossZones(zones, zoneInfo, rank, edges, isDummy) {
     const m = rows.length;
     return m % 2 ? rows[(m - 1) / 2] : (rows[m / 2 - 1] + rows[m / 2]) / 2;
   }
+  // Intra-zone chain edges (e.g. Bronze -> Silver -> Gold, all one zone/
+  // column) are a HARD ordering constraint: cross-zone median alignment
+  // below is a soft preference and must never flip a node above something
+  // that feeds it, or the connector visually loops backward.
+  const zoneOf2 = zoneOf;
+  const precedesWithinZone = {}; // zoneName -> Set("sourceId|targetId")
+  edges.forEach(e => {
+    const sz = zoneOf2[e.source], tz = zoneOf2[e.target];
+    if (sz && sz === tz) (precedesWithinZone[sz] = precedesWithinZone[sz] || new Set()).add(e.source + '|' + e.target);
+  });
+  function constrainedOrder(items, precedesSet) {
+    // items already carry a "desired" row (median-based); this performs the
+    // smallest possible topological repair -- among items with no
+    // unplaced intra-zone predecessor, pick the one with the lowest desired
+    // row, exactly reproducing a plain sort when there are no constraints.
+    const remaining = items.slice();
+    const placed = [];
+    const placedIds = new Set();
+    while (remaining.length) {
+      let bestIdx = -1;
+      for (let i = 0; i < remaining.length; i++) {
+        const blocked = remaining.some((other, j) => j !== i && precedesSet.has(other.id + '|' + remaining[i].id));
+        if (blocked) continue;
+        if (bestIdx === -1 || remaining[i].desired < remaining[bestIdx].desired) bestIdx = i;
+      }
+      if (bestIdx === -1) bestIdx = 0; // cycle guard (shouldn't occur for a DAG): never hang
+      placed.push(remaining[bestIdx]);
+      placedIds.add(remaining[bestIdx].id);
+      remaining.splice(bestIdx, 1);
+    }
+    return placed;
+  }
   function reorderZone(z, dir) {
     const zi = zoneInfo[z.name];
     if (!zi || zi.subGroups) return;               // sub-group zones keep explicit order
+    const precedesSet = precedesWithinZone[z.name] || new Set();
     const byCol = {};
     (z.node_ids || []).forEach(id => { if (isDummy && isDummy[id]) return; const c = zi.col[id] || 0; (byCol[c] = byCol[c] || []).push(id); });
     Object.keys(byCol).forEach(c => {
@@ -389,7 +459,9 @@ function orderRowsAcrossZones(zones, zoneInfo, rank, edges, isDummy) {
       // nodes without a neighbor on this side stay at their current row (fallback to orig);
       // stable tie-break by original row keeps determinism.
       items.sort((p, q) => { const pb = p.b == null ? p.orig : p.b, qb = q.b == null ? q.orig : q.b; return pb !== qb ? pb - qb : p.orig - q.orig; });
-      items.forEach((it, i) => { zi.rowIdx[it.id] = i; });
+      const ranked = items.map((it, i) => ({ id: it.id, desired: i }));
+      const fixed = precedesSet.size ? constrainedOrder(ranked, precedesSet) : ranked;
+      fixed.forEach((it, i) => { zi.rowIdx[it.id] = i; });
     });
   }
   const byRank = zones.slice().sort((a, b) => rank[a.name] - rank[b.name]);
