@@ -902,7 +902,8 @@ function pack(model, opts = {}) {
     } else {
       let ix = u.xInRow;
       const top = rowTop + outsideZoneTop;
-      u.zonesInCol.forEach(({ z, zs }) => {
+      u.zonesInCol.forEach(function (item) {
+        const z = item.z, zs = item.zs;
         const left = ix;
         zoneRects.push({ name: z.name, left, right: left + zs.width, top, bottom: top + zs.height });
         placedByZone[z.name] = { left, top, zs };
@@ -977,7 +978,7 @@ function pack(model, opts = {}) {
   // dummy lanes, e.g. in an outside column, on a completely different row).
   if (platformBoundary) {
     const insideZoneNames = {};
-    units.forEach(u => { if (u.kind === 'boundary') u.zonesInBoundary.forEach(({ z }) => { insideZoneNames[z.name] = true; }); });
+    units.forEach(u => { if (u.kind === 'boundary') u.zonesInBoundary.forEach(function (item) { insideZoneNames[item.z.name] = true; }); });
     let deepest = 0;
     nodeRects.forEach(nr => { if (nr.dummy && insideZoneNames[nr.zoneName] && nr.bottom > deepest) deepest = nr.bottom; });
     const need = deepest + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
@@ -1532,8 +1533,8 @@ const DEFAULTS = {
   minPackingDensity: 0.03, // total card area / canvas area
 };
 
-function assessQuality(result, opts = {}) {
-  const cfg = { ...DEFAULTS, ...opts };
+function assessQuality(result, opts) {
+  const cfg = Object.assign({}, DEFAULTS, opts || {});
   const nodes = result.nodes || [];
   const edges = result.edges || [];
   const width = result.width || 0;
@@ -1661,6 +1662,6 @@ try {
 try {
   return JSON.stringify(layout(__input, {}));
 } catch (e) {
-  return JSON.stringify({ error: String((e && e.message) || e) });
+  return JSON.stringify({ error: String((e && e.message) || e), stack: (e && e.stack) ? String(e.stack) : null });
 }
 $$;

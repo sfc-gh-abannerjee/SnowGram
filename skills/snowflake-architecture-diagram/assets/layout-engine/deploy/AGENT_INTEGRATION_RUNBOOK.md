@@ -22,6 +22,40 @@ Author: Abhinav Bannerjee
 
 ---
 
+## CRITICAL: deploying via the `snow` CLI (`snow sql -f`) instead of Snowsight
+
+This runbook's steps are pure SQL run in a Snowsight Workspace, which is safe.
+If you instead deploy `deploy/LAYOUT_DIAGRAM.sql` via the `snow` CLI
+(`snow sql -f deploy/LAYOUT_DIAGRAM.sql`), **you must pass
+`--enable-templating NONE`**.
+
+**Why:** `snow sql -f`/`-q` performs client-side legacy SnowSQL-style variable
+substitution by default (`--enable-templating` defaults to `LEGACY, STANDARD`).
+That substitution treats `&&` inside the SQL text as an *escaped single
+ampersand* and silently collapses it to `&` before the statement ever reaches
+Snowflake. The UDF body is plain JavaScript containing dozens of `&&` (logical
+AND) operators — every one gets corrupted to `&` (bitwise AND, which does
+**not** short-circuit), and the deployed function becomes subtly broken:
+it still parses and creates successfully (`CREATE OR REPLACE FUNCTION`
+succeeds with no error), but throws `TypeError: Cannot read properties of
+undefined (reading 'length')` at runtime on the first `x && x.length`-shaped
+guard it evaluates — usually on the very first call, for *any* input,
+including trivial ones. Verified 2026-08-28 on `TEMP.ABANNERJEE.LAYOUT_DIAGRAM`.
+
+**Fix:** always pass `--enable-templating NONE`:
+```bash
+snow sql -c <connection> -f deploy/LAYOUT_DIAGRAM.sql --enable-templating NONE
+```
+**Verify after ANY CLI deploy** (this is why §2b below matters — a `CREATE
+FUNCTION successfully created` message is NOT evidence the body is intact):
+```bash
+snow sql -c <connection> -q "SELECT GET_DDL('FUNCTION','<db>.<schema>.LAYOUT_DIAGRAM(VARCHAR)');" \
+  --enable-templating NONE --format json
+# then confirm the retrieved source has NO lone " & " where the .mjs source has "&&"
+```
+
+---
+
 ## 0. Confirm context
 
 ```sql

@@ -40,8 +40,8 @@ const DEFAULTS = {
   minPackingDensity: 0.03, // total card area / canvas area
 };
 
-export function assessQuality(result, opts = {}) {
-  const cfg = { ...DEFAULTS, ...opts };
+export function assessQuality(result, opts) {
+  const cfg = Object.assign({}, DEFAULTS, opts || {});
   const nodes = result.nodes || [];
   const edges = result.edges || [];
   const width = result.width || 0;

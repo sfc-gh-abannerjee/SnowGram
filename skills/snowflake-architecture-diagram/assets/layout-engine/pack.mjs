@@ -487,7 +487,8 @@ export function pack(model, opts = {}) {
     } else {
       let ix = u.xInRow;
       const top = rowTop + outsideZoneTop;
-      u.zonesInCol.forEach(({ z, zs }) => {
+      u.zonesInCol.forEach(function (item) {
+        const z = item.z, zs = item.zs;
         const left = ix;
         zoneRects.push({ name: z.name, left, right: left + zs.width, top, bottom: top + zs.height });
         placedByZone[z.name] = { left, top, zs };
@@ -562,7 +563,7 @@ export function pack(model, opts = {}) {
   // dummy lanes, e.g. in an outside column, on a completely different row).
   if (platformBoundary) {
     const insideZoneNames = {};
-    units.forEach(u => { if (u.kind === 'boundary') u.zonesInBoundary.forEach(({ z }) => { insideZoneNames[z.name] = true; }); });
+    units.forEach(u => { if (u.kind === 'boundary') u.zonesInBoundary.forEach(function (item) { insideZoneNames[item.z.name] = true; }); });
     let deepest = 0;
     nodeRects.forEach(nr => { if (nr.dummy && insideZoneNames[nr.zoneName] && nr.bottom > deepest) deepest = nr.bottom; });
     const need = deepest + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;

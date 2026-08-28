@@ -48,7 +48,7 @@ try {
 try {
   return JSON.stringify(layout(__input, {}));
 } catch (e) {
-  return JSON.stringify({ error: String((e && e.message) || e) });
+  return JSON.stringify({ error: String((e && e.message) || e), stack: (e && e.stack) ? String(e.stack) : null });
 }
 `;
 
