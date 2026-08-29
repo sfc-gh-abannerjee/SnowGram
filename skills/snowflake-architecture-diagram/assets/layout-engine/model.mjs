@@ -26,14 +26,18 @@ const CATEGORY_BY_TYPE = {
   s3: 'onprem', kafka: 'onprem', kinesis: 'onprem', azure_blob: 'onprem',
   gcs: 'onprem', api: 'onprem', saas: 'onprem', external: 'onprem',
   oltp: 'onprem', database: 'onprem', bi_tool: 'outcome',
-  // bridge (Snowflake-managed ingestion)
+  dbt: 'onprem', airflow: 'onprem', fivetran: 'onprem', matillion: 'onprem',
+  informatica: 'onprem', talend: 'onprem',
+  // bridge (Snowflake-managed ingestion / connectivity)
   pipe: 'bridge', snowpipe: 'bridge', openflow: 'bridge', connector: 'bridge',
+  private_link: 'bridge', privatelink: 'bridge', secure_view: 'bridge',
   // snow (native)
   table: 'snow', dynamic_table: 'snow', view: 'snow', stream: 'snow',
   task: 'snow', warehouse: 'snow', stage: 'snow', schema: 'snow',
-  cortex: 'snow', snowpark: 'snow', iceberg: 'snow',
+  cortex: 'snow', snowpark: 'snow', iceberg: 'snow', governance: 'snow',
   // outcome (native consumers)
   dashboard: 'outcome', app: 'outcome', agent: 'outcome', notebook: 'outcome',
+  streamlit: 'outcome', user: 'outcome',
 };
 
 function categoryFrom(node) {
@@ -43,6 +47,22 @@ function categoryFrom(node) {
   // boundary hint: 'external'/'outside' -> onprem; default snow
   const b = String(node.boundary || '').toLowerCase();
   if (b.includes('external') || b.includes('outside') || b.includes('source')) return 'onprem';
+  // Generic vendor-prefix heuristic: any non-Snowflake cloud vendor's OWN
+  // service (azure_*, aws_*, gcp_*, google_*) is virtually always outside
+  // the Snowflake account boundary even when explicit metadata is missing
+  // -- e.g. azure_synapse, azure_data_factory, aws_glue, gcp_dataflow.
+  // Private connectivity into Snowflake (e.g. azure_private_link) is the
+  // one exception -- that's the Snowflake-managed bridge, not the source.
+  if (/private_?link/.test(t)) return 'bridge';
+  if (/^(azure|aws|gcp|google)_/.test(t)) return 'onprem';
+  // Third-party BI/reporting tools are external consumers -- NOT the same
+  // as a native Snowflake-served surface (Streamlit, Cortex agent), which
+  // is what 'outcome' otherwise means (boundary-triggering, i.e. inside
+  // the account). Power BI/Tableau/etc. sit outside it.
+  if (/(power_?bi|tableau|looker|qlik|sigma)/.test(t)) return 'onprem';
+  // A DIFFERENT/external Snowflake account (e.g. an inbound share
+  // provider) is not part of THIS account's boundary either.
+  if (t === 'snowflake_account') return 'onprem';
   return 'snow';
 }
 
