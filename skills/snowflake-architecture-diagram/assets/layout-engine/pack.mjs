@@ -359,8 +359,28 @@ function assignRanks(zones, edges) {
     }));
   }
   names.forEach(n => { if (rank[n] > names.length - 1) rank[n] = names.length - 1; });
-  // de-collide same-rank zones into unique columns
-  const sorted = names.slice().sort((a, b) => (rank[a] !== rank[b]) ? rank[a] - rank[b] : order[a] - order[b]);
+  // de-collide same-rank zones into unique columns -- but FIRST bucket by
+  // category (onprem < snow/bridge < outcome) so a bridge/outcome zone
+  // that happens to have a lower topological rank than some onprem zone
+  // (e.g. an inbound share arriving early in the chain) can never end up
+  // sandwiched between two onprem zones. The platform boundary is drawn by
+  // sweeping every column between the first and last snow-category column
+  // (pack()'s hasBoundary/snowStart/snowEnd) -- without this bucketing, an
+  // onprem zone caught in that numeric range visually ends up INSIDE the
+  // Snowflake boundary despite being external, which is architecturally
+  // backwards. Rank order (the flow's actual read order) still breaks ties
+  // within each bucket.
+  function bucketOf(name) {
+    const c = cat[name];
+    if (c === 'onprem') return 0;
+    if (c === 'outcome') return 2;
+    return 1; // snow / bridge / anything unrecognized
+  }
+  const sorted = names.slice().sort((a, b) => {
+    const ba = bucketOf(a), bb = bucketOf(b);
+    if (ba !== bb) return ba - bb;
+    return (rank[a] !== rank[b]) ? rank[a] - rank[b] : order[a] - order[b];
+  });
   sorted.forEach((n, idx) => { rank[n] = idx; });
   return rank;
 }
