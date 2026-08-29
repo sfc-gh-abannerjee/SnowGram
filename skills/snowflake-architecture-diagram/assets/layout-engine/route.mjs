@@ -308,6 +308,283 @@ export function route(model, packed, opts = {}) {
   // ── helpers reading packed rects ──
   const cy = (nr) => (nr.top + nr.bottom) / 2;
 
+  // ── Grid-channel routing ──────────────────────────────────────────
+  // pack.mjs's wrapUnits() gives every scope (outer canvas, inside the
+  // platform boundary, inside each container) a globally row-band-aligned
+  // grid: row r spans the SAME y-range for every item in that scope, by
+  // construction. That means the gap between two row-bands is a
+  // horizontal line clear of every slot in the scope, and the gap between
+  // two adjacent slots in the same row is a vertical line clear of every
+  // other row. Routing zone-to-zone by walking those channels is correct
+  // by construction, so it replaces the old approach of guessing a path
+  // and reactively detecting/dodging whatever it crosses.
+  const channels = packed.channels;
+  const zoneScopeMap = packed.zoneScope || {};
+  const containerScopeMap = packed.containerScope || {};
+  const slotMidX = (sl) => (sl.left + sl.right) / 2;
+
+  function gridOf(scopeId) {
+    if (!channels) return null;
+    return scopeId === 'outer' ? channels.outer : (channels.scopes && channels.scopes[scopeId]);
+  }
+  function slotIn(grid, name) {
+    return grid && grid.slots.find(sl => sl.name === name);
+  }
+  function resolveEndpoint(zoneName) {
+    const scopeId = zoneScopeMap[zoneName];
+    if (!scopeId) return null;
+    const grid = gridOf(scopeId);
+    const slot = slotIn(grid, zoneName);
+    return slot ? { scopeId, grid, slot } : null;
+  }
+  function boxSlotOfScope(scopeId, inScope) {
+    const grid = gridOf(inScope);
+    const name = scopeId === 'boundary' ? 'boundary' : scopeId;
+    return slotIn(grid, name);
+  }
+  function ancestorChain(scopeId) {
+    const chain = [scopeId];
+    let cur = scopeId;
+    while (cur !== 'outer' && containerScopeMap[cur] != null) { cur = containerScopeMap[cur]; chain.push(cur); }
+    if (chain[chain.length - 1] !== 'outer') chain.push('outer');
+    return chain;
+  }
+
+  // Find an X clear of every slot whose row falls inside [loY, hiY],
+  // nearest to preferredX, within this grid's own horizontal extent.
+  function findClearVerticalX(grid, loY, hiY, preferredX, excludeNames) {
+    if (!grid.slots.length) return preferredX;
+    const boundsMin = Math.min.apply(null, grid.slots.map(s => s.left)) - 30;
+    const boundsMax = Math.max.apply(null, grid.slots.map(s => s.right)) + 30;
+    const blockers = [];
+    grid.slots.forEach(sl => {
+      if (excludeNames.indexOf(sl.name) !== -1) return;
+      if (sl.bottom <= loY + 1 || sl.top >= hiY - 1) return;
+      blockers.push([Math.max(boundsMin, sl.left - 6), Math.min(boundsMax, sl.right + 6)]);
+    });
+    blockers.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    blockers.forEach(b => {
+      if (merged.length && b[0] <= merged[merged.length - 1][1]) merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], b[1]);
+      else merged.push(b.slice());
+    });
+    const cands = [];
+    let prevRight = boundsMin;
+    merged.forEach(b => { if (b[0] - prevRight > 8) cands.push({ lo: prevRight, hi: b[0] }); prevRight = Math.max(prevRight, b[1]); });
+    if (boundsMax - prevRight > 8) cands.push({ lo: prevRight, hi: boundsMax });
+    if (!cands.length) return preferredX;
+    let best = null, bestD = Infinity;
+    cands.forEach(g => {
+      const x = Math.max(g.lo + 4, Math.min(preferredX, g.hi - 4));
+      const d = Math.abs(x - preferredX);
+      if (d < bestD) { bestD = d; best = x; }
+    });
+    return best;
+  }
+
+  // Path between two slots that live in the SAME scope grid. Optional
+  // lane offset (0-based index, count) spreads multiple parallel edges
+  // between the same pair of slots so they don't perfectly overlap.
+  function pathWithinScope(grid, a, b, lane) {
+    lane = lane || { idx: 0, count: 1 };
+    if (a.rowIdx === b.rowIdx) {
+      const top = Math.max(a.top, b.top), bot = Math.min(a.bottom, b.bottom);
+      const baseY = (top + bot) / 2;
+      const spread = (bot - top > 10) ? (bot - top - 8) : 0;
+      const y = spread ? (top + 4 + spread * (lane.idx + 1) / (lane.count + 1)) : baseY;
+      const goingRight = slotMidX(a) < slotMidX(b);
+      return [[goingRight ? a.right : a.left, y], [goingRight ? b.left : b.right, y]];
+    }
+    const goingDown = a.rowIdx < b.rowIdx;
+    const rowBottom = (r) => grid.rowYOffset[r] + grid.rowHeights[r];
+    const rowTop = (r) => grid.rowYOffset[r];
+    const y1 = goingDown ? rowBottom(a.rowIdx) : rowTop(a.rowIdx);
+    const y2 = goingDown ? rowTop(b.rowIdx) : rowBottom(b.rowIdx);
+    const loRow = Math.min(a.rowIdx, b.rowIdx), hiRow = Math.max(a.rowIdx, b.rowIdx);
+    const fromX = slotMidX(a), toX = slotMidX(b);
+    let travelX = toX;
+    if (hiRow - loRow > 1) {
+      const skipLoY = goingDown ? rowBottom(loRow) : rowTop(hiRow);
+      const skipHiY = goingDown ? rowTop(hiRow) : rowBottom(loRow);
+      travelX = findClearVerticalX(grid, Math.min(skipLoY, skipHiY), Math.max(skipLoY, skipHiY), toX, [a.name, b.name]);
+    }
+    if (lane.count > 1) {
+      const spread = 10 * (lane.count - 1);
+      travelX += -spread / 2 + spread * lane.idx / (lane.count - 1 || 1);
+    }
+    const pts = [[fromX, goingDown ? a.bottom : a.top]];
+    if (Math.abs(y1 - pts[0][1]) > 0.5) pts.push([fromX, y1]);
+    if (Math.abs(travelX - fromX) > 0.5) pts.push([travelX, y1]);
+    if (Math.abs(y2 - y1) > 0.5) pts.push([travelX, y2]);
+    if (Math.abs(travelX - toX) > 0.5) pts.push([toX, y2]);
+    const lastY = goingDown ? b.top : b.bottom;
+    if (Math.abs(lastY - (pts[pts.length - 1][1])) > 0.5) pts.push([toX, lastY]);
+    return pts;
+  }
+
+  // Stub from a slot nested inside `grid` (a container/boundary's inner
+  // scope) out to the box's own wall, biased toward `towardPoint` (the
+  // point the rest of the path connects to one level up).
+  function exitStub(grid, slot, towardPoint) {
+    const numRows = grid.rowHeights.length;
+    const boxTop = grid.rowYOffset[0] || 0;
+    const boxBottom = (grid.rowYOffset[numRows - 1] || 0) + (grid.rowHeights[numRows - 1] || 0);
+    const boxLeft = Math.min.apply(null, grid.slots.map(s => s.left));
+    const boxRight = Math.max.apply(null, grid.slots.map(s => s.right));
+    const twx = towardPoint[0], twy = towardPoint[1];
+
+    // The target sits roughly at this box's own height -> exit sideways
+    // (left/right wall) rather than through top/bottom. Row boundaries
+    // are clear across the FULL grid width by construction, so exit the
+    // slot to its own nearer row boundary, then travel along that clear
+    // line straight to the box's edge.
+    if (twy >= boxTop - 2 && twy <= boxBottom + 2) {
+      const goingLeft = twx < (boxLeft + boxRight) / 2;
+      const rowTop = grid.rowYOffset[slot.rowIdx];
+      const rowBot = grid.rowYOffset[slot.rowIdx] + grid.rowHeights[slot.rowIdx];
+      const useBottom = (slot.bottom - rowTop) <= (rowBot - slot.top);
+      const laneY = useBottom ? rowBot : rowTop;
+      const edgeX = goingLeft ? boxLeft : boxRight;
+      const sx = slotMidX(slot);
+      const pts = [[sx, useBottom ? slot.bottom : slot.top]];
+      if (Math.abs(laneY - pts[0][1]) > 0.5) pts.push([sx, laneY]);
+      pts.push([edgeX, laneY]);
+      return pts;
+    }
+
+    const goingUp = twy < (boxTop + boxBottom) / 2;
+    const edgeY = goingUp ? boxTop : boxBottom;
+    const loRow = goingUp ? 0 : slot.rowIdx + 1;
+    const hiRow = goingUp ? slot.rowIdx - 1 : numRows - 1;
+    const sx = slotMidX(slot);
+    let travelX = sx; // no corridor to search -> exit straight, no jog
+    if (hiRow >= loRow) {
+      travelX = findClearVerticalX(grid, grid.rowYOffset[loRow], grid.rowYOffset[hiRow] + grid.rowHeights[hiRow], towardPoint[0], [slot.name]);
+    }
+    const nearEdgeY = goingUp ? grid.rowYOffset[slot.rowIdx] : grid.rowYOffset[slot.rowIdx] + grid.rowHeights[slot.rowIdx];
+    const pts = [[sx, goingUp ? slot.top : slot.bottom]];
+    if (Math.abs(nearEdgeY - pts[0][1]) > 0.5) pts.push([sx, nearEdgeY]);
+    if (Math.abs(travelX - sx) > 0.5) pts.push([travelX, nearEdgeY]);
+    if (Math.abs(edgeY - nearEdgeY) > 0.5) pts.push([travelX, edgeY]);
+    return pts;
+  }
+
+  // Full zone-to-zone path, walking up to the lowest common ancestor
+  // scope when the two zones sit in different containers/boundary.
+  // Returns null (caller falls back to the legacy router) when either
+  // zone has no recorded scope -- e.g. a fixture built before channel
+  // metadata existed, or a future zone kind this doesn't yet cover.
+  function channelPath(fromZoneName, toZoneName, lane) {
+    if (!channels) return null;
+    const A = resolveEndpoint(fromZoneName), B = resolveEndpoint(toZoneName);
+    if (!A || !B) return null;
+    if (A.scopeId === B.scopeId) return pathWithinScope(A.grid, A.slot, B.slot, lane);
+
+    const chainA = ancestorChain(A.scopeId), chainB = ancestorChain(B.scopeId);
+    let lca = null, aIdx = -1, bIdx = -1;
+    for (let i = 0; i < chainA.length; i++) {
+      const j = chainB.indexOf(chainA[i]);
+      if (j !== -1) { lca = chainA[i]; aIdx = i; bIdx = j; break; }
+    }
+    if (lca == null) return null;
+
+    // Walk ONE side up from its own scope to the LCA, one level at a
+    // time -- each level exits through its own box's wall toward that
+    // box's position one level up, so a target nested two-plus levels
+    // below the LCA (e.g. zone -> container -> boundary -> outer) gets a
+    // separate stub through EVERY wall it's actually behind, not just
+    // the outermost one.
+    function walkUp(chain, idx, endpoint, targetPoint) {
+      let pts = [];
+      let curScope = chain[0], curGrid = endpoint.grid, curSlot = endpoint.slot;
+      for (let level = 0; level < idx; level++) {
+        const parentScope = chain[level + 1];
+        const parentGrid = gridOf(parentScope);
+        const boxName = curScope === 'boundary' ? 'boundary' : curScope;
+        const boxSlotInParent = parentGrid && slotIn(parentGrid, boxName);
+        if (!parentGrid || !boxSlotInParent) return null;
+        pts = pts.concat(exitStub(curGrid, curSlot, targetPoint));
+        curScope = parentScope; curGrid = parentGrid; curSlot = boxSlotInParent;
+      }
+      return { pts, slot: curSlot, grid: curGrid };
+    }
+
+    const bAnchor = [slotMidX(B.slot), (B.slot.top + B.slot.bottom) / 2];
+    const aAnchor = [slotMidX(A.slot), (A.slot.top + A.slot.bottom) / 2];
+    const upA = walkUp(chainA, aIdx, A, bAnchor);
+    const upB = walkUp(chainB, bIdx, B, aAnchor);
+    if (!upA || !upB) return null;
+
+    const midPts = pathWithinScope(gridOf(lca), upA.slot, upB.slot, lane);
+    const suffix = upB.pts.length ? upB.pts.slice().reverse() : [];
+    return upA.pts.concat(midPts, suffix);
+  }
+  const laneCounts = {};
+
+  // Adapt a ZONE-level channel path (endpoints on the zone's own
+  // boundary) to the actual NODE cards the edge connects, by re-anchoring
+  // the first/last waypoint to the node's own edge in whichever axis the
+  // adjoining segment travels.
+  function nodeizeChannelPath(zonePts, sNode, tNode) {
+    if (!zonePts || zonePts.length < 2) return null;
+    const sx = (sNode.left + sNode.right) / 2, sy = cy(sNode);
+    const tx = (tNode.left + tNode.right) / 2, ty = cy(tNode);
+    const n = zonePts.length;
+
+    const fdx = zonePts[1][0] - zonePts[0][0], fdy = zonePts[1][1] - zonePts[0][1];
+    const srcAxis = Math.abs(fdy) >= Math.abs(fdx) ? 0 : 1; // 0=x, 1=y
+    const srcOldVal = zonePts[0][srcAxis];
+    let srcEnd = 0;
+    while (srcEnd < n && Math.abs(zonePts[srcEnd][srcAxis] - srcOldVal) < 0.5) srcEnd++;
+
+    const ldx = zonePts[n - 1][0] - zonePts[n - 2][0], ldy = zonePts[n - 1][1] - zonePts[n - 2][1];
+    const tgtAxis = Math.abs(ldy) >= Math.abs(ldx) ? 0 : 1;
+    const tgtOldVal = zonePts[n - 1][tgtAxis];
+    let tgtStart = n - 1;
+    while (tgtStart >= 0 && Math.abs(zonePts[tgtStart][tgtAxis] - tgtOldVal) < 0.5) tgtStart--;
+    tgtStart++;
+
+    const start = srcAxis === 0 ? [sx, fdy >= 0 ? sNode.bottom : sNode.top] : [fdx >= 0 ? sNode.right : sNode.left, sy];
+    const end = tgtAxis === 0 ? [tx, ldy >= 0 ? tNode.top : tNode.bottom] : [ldx >= 0 ? tNode.left : tNode.right, ty];
+
+    if (srcEnd > tgtStart) {
+      // The whole zone-level path is one uniform run in the shared axis
+      // (a direct same-row/same-column jog with no intermediate turn),
+      // so there's no natural breakpoint between "belongs to source" and
+      // "belongs to target" -- insert one at the channel's own midpoint.
+      if (srcAxis === 0) {
+        const laneY = (zonePts[0][1] + zonePts[n - 1][1]) / 2;
+        return [start, [sx, laneY], [tx, laneY], end];
+      }
+      const laneX = (zonePts[0][0] + zonePts[n - 1][0]) / 2;
+      return [start, [laneX, sy], [laneX, ty], end];
+    }
+
+    const pts = zonePts.map(p => p.slice());
+    for (let i = 0; i < srcEnd; i++) pts[i][srcAxis] = srcAxis === 0 ? sx : sy;
+    for (let i = tgtStart; i < n; i++) pts[i][tgtAxis] = tgtAxis === 0 ? tx : ty;
+    return [start].concat(pts, [end]);
+  }
+
+  // Drop consecutive duplicate/collinear points so tiny near-zero-length
+  // stubs introduced by nodeizeChannelPath don't leave visual artifacts.
+  function dedupCollinear(pts) {
+    const out = [pts[0]];
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i];
+      const prev = out[out.length - 1];
+      if (Math.abs(p[0] - prev[0]) < 0.5 && Math.abs(p[1] - prev[1]) < 0.5) continue;
+      if (out.length >= 2) {
+        const p0 = out[out.length - 2];
+        const collinearH = Math.abs(prev[1] - p0[1]) < 0.5 && Math.abs(p[1] - p0[1]) < 0.5;
+        const collinearV = Math.abs(prev[0] - p0[0]) < 0.5 && Math.abs(p[0] - p0[0]) < 0.5;
+        if (collinearH || collinearV) { out[out.length - 1] = p; continue; }
+      }
+      out.push(p);
+    }
+    return out;
+  }
+
   // ── Pre-pass: gap/V-track/H-track allocation ──
   const gapEdges = {}, gapIndex = {}, gapKey = {}, gapCounts = {};
   const vGapEdges = {}, vGapIndex = {}, vGapKey = {}, vGapCounts = {};
@@ -418,116 +695,25 @@ export function route(model, packed, opts = {}) {
         }
       }
     } else {
-      const sz = zoneRectByName[s.zoneName], tz = zoneRectByName[t.zoneName];
-      const srcNodeCy = cy(s), tgtNodeCy = cy(t);
-      const srcZoneCx = (sz.left + sz.right) / 2, tgtZoneCx = (tz.left + tz.right) / 2;
-      const horizontalGap = (tz.left > sz.right) || (sz.left > tz.right);
-      const verticalGap = (tz.top > sz.bottom) || (sz.top > tz.bottom);
-      // Diagonal case (row-wrap can place two zones on different wrap-rows
-      // AND different columns): both gaps are real, so prefer whichever
-      // corridor is actually clear/wider rather than defaulting to
-      // horizontal, which used to sweep straight through an unrelated row's
-      // cards when the vertical wrap-gutter was the safe path.
-      const useHorizontal = (horizontalGap && verticalGap)
-        ? (Math.abs(tgtZoneCx - srcZoneCx) >= Math.abs(tgtNodeCy - srcNodeCy))
-        : (horizontalGap || (!verticalGap && Math.abs(tgtZoneCx - srcZoneCx) > 20));
-      const edgeMargin = 8;
-
-      if (useHorizontal) {
-        const dx = tgtZoneCx - srcZoneCx;
-        if (dx >= 0) { x1 = s.right + edgeMargin; x2 = t.left - edgeMargin; } else { x1 = s.left - edgeMargin; x2 = t.right + edgeMargin; }
-        y1 = srcNodeCy; y2 = tgtNodeCy;
-        if (dx >= 0 && x2 <= x1) x2 = x1 + 16;
-        if (dx < 0 && x2 >= x1) x2 = x1 - 16;
-        arrowDir = dx >= 0 ? 'right' : 'left';
-        const rowDiff = Math.abs(s.rowIdx - t.rowIdx);
-        const tgtFanIn = nodeInCount[edge.target] || 1;
-        const fanInStubX = dx >= 0 ? (x2 - 24) : (x2 + 24);
-        const srcFanOut = nodeOutCount[edge.source] || 1;
-        const fanOutStubX = dx >= 0 ? (x1 + 24) : (x1 - 24);
-
-        let candidateMidY;
-        {
-          const hKey = hTrackKey[edgeIdx];
-          const hTotal = hKey ? (hTrackCounts[hKey] || 1) : 1;
-          const hIdx = hTrackIndex[edgeIdx] !== undefined ? hTrackIndex[edgeIdx] : 0;
-          if (hTotal > 1) { const bt = Math.min(y1, y2) + 16, bb = Math.max(y1, y2) - 16; candidateMidY = (bb > bt) ? bt + (bb - bt) * (hIdx + 1) / (hTotal + 1) : (y1 + y2) / 2; }
-          else candidateMidY = (y1 + y2) / 2;
-        }
-        function bridgeCollides(stubSrc, stubTgt, midY) {
-          const lo = Math.min(stubSrc, stubTgt), hi = Math.max(stubSrc, stubTgt);
-          const hHalo = 8, vHalo = 12;
-          const vTopSrc = Math.min(y1, midY), vBotSrc = Math.max(y1, midY);
-          const vTopTgt = Math.min(y2, midY), vBotTgt = Math.max(y2, midY);
-          for (const nr of nodeRects) {
-            if (nr.id === edge.source || nr.id === edge.target) continue;
-            if (nr.right >= lo + 2 && nr.left <= hi - 2 && midY > nr.top - hHalo && midY < nr.bottom + hHalo) return true;
-            if (stubSrc > nr.left - vHalo && stubSrc < nr.right + vHalo && vBotSrc > nr.top + 2 && vTopSrc < nr.bottom - 2) return true;
-            if (stubTgt > nr.left - vHalo && stubTgt < nr.right + vHalo && vBotTgt > nr.top + 2 && vTopTgt < nr.bottom - 2) return true;
-          }
-          return false;
-        }
-        function bridgedRoute(bx1, by1, bx2, by2, stubSrc, stubTgt) {
-          let midY;
-          const hKey = hTrackKey[edgeIdx];
-          const hTotal = hKey ? (hTrackCounts[hKey] || 1) : 1;
-          const hIdx = hTrackIndex[edgeIdx] !== undefined ? hTrackIndex[edgeIdx] : 0;
-          if (hTotal > 1) { const bt = Math.min(by1, by2) + 16, bb = Math.max(by1, by2) - 16; midY = (bb > bt) ? bt + (bb - bt) * (hIdx + 1) / (hTotal + 1) : (by1 + by2) / 2; }
-          else midY = (by1 + by2) / 2;
-          return 'M' + bx1 + ',' + by1 + ' L' + stubSrc + ',' + by1 + ' L' + stubSrc + ',' + midY + ' L' + stubTgt + ',' + midY + ' L' + stubTgt + ',' + by2 + ' L' + bx2 + ',' + by2;
-        }
-        const useBridged = (srcFanOut > 1 && tgtFanIn > 1 && Math.abs(fanOutStubX - fanInStubX) > 8 && !bridgeCollides(fanOutStubX, fanInStubX, candidateMidY));
-
-        if (rowDiff === 0 && Math.abs(y1 - y2) < 1) {
-          d = pointsToD(routeOrthogonal(x1, y1, x2, y2, (x1 + x2) / 2, edge.source, edge.target));
-        } else if (useBridged) {
-          d = bridgedRoute(x1, y1, x2, y2, fanOutStubX, fanInStubX);
-        } else if (rowDiff === 0) {
-          let stubX;
-          if (tgtFanIn > 1) stubX = fanInStubX; else if (srcFanOut > 1) stubX = fanOutStubX; else stubX = snapToGap((x1 + x2) / 2, x1, x2);
-          d = pointsToD(routeOrthogonal(x1, y1, x2, y2, stubX, edge.source, edge.target));
-        } else {
-          const vKey = vGapKey[edgeIdx];
-          const vTotal = vKey ? (vGapCounts[vKey] || 1) : 1;
-          const vIdx = vGapIndex[edgeIdx] !== undefined ? vGapIndex[edgeIdx] : 0;
-          const minX = Math.min(x1, x2) + 4, maxX = Math.max(x1, x2) - 4;
-          let stubX;
-          if (tgtFanIn > 1) stubX = fanInStubX;
-          else if (srcFanOut > 1) stubX = fanOutStubX;
-          else if (maxX > minX) { stubX = minX + (maxX - minX) * (vIdx + 1) / (vTotal + 1); stubX = snapToGap(stubX, x1, x2); }
-          else stubX = (x1 + x2) / 2;
-          d = pointsToD(routeOrthogonal(x1, y1, x2, y2, stubX, edge.source, edge.target));
-        }
+      // Cross-zone: walk the channel grid (see channelPath above) instead
+      // of guessing a shape and reactively dodging what it crosses.
+      const laneKey = [s.zoneName, t.zoneName].sort().join('|');
+      if (!laneCounts[laneKey]) laneCounts[laneKey] = 0;
+      const laneIdx = laneCounts[laneKey]++;
+      const zonePts = channelPath(s.zoneName, t.zoneName, { idx: laneIdx, count: 1 });
+      const nodePts = zonePts && nodeizeChannelPath(zonePts, s, t);
+      if (nodePts) {
+        d = pointsToD(dedupCollinear(nodePts));
       } else {
-        // vertical V-H-V
-        const dy = tgtNodeCy - srcNodeCy;
-        if (dy >= 0) { y1 = s.bottom + edgeMargin; y2 = t.top - edgeMargin; } else { y1 = s.top - edgeMargin; y2 = t.bottom + edgeMargin; }
-        x1 = (s.left + s.right) / 2; x2 = (t.left + t.right) / 2;
-        if (dy >= 0 && y2 <= y1) y2 = y1 + 16;
-        if (dy < 0 && y2 >= y1) y2 = y1 - 16;
-        const vGapTop = (dy >= 0 ? sz.bottom : tz.bottom);
-        const vGapBot = (dy >= 0 ? tz.top : sz.top);
-        const vGapHeight = vGapBot - vGapTop;
-        const eKey = gapKey[edgeIdx];
-        const total = eKey ? (gapCounts[eKey] || 1) : 1;
-        const idx = gapIndex[edgeIdx] !== undefined ? gapIndex[edgeIdx] : 0;
-        const turnY = vGapTop + vGapHeight * (idx + 1) / (total + 1);
-        const srcChainV = nodeIdToContainerChain[edge.source] || [];
-        const tgtChainV = nodeIdToContainerChain[edge.target] || [];
-        const legAClear = verticalSegmentClear(x1, y1, turnY, [s.zoneName], [edge.source, edge.target], srcChainV);
-        const legBClear = verticalSegmentClear(x2, turnY, y2, [t.zoneName], [edge.source, edge.target], tgtChainV);
-        if (legAClear && legBClear) {
-          d = 'M' + x1 + ',' + y1 + ' L' + x1 + ',' + turnY + ' L' + x2 + ',' + turnY + ' L' + x2 + ',' + y2;
-        } else {
-          // A vertical leg here would cut through something (typically a
-          // zone/card left behind on a different wrapped row) -- fall back
-          // to the fully obstacle-aware H-V-H router instead.
-          const fx1 = x1 < x2 ? s.right + edgeMargin : s.left - edgeMargin;
-          const fx2 = x1 < x2 ? t.left - edgeMargin : t.right + edgeMargin;
-          const fy1 = cy(s), fy2 = cy(t);
-          const fTrackX = snapToGap((fx1 + fx2) / 2, fx1, fx2);
-          d = pointsToD(routeOrthogonal(fx1, fy1, fx2, fy2, fTrackX, edge.source, edge.target));
-        }
+        // Fallback for anything channelPath doesn't cover yet (e.g. a
+        // zone missing from packed.channels): keep the old best-effort
+        // H-V-H router rather than failing to draw the edge at all.
+        const edgeMargin = 12;
+        const x1 = (s.left + s.right) / 2, x2 = (t.left + t.right) / 2;
+        const fx1 = x1 < x2 ? s.right + edgeMargin : s.left - edgeMargin;
+        const fx2 = x1 < x2 ? t.left - edgeMargin : t.right + edgeMargin;
+        const fTrackX = snapToGap((fx1 + fx2) / 2, fx1, fx2);
+        d = pointsToD(routeOrthogonal(fx1, cy(s), fx2, cy(t), fTrackX, edge.source, edge.target));
       }
     }
 

@@ -4,6 +4,64 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-08-29
+
+### Added
+- Replaced the reactive obstacle-detect-and-repair router in `route.mjs`
+  with a deterministic grid-channel router. `pack.mjs`'s `wrapUnits()`
+  already produces a globally row-band-aligned grid at every scope
+  (outer canvas, inside the platform boundary, inside each container) --
+  row *r* spans the same y-range for every item in that scope by
+  construction, which makes the gap between two row-bands, and the gap
+  between two adjacent slots in the same row, provably clear channels.
+  New `channels`/`zoneScope`/`containerScope` fields on `pack()`'s return
+  value expose this grid per scope; `route.mjs` walks it (`channelPath`,
+  `pathWithinScope`, `exitStub`, `findClearVerticalX`) to route zone-to-
+  zone edges by construction instead of guessing a shape and reactively
+  detecting/dodging whatever it crosses. Handles same-row, different-row,
+  and cross-scope edges (walking up through nested containers/boundary to
+  the lowest common ancestor scope, one wall at a time). The old
+  `routeOrthogonal` H/V-shape logic is kept only as a fallback for zones
+  missing channel metadata. Prototyped and validated first by a
+  background subagent (`/tmp/snowgram_grid_prototype/`, zero crossings by
+  construction on `row_wrap_stress.json`) per the plan in this file's
+  prior entry's "Known gaps" section, then implemented directly against
+  the production pack.mjs/route.mjs geometry (which uses variable-width
+  row-wrapped units, not the prototype's strict rank-column grid).
+
+### Fixed
+- Found and fixed four bugs surfaced by dogfooding the new router against
+  every existing fixture plus a live Apex Health re-test: (1) channel
+  scopes stored `rowYOffset` in each container's LOCAL coordinate frame
+  while `slots` used absolute canvas coordinates, so different-row edges
+  inside a nested container computed channel Y at the wrong place --
+  fixed by storing absolute row offsets. (2) The cross-scope walk-up only
+  exited through the immediate parent, silently skipping intermediate
+  levels for a zone nested two-plus levels below the common ancestor
+  (zone -> container -> boundary -> outer) -- fixed by walking the chain
+  one level at a time, exiting through every wall actually in the way.
+  (3) `exitStub`'s directional reference was the current box's own
+  center (meaningless for choosing a direction -- it's always the box
+  you're already inside), not the real far-endpoint -- fixed by passing
+  the actual destination point through the whole walk. (4) Re-anchoring
+  a zone-level path's endpoints to their real node positions could leave
+  two points disagreeing on the shared axis and draw a diagonal line
+  through open space; fixed to replace the whole contiguous run of
+  matching points, or insert an explicit jog when the entire zone-level
+  path is one uniform segment with no natural breakpoint. Also added
+  horizontal (left/right wall) exits to `exitStub`, which only supported
+  vertical (top/bottom) exits -- needed whenever a container/boundary
+  sits in the same row as the zone it's connecting to, a common case.
+
+### Known gaps (not yet fixed)
+- `include_platform_boundary` is still not reachable from the live agent
+  (no `CONTAINERS` parameter on `GENERATE_DIAGRAM_ARTIFACTS`'s tool
+  schema) -- unchanged from the prior entry, not attempted this pass.
+- One fixture (`medallion`) still produces a slightly indirect (though
+  fully orthogonal, non-crossing) path for an edge entering a nested
+  container from a sibling outer-level container, going around a corner
+  rather than a shorter route. Cosmetic, not a correctness bug.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-08-28
 
 Track 1 (`skills/snowflake-architecture-diagram/`) doesn't carry its own

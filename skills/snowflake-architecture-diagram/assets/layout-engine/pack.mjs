@@ -60,7 +60,7 @@ function wrapUnits(items, maxWidth, colGap, rowGap) {
   items.forEach(u => { const right = u.xInRow + u.width; if (!(rowContentWidth[u.rowIdx] > right)) rowContentWidth[u.rowIdx] = right; });
   items.forEach(u => { u.xInRow += (totalWidth - rowContentWidth[u.rowIdx]) / 2; });
   const totalHeight = rowHeights.length ? acc - rowGap : 0;
-  return { rowYOffset, totalWidth, totalHeight, numRows: rowHeights.length };
+  return { rowYOffset, rowHeights, totalWidth, totalHeight, numRows: rowHeights.length };
 }
 
 // balanced-partition cap: same number of rows a naive greedy-at-maxWidth
@@ -784,6 +784,18 @@ export function pack(model, opts = {}) {
   const containerRects = [];
   let boundaryLeft = null, boundaryRight = null, boundaryTop = null, boundaryBottom = null;
 
+  // ── Channel geometry (grid-aligned routing) ──────────────────────
+  // Every wrapUnits() call already produces a globally row-band-aligned
+  // grid (rowYOffset/rowHeights shared by every item in that wrap, by
+  // construction -- see wrapUnits). We record each such grid as a
+  // "scope" (outer canvas, inside the platform boundary, inside each
+  // container) with the placed slot rects for its immediate children,
+  // so route.mjs can walk clear channels between slots instead of
+  // reactively detecting and dodging obstacles after the fact.
+  const channels = { outer: { rowYOffset: outerWrap.rowYOffset, rowHeights: outerWrap.rowHeights, slots: [] }, scopes: {} };
+  const zoneScope = {};      // zoneName -> scope id ('outer' | 'boundary' | containerId)
+  const containerScope = {}; // containerId -> scope id of the box's own parent scope
+
   // Shared by both the top-level units.forEach loop (standalone boundary,
   // the common case) and placeContainerUnit (boundary embedded as a child
   // of an adopting container, e.g. "Microsoft Azure" wrapping a
@@ -795,12 +807,16 @@ export function pack(model, opts = {}) {
     boundaryBottom = y + u.height;
     const innerOriginX = x + LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide;
     const innerOriginY = y + LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop;
+    const scope = { rowYOffset: u.innerWrap.rowYOffset.map(ry => ry + innerOriginY), rowHeights: u.innerWrap.rowHeights, slots: [] };
+    channels.scopes.boundary = scope;
     u.zonesInBoundary.forEach(item => {
       const left = innerOriginX + item.xInRow;
       const top = innerOriginY + (u.innerWrap.rowYOffset[item.rowIdx] || 0);
       const zs = item.zs;
       zoneRects.push({ name: item.z.name, left, right: left + zs.width, top, bottom: top + zs.height });
       placedByZone[item.z.name] = { left, top, zs };
+      zoneScope[item.z.name] = 'boundary';
+      scope.slots.push({ rowIdx: item.rowIdx, left, right: left + zs.width, top, bottom: top + zs.height, name: item.z.name });
     });
   }
 
@@ -811,6 +827,8 @@ export function pack(model, opts = {}) {
   function placeContainerUnit(unit, x, y) {
     const innerOriginX = x + LAYOUT.containerBorder + LAYOUT.containerPadSide;
     const innerOriginY = y + LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop;
+    const scope = { rowYOffset: unit.innerWrap.rowYOffset.map(ry => ry + innerOriginY), rowHeights: unit.innerWrap.rowHeights, slots: [] };
+    channels.scopes[unit.id] = scope;
     unit.items.forEach(item => {
       const left = innerOriginX + item.xInRow;
       const top = innerOriginY + (unit.innerWrap.rowYOffset[item.rowIdx] || 0);
@@ -818,10 +836,16 @@ export function pack(model, opts = {}) {
         const zs = item.zs;
         zoneRects.push({ name: item.z.name, left, right: left + zs.width, top, bottom: top + zs.height });
         placedByZone[item.z.name] = { left, top, zs };
+        zoneScope[item.z.name] = unit.id;
+        scope.slots.push({ rowIdx: item.rowIdx, left, right: left + zs.width, top, bottom: top + zs.height, name: item.z.name });
       } else if (item.kind === 'boundary') {
         placeBoundaryUnit(item.unit, left, top);
+        containerScope.boundary = unit.id;
+        scope.slots.push({ rowIdx: item.rowIdx, left, right: left + item.unit.width, top, bottom: top + item.unit.height, name: 'boundary' });
       } else {
         placeContainerUnit(item.unit, left, top);
+        containerScope[item.unit.id] = unit.id;
+        scope.slots.push({ rowIdx: item.rowIdx, left, right: left + item.unit.width, top, bottom: top + item.unit.height, name: item.unit.id });
       }
     });
     containerRects.push({ id: unit.id, label: unit.label, parentId: unit.parentId, left: x, top: y, right: x + unit.width, bottom: y + unit.height });
@@ -831,8 +855,12 @@ export function pack(model, opts = {}) {
     const rowTop = outerWrap.rowYOffset[u.rowIdx] || 0;
     if (u.kind === 'containerBox') {
       placeContainerUnit(u.unit, u.xInRow, rowTop);
+      containerScope[u.unit.id] = 'outer';
+      channels.outer.slots.push({ rowIdx: u.rowIdx, left: u.xInRow, right: u.xInRow + u.width, top: rowTop, bottom: rowTop + u.height, name: u.unit.id });
     } else if (u.kind === 'boundary') {
       placeBoundaryUnit(u, u.xInRow, rowTop);
+      containerScope.boundary = 'outer';
+      channels.outer.slots.push({ rowIdx: u.rowIdx, left: u.xInRow, right: u.xInRow + u.width, top: rowTop, bottom: rowTop + u.height, name: 'boundary' });
     } else {
       let ix = u.xInRow;
       const top = rowTop + outsideZoneTop;
@@ -841,6 +869,8 @@ export function pack(model, opts = {}) {
         const left = ix;
         zoneRects.push({ name: z.name, left, right: left + zs.width, top, bottom: top + zs.height });
         placedByZone[z.name] = { left, top, zs };
+        zoneScope[z.name] = 'outer';
+        channels.outer.slots.push({ rowIdx: u.rowIdx, left, right: left + zs.width, top, bottom: top + zs.height, name: z.name });
         ix += zs.width + LAYOUT.outerColGap;
       });
     }
@@ -942,5 +972,6 @@ export function pack(model, opts = {}) {
     containers: containerRects,
     edgeChains, isDummy,
     width, height,
+    channels, zoneScope, containerScope,
   };
 }
