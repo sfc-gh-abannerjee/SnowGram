@@ -62,6 +62,26 @@ today's fixes for reported clutter/crowding/bad-routing issues.
 - `snow sql -f`/`-q` silently corrupts `&&` to `&` in JS/Python UDF bodies
   unless `--enable-templating NONE` is passed (`1f583c2`) -- documented in
   `assets/layout-engine/deploy/AGENT_INTEGRATION_RUNBOOK.md`.
+- A bridge/outcome-category zone with a lower topological rank than a
+  legitimate onprem zone let the platform boundary's column-range sweep
+  engulf the onprem zone too -- concretely, "Apex Azure Sources" rendered
+  INSIDE "Snowflake Data Cloud" (backwards: Snowflake runs on Azure, not
+  the reverse). Fixed with a category-bucketed rank re-sort (onprem <
+  snow/bridge < outcome) in `assignRanks` (`29c76cb`). Also generalized
+  `model.mjs`'s category inference (a fixed, always-incomplete type
+  enumeration) into a vendor-prefix heuristic (`azure_*`/`aws_*`/`gcp_*` ->
+  onprem) and fixed BI tools (Power BI/Tableau/etc.) being misclassified
+  as `outcome` (boundary-triggering) instead of `onprem` (`d7e70bb`).
+- `assets/scripts/review_harness.py`'s local render pipeline
+  (`render_local.py`) read `component_type` (snake_case) but
+  `tests/fixtures/*.json` uses `componentType` (camelCase) -- every node's
+  type silently read as empty, defaulting everything to `snow` and masking
+  the two fixes above in local testing. Accept both field names; also
+  synced `render_local.py`'s separate `_category()` heuristic (a port of
+  the live `GENERATE_DIAGRAM_ARTIFACTS` proc's own copy) with the same
+  fixes (`1ff35e9`). **Open follow-up**: the live proc almost certainly has
+  the identical category bug for real Azure/AWS/GCP-sourced diagrams --
+  not yet fixed/redeployed there.
 
 ## [1.1.0] - 2026-02-15
 
