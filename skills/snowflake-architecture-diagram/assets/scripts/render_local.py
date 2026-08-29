@@ -62,8 +62,12 @@ def _category(ctype: str, label: str, path: str | None) -> str:
     pth = path or ""
     if any(k in c for k in ("snowpipe", "openflow", "kafka connector", "connector for kafka")):
         return "bridge"
-    if "private" in c and "link" in c:
-        return "bridge"
+    # A cloud vendor's PRIVATE CONNECTIVITY construct (Azure Private Link,
+    # AWS PrivateLink) is network plumbing, not a Snowflake object -- it
+    # does not belong inside the account boundary. Deliberately NOT
+    # returning 'bridge' here (that's reserved for actual Snowflake-native
+    # ingestion services like Snowpipe); let the vendor-prefix rule below
+    # classify it as onprem like any other cloud-vendor-owned service.
     # Third-party BI/reporting tools are external consumers -- NOT the same
     # as a native Snowflake-served surface (Streamlit, Cortex agent), which
     # is what "outcome" otherwise means (boundary-triggering, i.e. inside
@@ -74,6 +78,8 @@ def _category(ctype: str, label: str, path: str | None) -> str:
     )):
         return "onprem"
     if any(k in c or k in l for k in ("streamlit", "dashboard", "notebook")):
+        return "outcome"
+    if c == "user" or "analyst" in c or "analyst" in l:
         return "outcome"
     if pth and not pth.startswith("sno-icon"):
         return "onprem"

@@ -30,7 +30,7 @@ const CATEGORY_BY_TYPE = {
   informatica: 'onprem', talend: 'onprem',
   // bridge (Snowflake-managed ingestion / connectivity)
   pipe: 'bridge', snowpipe: 'bridge', openflow: 'bridge', connector: 'bridge',
-  private_link: 'bridge', privatelink: 'bridge', secure_view: 'bridge',
+  secure_view: 'bridge',
   // snow (native)
   table: 'snow', dynamic_table: 'snow', view: 'snow', stream: 'snow',
   task: 'snow', warehouse: 'snow', stage: 'snow', schema: 'snow',
@@ -51,9 +51,9 @@ function categoryFrom(node) {
   // service (azure_*, aws_*, gcp_*, google_*) is virtually always outside
   // the Snowflake account boundary even when explicit metadata is missing
   // -- e.g. azure_synapse, azure_data_factory, aws_glue, gcp_dataflow.
-  // Private connectivity into Snowflake (e.g. azure_private_link) is the
-  // one exception -- that's the Snowflake-managed bridge, not the source.
-  if (/private_?link/.test(t)) return 'bridge';
+  // This intentionally also covers azure_private_link/aws_privatelink:
+  // that's network plumbing, not a Snowflake object -- 'bridge' above is
+  // reserved for actual Snowflake-native ingestion services (Snowpipe).
   if (/^(azure|aws|gcp|google)_/.test(t)) return 'onprem';
   // Third-party BI/reporting tools are external consumers -- NOT the same
   // as a native Snowflake-served surface (Streamlit, Cortex agent), which
@@ -127,6 +127,12 @@ function normalize(model) {
           zone_names: Array.isArray(c.zone_names) ? c.zone_names.slice() : [],
           node_ids: Array.isArray(c.node_ids) ? c.node_ids.filter(id => nodeIdSet[id]) : [],
           container_ids: Array.isArray(c.container_ids) ? c.container_ids.map(String) : [],
+          // A container can wrap the Snowflake platform boundary itself as
+          // one of its children -- e.g. a "Microsoft Azure" container for a
+          // Snowflake-on-Azure deployment, alongside the customer's own
+          // same-cloud resources. At most one container should set this;
+          // pack.mjs defensively ignores extras rather than erroring.
+          include_platform_boundary: c.include_platform_boundary === true,
         }))
     : [];
 
