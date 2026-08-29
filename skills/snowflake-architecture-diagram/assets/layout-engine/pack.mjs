@@ -113,9 +113,9 @@ function balancedWrapCap(items, maxWidth, colGap) {
 // for route.mjs's crossing-avoidance) and a memoized `buildUnit(id)` that
 // recursively computes chrome + wrapUnits(children) bottom-up, mirroring the
 // platformBoundary's own zonesInBoundary/innerWrap pattern one level deeper.
-function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank, zoneSize, maxCanvasWidth) {
+function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank, zoneSize, maxCanvasWidth, hasBoundary, snowStart, snowEnd) {
   const empty = {
-    defs: {}, rangeCache: {}, topLevelIds: [],
+    defs: {}, rangeCache: {}, topLevelIds: [], boundaryAdopterId: null,
     acceptAgainst: () => [],
     resolveZoneContainerId: () => ({}),
     makeBuildUnit: () => () => null,
@@ -127,11 +127,17 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
   preConsolidationZones.forEach(z => { zoneNodeIdsPre[z.name] = z.node_ids || []; });
 
   const defs = {};
+  // At most one container may adopt the platform boundary (e.g. a
+  // "Microsoft Azure" container wrapping a Snowflake-on-Azure deployment,
+  // alongside the customer's own same-cloud resources) -- first-declared
+  // wins if more than one is marked, so this can never be ambiguous.
+  let boundaryAdopterId = null;
   rawContainers.forEach(c => {
     if (!c || c.id == null) return;
     const seedIds = new Set(c.node_ids || []);
     (c.zone_names || []).forEach(zn => (zoneNodeIdsPre[zn] || []).forEach(id => seedIds.add(id)));
     defs[c.id] = { id: c.id, label: c.label || c.id, seedIds, childIds: (c.container_ids || []).filter(cid => cid !== c.id), parentId: null };
+    if (c.include_platform_boundary === true && hasBoundary && boundaryAdopterId == null) boundaryAdopterId = c.id;
   });
   // Link parents (first-declared wins), then break any cycles so the
   // container graph is always a proper tree.
@@ -160,7 +166,9 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
   });
 
   // Rank range per container = min/max rank of its own seed zones, unioned
-  // with (recursively) its declared children's ranges.
+  // with (recursively) its declared children's ranges, and -- for the one
+  // boundary-adopting container, if any -- the platform boundary's own
+  // [snowStart, snowEnd] range too.
   const rangeCache = {};
   function rangeOf(id, guard) {
     if (rangeCache[id] !== undefined) return rangeCache[id];
@@ -174,15 +182,17 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
       const sub = rangeOf(cid, guard);
       if (sub) { if (sub.lo < lo) lo = sub.lo; if (sub.hi > hi) hi = sub.hi; }
     });
+    if (id === boundaryAdopterId) { if (snowStart < lo) lo = snowStart; if (snowEnd > hi) hi = snowEnd; }
     return (rangeCache[id] = (lo === Infinity ? null : { lo, hi }));
   }
   Object.keys(defs).forEach(id => rangeOf(id));
 
   // Accept top-level containers in rank order, skipping any that collide
-  // with an already-claimed range (the platform boundary claims its own
-  // range first -- it is set up by the caller before this point, but we
-  // don't know snowStart/snowEnd here, so the caller passes it in via the
-  // `claimed` seed below).
+  // with an already-claimed range. The platform boundary's own range is
+  // pre-claimed by the caller UNLESS a container is adopting it (in which
+  // case that container's own range -- which already unions in the
+  // boundary's range above -- claims it instead, and no separate top-level
+  // boundary unit gets built).
   const topLevelIds = Object.keys(defs).filter(id => defs[id].parentId == null && rangeCache[id]);
   topLevelIds.sort((a, b) => rangeCache[a].lo - rangeCache[b].lo);
 
@@ -213,6 +223,9 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
       zones.forEach(z => {
         const r = rank[z.name];
         if (r < topRange.lo || r > topRange.hi) return;
+        // A boundary-adopting container's own snow-range zones are handled
+        // via the embedded boundary sub-unit, not as loose direct members.
+        if (id === boundaryAdopterId && r >= snowStart && r <= snowEnd) return;
         // Narrowest range wins; on an exact tie (e.g. a pure-wrapper parent
         // whose range is entirely inherited from one child) the LATER
         // (deeper, since DFS visits parent before child) tree member wins
@@ -236,7 +249,7 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
   }
 
   const unitCache = {};
-  function makeBuildUnit(zoneContainerId) {
+  function makeBuildUnit(zoneContainerId, boundaryUnit) {
     return function buildUnit(id) {
       if (unitCache[id] !== undefined) return unitCache[id];
       const directZones = zones.filter(z => zoneContainerId[z.name] === id).sort((a, b) => rank[a.name] - rank[b.name]);
@@ -244,6 +257,7 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
       const items = [];
       directZones.forEach(z => { const zs = zoneSize(z); items.push({ kind: 'zone', z, zs, width: zs.width, height: zs.height, rank: rank[z.name] }); });
       childIds.forEach(cid => { const cu = buildUnit(cid); if (cu) items.push({ kind: 'container', unit: cu, width: cu.width, height: cu.height, rank: rangeCache[cid] ? rangeCache[cid].lo : 0 }); });
+      if (id === boundaryAdopterId && boundaryUnit) items.push({ kind: 'boundary', unit: boundaryUnit, width: boundaryUnit.width, height: boundaryUnit.height, rank: snowStart });
       if (!items.length) return (unitCache[id] = null);
       items.sort((a, b) => a.rank - b.rank);
       const chromeW = 2 * (LAYOUT.containerBorder + LAYOUT.containerPadSide);
@@ -260,7 +274,7 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
     };
   }
 
-  return { defs, rangeCache, topLevelIds, acceptAgainst, resolveZoneContainerId, makeBuildUnit, chainOf };
+  return { defs, rangeCache, topLevelIds, boundaryAdopterId, acceptAgainst, resolveZoneContainerId, makeBuildUnit, chainOf };
 }
 
 // ── Zone consolidation (port of renderFlow lines ~816-934) ──────────
@@ -669,11 +683,15 @@ export function pack(model, opts = {}) {
 
   // ── nested containers (Phase 2): resolve declared membership against the
   // platform boundary's claimed range, then build recursive units for
-  // whichever top-level containers don't collide with it or each other. ──
-  const containerLayout = buildContainerLayout(model.containers, model.zones, zones, rank, zoneSize, maxCanvasWidth);
-  const acceptedContainerIds = containerLayout.acceptAgainst(hasBoundary ? [{ lo: snowStart, hi: snowEnd }] : []);
+  // whichever top-level containers don't collide with it or each other.
+  // One container may instead ADOPT the boundary (include_platform_boundary)
+  // -- e.g. a "Microsoft Azure" container for a Snowflake-on-Azure
+  // deployment -- in which case its own range already covers the
+  // boundary's, so the boundary is NOT separately pre-claimed. ──
+  const containerLayout = buildContainerLayout(model.containers, model.zones, zones, rank, zoneSize, maxCanvasWidth, hasBoundary, snowStart, snowEnd);
+  const boundaryAdopted = containerLayout.boundaryAdopterId != null;
+  const acceptedContainerIds = containerLayout.acceptAgainst((hasBoundary && !boundaryAdopted) ? [{ lo: snowStart, hi: snowEnd }] : []);
   const zoneContainerId = containerLayout.resolveZoneContainerId(acceptedContainerIds);
-  const buildContainerUnit = containerLayout.makeBuildUnit(zoneContainerId);
   const containerRangeByStartCi = {};
   acceptedContainerIds.forEach(id => { containerRangeByStartCi[containerLayout.rangeCache[id].lo] = id; });
 
@@ -694,6 +712,27 @@ export function pack(model, opts = {}) {
   });
   const maxGap = Object.keys(perGap).reduce((m, g) => Math.max(m, perGap[g]), 0);
   const dynInnerGap = Math.min(LAYOUT.dynGapCap, LAYOUT.dynGapBase + LAYOUT.dynGapStep * Math.max(0, maxGap - 1));
+
+  // Build the platform-boundary unit ONCE, unconditionally, regardless of
+  // whether it ends up as a standalone top-level unit (the common case) or
+  // embedded as a child inside the one adopting container (Snowflake-on-
+  // <cloud> deployments) -- both paths need the identical zonesInBoundary/
+  // innerWrap geometry, just placed at a different origin later.
+  function buildBoundaryUnit() {
+    if (!hasBoundary) return null;
+    const boundaryChromeW = 2 * (LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide);
+    const innerMaxWidth = Math.max(maxCanvasWidth - boundaryChromeW, CARD.width);
+    const zonesInBoundary = [];
+    for (let sci = snowStart; sci <= snowEnd; sci++) {
+      columns[sci].forEach(z => { const zs = zoneSize(z); zonesInBoundary.push({ z, zs, width: zs.width, height: zs.height }); });
+    }
+    const innerWrap = wrapUnits(zonesInBoundary, innerMaxWidth, dynInnerGap, LAYOUT.rowWrapGap);
+    const width = boundaryChromeW + innerWrap.totalWidth;
+    const height = LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop + innerWrap.totalHeight + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
+    return { width, height, zonesInBoundary, innerWrap };
+  }
+  const boundaryUnit = buildBoundaryUnit();
+  const buildContainerUnit = containerLayout.makeBuildUnit(zoneContainerId, boundaryAdopted ? boundaryUnit : null);
 
   const outsideZoneTop = hasBoundary ? LAYOUT.outsidePadTop : 0;
 
@@ -717,18 +756,8 @@ export function pack(model, opts = {}) {
         continue;
       }
     }
-    if (hasBoundary && ci === snowStart) {
-      const boundaryChromeW = 2 * (LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide);
-      const innerMaxWidth = Math.max(maxCanvasWidth - boundaryChromeW, CARD.width);
-      const zonesInBoundary = [];
-
-      for (let sci = snowStart; sci <= snowEnd; sci++) {
-        columns[sci].forEach(z => { const zs = zoneSize(z); zonesInBoundary.push({ z, zs, width: zs.width, height: zs.height }); });
-      }
-      const innerWrap = wrapUnits(zonesInBoundary, innerMaxWidth, dynInnerGap, LAYOUT.rowWrapGap);
-      const width = boundaryChromeW + innerWrap.totalWidth;
-      const height = LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop + innerWrap.totalHeight + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
-      units.push({ kind: 'boundary', width, height, zonesInBoundary, innerWrap });
+    if (hasBoundary && !boundaryAdopted && ci === snowStart) {
+      units.push({ kind: 'boundary', width: boundaryUnit.width, height: boundaryUnit.height, zonesInBoundary: boundaryUnit.zonesInBoundary, innerWrap: boundaryUnit.innerWrap });
       ci = snowEnd; // skip the snow columns we just measured
       continue;
     }
@@ -755,9 +784,30 @@ export function pack(model, opts = {}) {
   const containerRects = [];
   let boundaryLeft = null, boundaryRight = null, boundaryTop = null, boundaryBottom = null;
 
-  // Recursive: places every (zone | nested container) item inside a
-  // container unit, mirroring the boundary's own zonesInBoundary placement
-  // one level deeper. Pushes exactly one containerRects entry per box.
+  // Shared by both the top-level units.forEach loop (standalone boundary,
+  // the common case) and placeContainerUnit (boundary embedded as a child
+  // of an adopting container, e.g. "Microsoft Azure" wrapping a
+  // Snowflake-on-Azure deployment) -- identical geometry, different origin.
+  function placeBoundaryUnit(u, x, y) {
+    boundaryLeft = x;
+    boundaryTop = y;
+    boundaryRight = x + u.width;
+    boundaryBottom = y + u.height;
+    const innerOriginX = x + LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide;
+    const innerOriginY = y + LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop;
+    u.zonesInBoundary.forEach(item => {
+      const left = innerOriginX + item.xInRow;
+      const top = innerOriginY + (u.innerWrap.rowYOffset[item.rowIdx] || 0);
+      const zs = item.zs;
+      zoneRects.push({ name: item.z.name, left, right: left + zs.width, top, bottom: top + zs.height });
+      placedByZone[item.z.name] = { left, top, zs };
+    });
+  }
+
+  // Recursive: places every (zone | nested container | embedded boundary)
+  // item inside a container unit, mirroring the boundary's own
+  // zonesInBoundary placement one level deeper. Pushes exactly one
+  // containerRects entry per box.
   function placeContainerUnit(unit, x, y) {
     const innerOriginX = x + LAYOUT.containerBorder + LAYOUT.containerPadSide;
     const innerOriginY = y + LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop;
@@ -768,6 +818,8 @@ export function pack(model, opts = {}) {
         const zs = item.zs;
         zoneRects.push({ name: item.z.name, left, right: left + zs.width, top, bottom: top + zs.height });
         placedByZone[item.z.name] = { left, top, zs };
+      } else if (item.kind === 'boundary') {
+        placeBoundaryUnit(item.unit, left, top);
       } else {
         placeContainerUnit(item.unit, left, top);
       }
@@ -780,19 +832,7 @@ export function pack(model, opts = {}) {
     if (u.kind === 'containerBox') {
       placeContainerUnit(u.unit, u.xInRow, rowTop);
     } else if (u.kind === 'boundary') {
-      boundaryLeft = u.xInRow;
-      boundaryTop = rowTop;
-      boundaryRight = u.xInRow + u.width;
-      boundaryBottom = rowTop + u.height;
-      const innerOriginX = u.xInRow + LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide;
-      const innerOriginY = rowTop + LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop;
-      u.zonesInBoundary.forEach(item => {
-        const left = innerOriginX + item.xInRow;
-        const top = innerOriginY + (u.innerWrap.rowYOffset[item.rowIdx] || 0);
-        const zs = item.zs;
-        zoneRects.push({ name: item.z.name, left, right: left + zs.width, top, bottom: top + zs.height });
-        placedByZone[item.z.name] = { left, top, zs };
-      });
+      placeBoundaryUnit(u, u.xInRow, rowTop);
     } else {
       let ix = u.xInRow;
       const top = rowTop + outsideZoneTop;
@@ -817,7 +857,19 @@ export function pack(model, opts = {}) {
   zones.forEach(z => {
     const p = placedByZone[z.name]; if (!p) return;
     const zi = zoneInfo[z.name];
-    const containerChain = zoneContainerId[z.name] != null ? containerLayout.chainOf(zoneContainerId[z.name]) : [];
+    // A zone embedded inside the platform boundary (which is itself nested
+    // inside the one adopting container, if any -- e.g. "Microsoft Azure"
+    // wrapping a Snowflake-on-Azure deployment) never gets a zoneContainerId
+    // entry of its own (it's placed via the boundary sub-unit, not swept in
+    // as a loose item) -- but for route.mjs's obstacle-exclusion purposes it
+    // IS nested inside that container, and must say so, or every edge
+    // between two such zones treats the container's own rect as a real
+    // obstacle and detours wildly around it.
+    let effectiveContainerId = zoneContainerId[z.name];
+    if (effectiveContainerId == null && boundaryAdopted && rank[z.name] >= snowStart && rank[z.name] <= snowEnd) {
+      effectiveContainerId = containerLayout.boundaryAdopterId;
+    }
+    const containerChain = effectiveContainerId != null ? containerLayout.chainOf(effectiveContainerId) : [];
     const { cw, cg } = p.zs;
     const bodyLeft = p.left + ZONE.border + ZONE.bodyPad;
     const bodyTop = p.top + ZONE.border + ZONE.stripe + ZONE.headerMinHeight + ZONE.bodyPad;

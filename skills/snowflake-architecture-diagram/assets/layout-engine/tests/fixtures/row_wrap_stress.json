@@ -106,7 +106,15 @@
       "id": "pbi",
       "label": "Power BI (legacy)",
       "componentType": "power_bi",
-      "zone": "Consumers"
+      "zone": "Legacy Consumers"
+    }
+  ],
+  "containers": [
+    {
+      "id": "azure",
+      "label": "Microsoft Azure",
+      "zone_names": ["Apex Azure Sources", "Apex Ingestion", "Private Connectivity"],
+      "include_platform_boundary": true
     }
   ],
   "edges": [
