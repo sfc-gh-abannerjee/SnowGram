@@ -39,6 +39,12 @@ today's fixes for reported clutter/crowding/bad-routing issues.
   repo -- blocks ending the turn after a commit until the ctx tracker is
   reconciled and living docs are either updated or explicitly acknowledged
   as not applicable.
+- Containers can now adopt the Snowflake platform boundary itself as one of
+  their children (`include_platform_boundary` on a container) -- e.g. a
+  "Microsoft Azure" container correctly nesting "Snowflake Data Cloud"
+  inside it for a Snowflake-on-Azure deployment, alongside the customer's
+  own same-cloud resources as siblings, instead of treating the account and
+  its host cloud as unrelated sibling boxes (`2229d8d`).
 
 ### Fixed
 - Intra-zone chain edges could get reordered out of sequence by the
@@ -82,6 +88,23 @@ today's fixes for reported clutter/crowding/bad-routing issues.
   fixes (`1ff35e9`). **Open follow-up**: the live proc almost certainly has
   the identical category bug for real Azure/AWS/GCP-sourced diagrams --
   not yet fixed/redeployed there.
+- Azure/AWS Private Link was categorized as `bridge` (Snowflake-native
+  ingestion), sweeping it inside the Snowflake boundary despite being
+  network plumbing, not a Snowflake object. Removed the override so it
+  falls through to the generic vendor-prefix `onprem` rule like any other
+  cloud-vendor-owned service (`71127b2`).
+- A container adopting the platform boundary (see Added, above) exposed a
+  routing bug: zones embedded via the boundary sub-unit never got the
+  adopting container's id in their `route.mjs` container-chain, so an edge
+  between two such zones treated the container's own rect as a real
+  obstacle and detoured wildly around it (observed: a path running from
+  x=-10 to x=1560, off both edges of the canvas). Fixed by attributing the
+  adopter's chain to those zones for routing purposes (`2229d8d`).
+- The route-repair safety net (added earlier this session) could oscillate
+  forever between two overlapping-but-offset obstacles -- shift past one,
+  land on the other, shift back. Fixed by collecting every obstacle a
+  segment crosses per pass and shifting past the union of their bounds,
+  clearing the whole cluster in one move (`40cfff6`).
 
 ## [1.1.0] - 2026-02-15
 
