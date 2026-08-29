@@ -561,7 +561,7 @@ export function route(model, packed, opts = {}) {
     return !(hi.x <= rect.left + 1 || lo.x >= rect.right - 1 || hi.y <= rect.top + 1 || lo.y >= rect.bottom - 1);
   }
   const REPAIR_CLEARANCE = 10;
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 6; pass++) {
     let fixedAny = false;
     collected.forEach(item => {
       const srcId = item.source, tgtId = item.target;
@@ -575,30 +575,35 @@ export function route(model, packed, opts = {}) {
         const vertical = Math.abs(x1s - x2s) < 0.5 && Math.abs(y1s - y2s) >= 0.5;
         const horizontal = Math.abs(y1s - y2s) < 0.5 && Math.abs(x1s - x2s) >= 0.5;
         if (!vertical && !horizontal) continue;
-        let hit = null;
+        // Collect EVERY obstacle crossed by this segment, not just the
+        // first -- shifting past a single one at a time can oscillate
+        // forever between two overlapping-but-offset obstacles (avoid A,
+        // land on B; avoid B, land back on A) without ever reaching a
+        // position clear of the whole cluster.
+        const hits = [];
         for (const nr of nodeRects) {
           if (nr.id === srcId || nr.id === tgtId) continue;
-          if (segCrossesRect(x1s, y1s, x2s, y2s, nr)) { hit = nr; break; }
+          if (segCrossesRect(x1s, y1s, x2s, y2s, nr)) hits.push(nr);
         }
-        if (!hit) {
-          for (const zr of zoneRects) {
-            if (zr.name === srcZoneName || zr.name === tgtZoneName) continue;
-            if (segCrossesRect(x1s, y1s, x2s, y2s, zr)) { hit = zr; break; }
-          }
+        for (const zr of zoneRects) {
+          if (zr.name === srcZoneName || zr.name === tgtZoneName) continue;
+          if (segCrossesRect(x1s, y1s, x2s, y2s, zr)) hits.push(zr);
         }
-        if (!hit) {
-          for (const cr of containerRects) {
-            if (srcChainR.indexOf(cr.id) !== -1 || tgtChainR.indexOf(cr.id) !== -1) continue;
-            if (segCrossesRect(x1s, y1s, x2s, y2s, cr)) { hit = cr; break; }
-          }
+        for (const cr of containerRects) {
+          if (srcChainR.indexOf(cr.id) !== -1 || tgtChainR.indexOf(cr.id) !== -1) continue;
+          if (segCrossesRect(x1s, y1s, x2s, y2s, cr)) hits.push(cr);
         }
-        if (!hit) continue;
+        if (!hits.length) continue;
         if (vertical) {
-          const shiftLeft = hit.left - REPAIR_CLEARANCE, shiftRight = hit.right + REPAIR_CLEARANCE;
+          const clusterLeft = Math.min.apply(null, hits.map(h => h.left));
+          const clusterRight = Math.max.apply(null, hits.map(h => h.right));
+          const shiftLeft = clusterLeft - REPAIR_CLEARANCE, shiftRight = clusterRight + REPAIR_CLEARANCE;
           const newX = Math.abs(shiftLeft - x1s) <= Math.abs(shiftRight - x1s) ? shiftLeft : shiftRight;
           pts[si][0] = newX; pts[si + 1][0] = newX;
         } else {
-          const shiftUp = hit.top - REPAIR_CLEARANCE, shiftDown = hit.bottom + REPAIR_CLEARANCE;
+          const clusterTop = Math.min.apply(null, hits.map(h => h.top));
+          const clusterBottom = Math.max.apply(null, hits.map(h => h.bottom));
+          const shiftUp = clusterTop - REPAIR_CLEARANCE, shiftDown = clusterBottom + REPAIR_CLEARANCE;
           const newY = Math.abs(shiftUp - y1s) <= Math.abs(shiftDown - y1s) ? shiftUp : shiftDown;
           pts[si][1] = newY; pts[si + 1][1] = newY;
         }
