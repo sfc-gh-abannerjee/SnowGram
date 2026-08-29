@@ -62,18 +62,37 @@ def _category(ctype: str, label: str, path: str | None) -> str:
     pth = path or ""
     if any(k in c for k in ("snowpipe", "openflow", "kafka connector", "connector for kafka")):
         return "bridge"
+    if "private" in c and "link" in c:
+        return "bridge"
+    # Third-party BI/reporting tools are external consumers -- NOT the same
+    # as a native Snowflake-served surface (Streamlit, Cortex agent), which
+    # is what "outcome" otherwise means (boundary-triggering, i.e. inside
+    # the account). Power BI/Tableau/etc. sit outside it.
     if any(k in c or k in l for k in (
-        "streamlit", "tableau", "power bi", "powerbi", "looker", "dashboard",
-        "superset", "sigma", "metabase", "quicksight", "notebook",
+        "tableau", "power bi", "powerbi", "looker",
+        "superset", "sigma", "metabase", "quicksight",
     )):
+        return "onprem"
+    if any(k in c or k in l for k in ("streamlit", "dashboard", "notebook")):
         return "outcome"
     if pth and not pth.startswith("sno-icon"):
+        return "onprem"
+    # A DIFFERENT/external Snowflake account (e.g. an inbound share
+    # provider) is not part of THIS account's boundary either.
+    if "snowflake_account" in c or "snowflake account" in l:
         return "onprem"
     if any(k in c for k in (
         "s3", "kafka", "kinesis", "blob", "gcs", "event hub", "eventhub",
         "postgres", "mysql", "oracle", "mongo", "redis", "external", "data lake",
         "databricks", "spark", "bigquery", "synapse", "redshift", "pub/sub", "pubsub",
+        "dbt", "airflow", "fivetran", "matillion", "informatica", "talend",
     )):
+        return "onprem"
+    # Generic vendor-prefix heuristic: any non-Snowflake cloud vendor's OWN
+    # service (azure_*, aws_*, gcp_*, google_*) is virtually always outside
+    # the Snowflake account boundary even when no more specific keyword
+    # above matched -- e.g. azure_data_factory, azure_sql, aws_glue.
+    if any(c.startswith(p) for p in ("azure_", "aws_", "gcp_", "google_")):
         return "onprem"
     return "snow"
 
@@ -137,7 +156,7 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
     for n in nodes:
         nid = n.get("id")
         label = n.get("label") or nid
-        ctype = n.get("component_type") or n.get("type") or ""
+        ctype = n.get("component_type") or n.get("componentType") or n.get("type") or ""
         id_to_label[nid] = label
         id_to_type[nid] = ctype
 
