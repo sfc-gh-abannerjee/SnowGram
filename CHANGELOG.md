@@ -105,6 +105,58 @@ today's fixes for reported clutter/crowding/bad-routing issues.
   land on the other, shift back. Fixed by collecting every obstacle a
   segment crosses per pass and shifting past the union of their bounds,
   clearing the whole cluster in one move (`40cfff6`).
+- `review_harness.py`'s live-agent download-link regex required exactly one
+  character between `HTML (interactive)` and the markdown link, but the
+  agent sometimes writes a literal `->` (two ASCII chars) instead of a
+  single arrow glyph, silently failing artifact recovery (no PNG, no error
+  surfaced beyond a line in `REVIEW.md`). Widened to accept `->`, `→`, or
+  `-` (git-tracked fix, no commit hash yet -- pending).
+- Confirmed and fixed the live proc bug flagged as an open follow-up above:
+  `TEMP.ABANNERJEE.GENERATE_DIAGRAM_ARTIFACTS`'s own `_category()` copy had
+  the identical component-type field-name and BI-tool-classification bugs
+  as `render_local.py`; redeployed with the same fix (live proc change, no
+  git commit -- this file lives outside the repo).
+- The deeper root cause of BI tools rendering inside the account boundary
+  wasn't the code-level `_category()` heuristic (a fallback) but the
+  authoritative `TEMP.ABANNERJEE.COMPONENT_RESOLVER` catalog table queried
+  by the agent's `component_resolver` tool *before* any heuristic runs --
+  it classified `tableau`/`powerbi`/`power bi`/`looker`/`salesforce` as
+  `outcome` (boundary-triggering), same as native tools like `streamlit`.
+  Reclassified those 7 rows to `onprem` (live data fix, no git commit).
+- The agent's own orchestration instructions still gave the same stale
+  examples (`"outcome: reads data FROM Snowflake (Tableau, Power BI,
+  Looker...)"`), and had no rule preventing it from placing a native
+  consumption surface (e.g. Streamlit) and an external one (e.g. Power BI)
+  in the same zone/layer -- since a zone is swept to one side of the
+  boundary as a whole, any such mix renders one of the two on the wrong
+  side. Corrected the stale examples and added an explicit "ZONE/LAYER
+  MIXING" rule; republished as `TEMP.ABANNERJEE.SNOWGRAM_AGENT`
+  `VERSION$12` and set as `DEFAULT_VERSION` (agent spec change, no commit).
+  Verified live: Power BI now renders in its own "Legacy External BI" zone
+  outside the boundary, split from "Apex Analyst Consumers" (Streamlit)
+  inside it.
+
+### Known gaps (not yet fixed)
+- `include_platform_boundary` (containers adopting the platform boundary,
+  see Added above) is fully implemented in the layout engine but **not
+  reachable from the live agent**: `GENERATE_DIAGRAM_ARTIFACTS`'s Cortex
+  Agent tool schema (`input_schema.properties`) only declares
+  `NODES`/`EDGES`/`TITLE`/`EXPORT_NAME`/`DOC_JSON` -- there is no
+  `CONTAINERS` parameter, so the agent has no mechanism to pass container
+  data through even with updated instructions. Extending the live
+  procedure's signature and the tool schema to add `CONTAINERS` is a
+  materially larger, riskier change than anything else in this entry and
+  needs an explicit decision before being attempted.
+- The router's reactive obstacle-detection-and-repair architecture (global
+  safety-net pass in `route.mjs`) keeps finding new edge cases by
+  construction. A background-agent prototype (`/tmp/snowgram_grid_prototype/`,
+  not part of this repo) validated a grid-channel routing alternative with
+  zero crossings by construction on `row_wrap_stress.json`, using the
+  globally-aligned row-band invariant `pack.mjs` already approximates.
+  Recommended path: (1) `pack.mjs`-only PR exposing `channelCols`/
+  `channelRows` on the layout result (pure addition, no behavior change),
+  then (2) a `route.mjs` rewrite replacing the ~400-line branch-per-shape +
+  repair-pass approach with a ~200-line channel-walk. Not started.
 
 ## [1.1.0] - 2026-02-15
 
