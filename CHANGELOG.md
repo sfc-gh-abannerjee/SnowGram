@@ -4,6 +4,52 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-08-31 (part 3)
+
+### Added
+- Added a usage-penalty mechanism to `gridroute.mjs` (`registerPathUsage`,
+  `reuseCount`, `REUSE_PENALTY`): each edge's chosen path is recorded into
+  a shared list, and later edges' cost function adds a penalty for fine-
+  grained search steps that run along an already-claimed segment. This
+  fixes a real, confirmed bug: several distinct edges converging on the
+  same target (e.g. three source systems all feeding one transform node)
+  found the mathematically-identical shortest path independently and
+  rendered as visually indistinguishable overlapping lines for a long
+  shared stretch, not just at the shared target's entry point. An earlier
+  attempt at this (a post-hoc nudge that shifted individual waypoints)
+  was reverted the same day for breaking orthogonality; this version
+  influences the search itself so every emitted path is still guaranteed
+  shortest-and-obstacle-free, just with parallel routes preferring
+  distinct lanes when a comparably-short alternative exists.
+
+### Investigated (no code change -- see notes)
+- Re-audited "the routing hasn't improved" feedback by extracting the
+  exact node/zone/edge geometry straight from live-agent-produced HTML
+  (not eyeballing screenshots) and re-running the crossing check with
+  proper per-edge exclusions. Found and fixed a real bug in my OWN
+  analysis script along the way (zone/boundary/container rects need the
+  same `+46` SVG-viewBox offset as edge path points; comparing them
+  unadjusted manufactured several false-positive "crossings" that don't
+  actually exist, including the original "Partner Data" one raised in
+  the request). After that fix, two live-agent runs still each showed 1-2
+  segments passing through an unrelated zone. Extensive direct
+  verification -- calling the deployed `LAYOUT_DIAGRAM` UDF over SQL with
+  reconstructed and exact-extracted topologies, and calling
+  `gridroute.mjs` directly in Node with the literal rects and edge order
+  pulled from the "buggy" HTML, including with `pathUsage` accumulated in
+  the same order the agent's edges appear -- could not reproduce either
+  flagged crossing; every direct test came back with `cardCrossings: 0`
+  and a safe path. Confirmed the deployed function body byte-for-byte
+  contains the current `reuseCount`/`REUSE_PENALTY`/
+  `routeShortestOrthogonal` code (via `GET_DDL`), and confirmed the
+  renderer emits plain `M`/`L` paths with no corner-rounding or other
+  post-processing that could shift a safe path after the fact. Net: the
+  router is extensively verified correct against every topology tested
+  directly; the 2 remaining flagged instances could not be reproduced
+  outside the exact live-agent call path, so there may still be a subtle
+  discrepancy specific to how the agent's own request differs from every
+  reconstruction attempted -- flagged rather than claimed fixed.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-08-31 (part 2)
 
 ### Added

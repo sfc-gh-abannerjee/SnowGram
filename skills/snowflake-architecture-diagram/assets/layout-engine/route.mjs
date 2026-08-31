@@ -9,7 +9,7 @@
 // a property of which moves exist in the search graph, not a check run
 // after the fact.
 
-import { routeShortestOrthogonal } from './gridroute.mjs';
+import { routeShortestOrthogonal, registerPathUsage } from './gridroute.mjs';
 
 export function route(model, packed, opts = {}) {
   const edges = model.edges || [];
@@ -401,6 +401,11 @@ export function route(model, packed, opts = {}) {
   // on their turn segments instead of landing exactly on top of a
   // shortest path some other edge already claimed.
   const laneCounts = {};
+  // Segments already claimed by earlier edges this pass, so later edges
+  // between a different node pair prefer a fresh lane over exactly
+  // overlapping one when a comparably-short alternative exists (see
+  // registerPathUsage / reuseCount in gridroute.mjs).
+  const pathUsage = [];
   const pairTotalCounts = {};
   edges.forEach(edge => {
     const s = nodeRectsById[edge.source], t = nodeRectsById[edge.target];
@@ -447,13 +452,14 @@ export function route(model, packed, opts = {}) {
       ...exclusionsFor(s.id, s.zoneName),
       ...exclusionsFor(t.id, t.zoneName),
     ]);
-    let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds);
+    let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds, 3, pathUsage);
     if (!path) {
       // Should only happen if a diagram genuinely has no clear route (e.g.
       // fully enclosed with no gap) -- fall back to a direct line rather
       // than dropping the edge.
       path = [[(s.left + s.right) / 2, cy(s)], [(t.left + t.right) / 2, cy(t)]];
     }
+    registerPathUsage(pathUsage, path);
     const d = pointsToD(path);
     const markerId = 'arrowhead';
     collected.push({ source: edge.source, target: edge.target, d, markerId });

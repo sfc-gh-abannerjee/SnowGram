@@ -1470,6 +1470,42 @@ function pack(model, opts = {}) {
 // and easy to verify in isolation.
 
 const TURN_PENALTY = 60; // px-equivalent cost per 90-degree turn
+const REUSE_PENALTY = 24; // extra cost per prior edge's segment a step runs along
+
+// Record a computed path's segments into a shared usage list (an array of
+// {x1,y1,x2,y2}) so subsequent calls to routeShortestOrthogonal can
+// penalize a fine-grained search step that runs along an already-used
+// segment, nudging equally-short parallel edges into separate lanes
+// instead of all collapsing onto the identical line.
+function registerPathUsage(usage, path) {
+  for (let i = 0; i < path.length - 1; i++) {
+    usage.push({ x1: path[i][0], y1: path[i][1], x2: path[i + 1][0], y2: path[i + 1][1] });
+  }
+}
+
+// How many already-used segments the fine-grained step (x,y)-(nx,ny) runs
+// along (collinear and within bounds), for the reuse penalty.
+function reuseCount(x, y, nx, ny, usage) {
+  if (!usage || !usage.length) return 0;
+  let count = 0;
+  const horizontal = Math.abs(y - ny) < 0.5;
+  for (let i = 0; i < usage.length; i++) {
+    const s = usage[i];
+    if (horizontal) {
+      if (Math.abs(s.y1 - s.y2) >= 0.5 || Math.abs(y - s.y1) >= 0.5) continue;
+      const lo = Math.min(x, nx), hi = Math.max(x, nx);
+      const slo = Math.min(s.x1, s.x2), shi = Math.max(s.x1, s.x2);
+      if (lo >= slo - 0.5 && hi <= shi + 0.5) count++;
+    } else {
+      if (Math.abs(s.x1 - s.x2) >= 0.5 || Math.abs(x - s.x1) >= 0.5) continue;
+      const lo = Math.min(y, ny), hi = Math.max(y, ny);
+      const slo = Math.min(s.y1, s.y2), shi = Math.max(s.y1, s.y2);
+      if (lo >= slo - 0.5 && hi <= shi + 0.5) count++;
+    }
+  }
+  return count;
+}
+
 
 function rectsOverlap1D(lo1, hi1, lo2, hi2, margin) {
   return hi1 > lo2 + margin && lo1 < hi2 - margin;
@@ -1522,7 +1558,7 @@ function portsOf(rect) {
  * @param {{minX,minY,maxX,maxY}} bounds - canvas extent (fallback grid lines)
  * @returns {[number,number][]|null} waypoints, or null if no path exists (shouldn't happen on a bounded canvas)
  */
-function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds, margin = 3) {
+function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds, margin = 3, usage = null) {
   const active = obstacles.filter(o => !excludeIds.has(o.id));
 
   const xs = [];
@@ -1604,7 +1640,8 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
       if (segBlocked(x, y, nx, ny)) continue;
       const segLen = Math.abs(nx - x) + Math.abs(ny - y);
       const turnCost = (dir !== ndir) ? TURN_PENALTY : 0;
-      const ncost = cost + segLen + turnCost;
+      const reusePenalty = reuseCount(x, y, nx, ny, usage) * REUSE_PENALTY;
+      const ncost = cost + segLen + turnCost + reusePenalty;
       const nk = key(nxI, nyI, ndir);
       if (!dist.has(nk) || dist.get(nk) > ncost) {
         prevKey.set(nk, k);
@@ -2052,6 +2089,11 @@ function route(model, packed, opts = {}) {
   // on their turn segments instead of landing exactly on top of a
   // shortest path some other edge already claimed.
   const laneCounts = {};
+  // Segments already claimed by earlier edges this pass, so later edges
+  // between a different node pair prefer a fresh lane over exactly
+  // overlapping one when a comparably-short alternative exists (see
+  // registerPathUsage / reuseCount in gridroute.mjs).
+  const pathUsage = [];
   const pairTotalCounts = {};
   edges.forEach(edge => {
     const s = nodeRectsById[edge.source], t = nodeRectsById[edge.target];
@@ -2098,13 +2140,14 @@ function route(model, packed, opts = {}) {
       ...exclusionsFor(s.id, s.zoneName),
       ...exclusionsFor(t.id, t.zoneName),
     ]);
-    let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds);
+    let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds, 3, pathUsage);
     if (!path) {
       // Should only happen if a diagram genuinely has no clear route (e.g.
       // fully enclosed with no gap) -- fall back to a direct line rather
       // than dropping the edge.
       path = [[(s.left + s.right) / 2, cy(s)], [(t.left + t.right) / 2, cy(t)]];
     }
+    registerPathUsage(pathUsage, path);
     const d = pointsToD(path);
     const markerId = 'arrowhead';
     collected.push({ source: edge.source, target: edge.target, d, markerId });
