@@ -1451,20 +1451,220 @@ function pack(model, opts = {}) {
 }
 
 
+// ===== gridroute.mjs =====
+// gridroute.mjs — deterministic, obstacle-optimal orthogonal edge routing.
+//
+// Replaces heuristic path-guessing with an actual algorithm: build a
+// visibility grid from every obstacle's left/right/top/bottom edges, then
+// find the minimum-cost path (Manhattan distance + a penalty per turn)
+// through that grid via Dijkstra. A segment that would pass through the
+// STRICT INTERIOR of a non-excluded obstacle is simply not a valid edge in
+// the search graph, so the router mathematically cannot produce a path
+// that crosses a component it isn't connecting to -- it isn't a rule being
+// checked after the fact, it's a constraint on which moves exist at all.
+//
+// This intentionally has NO knowledge of zones/containers/scopes -- it
+// only sees a flat list of obstacle rects plus an exclusion set per edge
+// (rects the two endpoints are allowed to sit inside/pass through, e.g.
+// their own zone and container/boundary ancestry). That keeps it reusable
+// and easy to verify in isolation.
+
+const TURN_PENALTY = 60; // px-equivalent cost per 90-degree turn
+
+function rectsOverlap1D(lo1, hi1, lo2, hi2, margin) {
+  return hi1 > lo2 + margin && lo1 < hi2 - margin;
+}
+
+// Is the axis-aligned segment (x1,y1)-(x2,y2) blocked by `rect`? margin
+// keeps a segment running exactly ALONG a rect's own edge legal (hugging
+// a wall is fine; cutting through the interior is not).
+function segmentBlockedByRect(x1, y1, x2, y2, rect, margin) {
+  if (y1 === y2) {
+    if (y1 <= rect.top + margin || y1 >= rect.bottom - margin) return false;
+    return rectsOverlap1D(Math.min(x1, x2), Math.max(x1, x2), rect.left, rect.right, margin);
+  }
+  if (x1 <= rect.left + margin || x1 >= rect.right - margin) return false;
+  return rectsOverlap1D(Math.min(y1, y2), Math.max(y1, y2), rect.top, rect.bottom, margin);
+}
+
+function buildAxis(values, lo, hi) {
+  const set = new Set([lo, hi]);
+  values.forEach(v => set.add(v));
+  return Array.from(set).sort((a, b) => a - b);
+}
+
+function insertSorted(arr, v) {
+  let i = 0;
+  while (i < arr.length && arr[i] < v) i++;
+  if (arr[i] !== v) arr.splice(i, 0, v);
+  return arr.indexOf(v);
+}
+
+// Ports: the up-to-4 candidate attachment points on a rect's own boundary
+// (midpoints of each side), each tagged with the outward direction so the
+// search can charge a turn if the first real move doesn't continue that
+// way.
+function portsOf(rect) {
+  const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
+  return [
+    { x: midX, y: rect.top, dir: 1 },
+    { x: midX, y: rect.bottom, dir: 1 },
+    { x: rect.left, y: midY, dir: 0 },
+    { x: rect.right, y: midY, dir: 0 },
+  ];
+}
+
+/**
+ * @param {{left,top,right,bottom,id}[]} obstacles - every rect that could block a path
+ * @param {{left,top,right,bottom}} srcRect - the source node's own rect
+ * @param {{left,top,right,bottom}} tgtRect - the target node's own rect
+ * @param {Set<string>} excludeIds - obstacle ids the endpoints are allowed to sit inside
+ * @param {{minX,minY,maxX,maxY}} bounds - canvas extent (fallback grid lines)
+ * @returns {[number,number][]|null} waypoints, or null if no path exists (shouldn't happen on a bounded canvas)
+ */
+function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds, margin = 3) {
+  const active = obstacles.filter(o => !excludeIds.has(o.id));
+
+  const xs = [];
+  const ys = [];
+  active.forEach(o => { xs.push(o.left, o.right); ys.push(o.top, o.bottom); });
+  const X = buildAxis(xs, bounds.minX, bounds.maxX);
+  const Y = buildAxis(ys, bounds.minY, bounds.maxY);
+
+  const srcPorts = portsOf(srcRect);
+  const tgtPorts = portsOf(tgtRect);
+  srcPorts.concat(tgtPorts).forEach(p => { insertSorted(X, p.x); insertSorted(Y, p.y); });
+
+  const xi = x => X.indexOf(x);
+  const yi = y => Y.indexOf(y);
+
+  function segBlocked(x1, y1, x2, y2) {
+    for (let i = 0; i < active.length; i++) {
+      if (segmentBlockedByRect(x1, y1, x2, y2, active[i], margin)) return true;
+    }
+    return false;
+  }
+
+  // Dijkstra over (grid point, last-move direction) states, small array
+  // priority queue (grids here are tens of points, not thousands).
+  const dist = new Map();
+  const prevKey = new Map();
+  const prevPoint = new Map();
+  const pq = [];
+
+  function key(xI, yI, dir) { return xI + ',' + yI + ',' + dir; }
+  function push(cost, xI, yI, dir) {
+    const k = key(xI, yI, dir);
+    if (dist.has(k) && dist.get(k) <= cost) return;
+    dist.set(k, cost);
+    pq.push([cost, xI, yI, dir]);
+  }
+
+  const seedSources = [];
+  srcPorts.forEach(p => {
+    const d0 = Math.abs(p.x - (srcRect.left + srcRect.right) / 2) + Math.abs(p.y - (srcRect.top + srcRect.bottom) / 2);
+    seedSources.push({ xI: xi(p.x), yI: yi(p.y), dir: p.dir, cost: d0, x: p.x, y: p.y });
+  });
+  seedSources.forEach(s => {
+    const k = key(s.xI, s.yI, s.dir);
+    prevKey.set(k, null);
+    prevPoint.set(k, [s.x, s.y]);
+    push(s.cost, s.xI, s.yI, s.dir);
+  });
+
+  const targetStates = new Map(); // key -> {x,y,cost}
+  tgtPorts.forEach(p => {
+    const d0 = Math.abs(p.x - (tgtRect.left + tgtRect.right) / 2) + Math.abs(p.y - (tgtRect.top + tgtRect.bottom) / 2);
+    targetStates.set(key(xi(p.x), yi(p.y), p.dir), { x: p.x, y: p.y, extra: d0 });
+    targetStates.set(key(xi(p.x), yi(p.y), 1 - p.dir), { x: p.x, y: p.y, extra: d0 });
+  });
+
+  let best = null, bestCost = Infinity;
+  while (pq.length) {
+    pq.sort((a, b) => a[0] - b[0]);
+    const [cost, xI, yI, dir] = pq.shift();
+    const k = key(xI, yI, dir);
+    if (dist.get(k) < cost) continue;
+    if (targetStates.has(k)) {
+      const t = targetStates.get(k);
+      const total = cost + t.extra;
+      if (total < bestCost) { bestCost = total; best = k; }
+    }
+    if (bestCost < cost) break; // nothing left in the queue can beat the best found
+
+    const x = X[xI], y = Y[yI];
+    const moves = [];
+    if (xI > 0) moves.push([xI - 1, yI, 0]);
+    if (xI < X.length - 1) moves.push([xI + 1, yI, 0]);
+    if (yI > 0) moves.push([xI, yI - 1, 1]);
+    if (yI < Y.length - 1) moves.push([xI, yI + 1, 1]);
+
+    for (const [nxI, nyI, ndir] of moves) {
+      const nx = X[nxI], ny = Y[nyI];
+      if (segBlocked(x, y, nx, ny)) continue;
+      const segLen = Math.abs(nx - x) + Math.abs(ny - y);
+      const turnCost = (dir !== ndir) ? TURN_PENALTY : 0;
+      const ncost = cost + segLen + turnCost;
+      const nk = key(nxI, nyI, ndir);
+      if (!dist.has(nk) || dist.get(nk) > ncost) {
+        prevKey.set(nk, k);
+        prevPoint.set(nk, [nx, ny]);
+        dist.set(nk, ncost);
+        pq.push([ncost, nxI, nyI, ndir]);
+      }
+    }
+  }
+
+  if (best == null) return null;
+
+  const pts = [];
+  let cur = best;
+  while (cur != null) {
+    pts.push(prevPoint.get(cur));
+    cur = prevKey.get(cur);
+  }
+  pts.reverse();
+
+  // Prepend/append the true node-center-to-port stub (the seed cost
+  // already accounted for it; this just materializes the waypoint).
+  const srcCenter = [(srcRect.left + srcRect.right) / 2, (srcRect.top + srcRect.bottom) / 2];
+  const tgtCenter = [(tgtRect.left + tgtRect.right) / 2, (tgtRect.top + tgtRect.bottom) / 2];
+  const full = [srcCenter].concat(pts, [tgtCenter]);
+
+  // Drop redundant collinear waypoints (three or more consecutive points
+  // on the same line collapse to the endpoints).
+  const out = [full[0]];
+  for (let i = 1; i < full.length; i++) {
+    const p = full[i];
+    if (out.length >= 2) {
+      const a = out[out.length - 2], b = out[out.length - 1];
+      const collinear = (Math.abs(a[0] - b[0]) < 0.5 && Math.abs(b[0] - p[0]) < 0.5) ||
+                         (Math.abs(a[1] - b[1]) < 0.5 && Math.abs(b[1] - p[1]) < 0.5);
+      if (collinear) { out[out.length - 1] = p; continue; }
+    }
+    if (Math.abs(p[0] - out[out.length - 1][0]) < 0.5 && Math.abs(p[1] - out[out.length - 1][1]) < 0.5) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+
 // ===== route.mjs =====
 // route.mjs — DOM-free port of the viewer's renderConnectors edge router.
 // Consumes the packed geometry (rects) and returns, per edge:
 //   { source, target, points:[[x,y]...], d:"M..." , markerId }
 //
-// All routing functions are faithful ports of assets/viewer/index.html
-// (routeOrthogonal / detourH / bridgedRoute / bridgeCollides / snapToGap /
-// row-channel + rail-clearance checks / V-H crossing bumps). The only
-// change is that geometry comes from `packed` instead of getBoundingClientRect,
-// and paths are returned as data instead of drawn as SVG.
+// Edge paths are computed by gridroute.mjs: a visibility grid built from
+// every obstacle's edges, searched with Dijkstra (Manhattan distance + a
+// turn penalty) so a path is the actual shortest orthogonal route and
+// mathematically cannot cross a component it isn't excluded for -- that's
+// a property of which moves exist in the search graph, not a check run
+// after the fact.
+
 
 function route(model, packed, opts = {}) {
   const edges = model.edges || [];
-  const { nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps, platformBoundary, edgeChains, containers } = packed;
+  const { nodeRects, nodeRectsById, zoneRects, subColRects, zoneGaps, platformBoundary, edgeChains, containers, width, height } = packed;
   if (!edges.length) return [];
 
   const nodeIdToZoneName = {}; nodeRects.forEach(nr => { nodeIdToZoneName[nr.id] = nr.zoneName; });
@@ -1762,40 +1962,18 @@ function route(model, packed, opts = {}) {
   // ── helpers reading packed rects ──
   const cy = (nr) => (nr.top + nr.bottom) / 2;
 
-  // ── Grid-channel routing ──────────────────────────────────────────
-  // pack.mjs's wrapUnits() gives every scope (outer canvas, inside the
-  // platform boundary, inside each container) a globally row-band-aligned
-  // grid: row r spans the SAME y-range for every item in that scope, by
-  // construction. That means the gap between two row-bands is a
-  // horizontal line clear of every slot in the scope, and the gap between
-  // two adjacent slots in the same row is a vertical line clear of every
-  // other row. Routing zone-to-zone by walking those channels is correct
-  // by construction, so it replaces the old approach of guessing a path
-  // and reactively detecting/dodging whatever it crosses.
-  const channels = packed.channels;
+  // ── Obstacle-based shortest-path routing ────────────────────────
+  // gridroute.mjs finds the actual shortest orthogonal path between two
+  // rects via a visibility-grid Dijkstra search, given a flat obstacle
+  // list and which of those obstacles the two endpoints are allowed to
+  // sit inside (their own zone, and its container/boundary ancestry).
+  // A path that would cross a non-excluded obstacle simply isn't a move
+  // the search can make, so "never touch a component you're not
+  // connecting to" is a property of the search graph, not a rule checked
+  // after the fact.
   const zoneScopeMap = packed.zoneScope || {};
   const containerScopeMap = packed.containerScope || {};
-  const slotMidX = (sl) => (sl.left + sl.right) / 2;
 
-  function gridOf(scopeId) {
-    if (!channels) return null;
-    return scopeId === 'outer' ? channels.outer : (channels.scopes && channels.scopes[scopeId]);
-  }
-  function slotIn(grid, name) {
-    return grid && grid.slots.find(sl => sl.name === name);
-  }
-  function resolveEndpoint(zoneName) {
-    const scopeId = zoneScopeMap[zoneName];
-    if (!scopeId) return null;
-    const grid = gridOf(scopeId);
-    const slot = slotIn(grid, zoneName);
-    return slot ? { scopeId, grid, slot } : null;
-  }
-  function boxSlotOfScope(scopeId, inScope) {
-    const grid = gridOf(inScope);
-    const name = scopeId === 'boundary' ? 'boundary' : scopeId;
-    return slotIn(grid, name);
-  }
   function ancestorChain(scopeId) {
     const chain = [scopeId];
     let cur = scopeId;
@@ -1804,239 +1982,24 @@ function route(model, packed, opts = {}) {
     return chain;
   }
 
-  // Find an X clear of every slot whose row falls inside [loY, hiY],
-  // nearest to preferredX, within this grid's own horizontal extent.
-  function findClearVerticalX(grid, loY, hiY, preferredX, excludeNames) {
-    if (!grid.slots.length) return preferredX;
-    const boundsMin = Math.min.apply(null, grid.slots.map(s => s.left)) - 30;
-    const boundsMax = Math.max.apply(null, grid.slots.map(s => s.right)) + 30;
-    const blockers = [];
-    grid.slots.forEach(sl => {
-      if (excludeNames.indexOf(sl.name) !== -1) return;
-      if (sl.bottom <= loY + 1 || sl.top >= hiY - 1) return;
-      blockers.push([Math.max(boundsMin, sl.left - 6), Math.min(boundsMax, sl.right + 6)]);
-    });
-    blockers.sort((a, b) => a[0] - b[0]);
-    const merged = [];
-    blockers.forEach(b => {
-      if (merged.length && b[0] <= merged[merged.length - 1][1]) merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], b[1]);
-      else merged.push(b.slice());
-    });
-    const cands = [];
-    let prevRight = boundsMin;
-    merged.forEach(b => { if (b[0] - prevRight > 8) cands.push({ lo: prevRight, hi: b[0] }); prevRight = Math.max(prevRight, b[1]); });
-    if (boundsMax - prevRight > 8) cands.push({ lo: prevRight, hi: boundsMax });
-    if (!cands.length) return preferredX;
-    let best = null, bestD = Infinity;
-    cands.forEach(g => {
-      const x = Math.max(g.lo + 4, Math.min(preferredX, g.hi - 4));
-      const d = Math.abs(x - preferredX);
-      if (d < bestD) { bestD = d; best = x; }
-    });
-    return best;
-  }
+  const obstacles = [];
+  nodeRects.forEach(nr => obstacles.push({ id: 'node:' + nr.id, left: nr.left, top: nr.top, right: nr.right, bottom: nr.bottom }));
+  zoneRects.forEach(zr => obstacles.push({ id: 'zone:' + zr.name, left: zr.left, top: zr.top, right: zr.right, bottom: zr.bottom }));
+  (containers || []).forEach(c => obstacles.push({ id: 'container:' + c.id, left: c.left, top: c.top, right: c.right, bottom: c.bottom }));
+  if (platformBoundary) obstacles.push({ id: 'boundary', left: platformBoundary.left, top: platformBoundary.top, right: platformBoundary.right, bottom: platformBoundary.bottom });
 
-  // Path between two slots that live in the SAME scope grid. Optional
-  // lane offset (0-based index, count) spreads multiple parallel edges
-  // between the same pair of slots so they don't perfectly overlap.
-  function pathWithinScope(grid, a, b, lane) {
-    lane = lane || { idx: 0, count: 1 };
-    if (a.rowIdx === b.rowIdx) {
-      const top = Math.max(a.top, b.top), bot = Math.min(a.bottom, b.bottom);
-      const baseY = (top + bot) / 2;
-      const spread = (bot - top > 10) ? (bot - top - 8) : 0;
-      const y = spread ? (top + 4 + spread * (lane.idx + 1) / (lane.count + 1)) : baseY;
-      const goingRight = slotMidX(a) < slotMidX(b);
-      return [[goingRight ? a.right : a.left, y], [goingRight ? b.left : b.right, y]];
+  const canvasBounds = { minX: -40, minY: -40, maxX: (width || 2000) + 40, maxY: (height || 2000) + 40 };
+
+  // Every obstacle a node's own position is legitimately inside: its own
+  // node rect (excluded by the caller separately), its zone, and every
+  // container/boundary that zone is nested in.
+  function exclusionsFor(nodeName, zoneName) {
+    const ex = new Set(['node:' + nodeName, 'zone:' + zoneName]);
+    const scopeId = zoneScopeMap[zoneName];
+    if (scopeId != null) {
+      ancestorChain(scopeId).forEach(s => { if (s !== 'outer') ex.add(s === 'boundary' ? 'boundary' : 'container:' + s); });
     }
-    const goingDown = a.rowIdx < b.rowIdx;
-    const rowBottom = (r) => grid.rowYOffset[r] + grid.rowHeights[r];
-    const rowTop = (r) => grid.rowYOffset[r];
-    const y1 = goingDown ? rowBottom(a.rowIdx) : rowTop(a.rowIdx);
-    const y2 = goingDown ? rowTop(b.rowIdx) : rowBottom(b.rowIdx);
-    const loRow = Math.min(a.rowIdx, b.rowIdx), hiRow = Math.max(a.rowIdx, b.rowIdx);
-    const fromX = slotMidX(a), toX = slotMidX(b);
-    let travelX = toX;
-    if (hiRow - loRow > 1) {
-      const skipLoY = goingDown ? rowBottom(loRow) : rowTop(hiRow);
-      const skipHiY = goingDown ? rowTop(hiRow) : rowBottom(loRow);
-      travelX = findClearVerticalX(grid, Math.min(skipLoY, skipHiY), Math.max(skipLoY, skipHiY), toX, [a.name, b.name]);
-    }
-    if (lane.count > 1) {
-      const spread = 10 * (lane.count - 1);
-      travelX += -spread / 2 + spread * lane.idx / (lane.count - 1 || 1);
-    }
-    const pts = [[fromX, goingDown ? a.bottom : a.top]];
-    if (Math.abs(y1 - pts[0][1]) > 0.5) pts.push([fromX, y1]);
-    if (Math.abs(travelX - fromX) > 0.5) pts.push([travelX, y1]);
-    if (Math.abs(y2 - y1) > 0.5) pts.push([travelX, y2]);
-    if (Math.abs(travelX - toX) > 0.5) pts.push([toX, y2]);
-    const lastY = goingDown ? b.top : b.bottom;
-    if (Math.abs(lastY - (pts[pts.length - 1][1])) > 0.5) pts.push([toX, lastY]);
-    return pts;
-  }
-
-  // Stub from a slot nested inside `grid` (a container/boundary's inner
-  // scope) out to the box's own wall, biased toward `towardPoint` (the
-  // point the rest of the path connects to one level up).
-  function exitStub(grid, slot, towardPoint) {
-    const numRows = grid.rowHeights.length;
-    const boxTop = grid.rowYOffset[0] || 0;
-    const boxBottom = (grid.rowYOffset[numRows - 1] || 0) + (grid.rowHeights[numRows - 1] || 0);
-    const boxLeft = Math.min.apply(null, grid.slots.map(s => s.left));
-    const boxRight = Math.max.apply(null, grid.slots.map(s => s.right));
-    const twx = towardPoint[0], twy = towardPoint[1];
-
-    // The target sits roughly at this box's own height -> exit sideways
-    // (left/right wall) rather than through top/bottom. Row boundaries
-    // are clear across the FULL grid width by construction, so exit the
-    // slot to its own nearer row boundary, then travel along that clear
-    // line straight to the box's edge.
-    if (twy >= boxTop - 2 && twy <= boxBottom + 2) {
-      const goingLeft = twx < (boxLeft + boxRight) / 2;
-      const rowTop = grid.rowYOffset[slot.rowIdx];
-      const rowBot = grid.rowYOffset[slot.rowIdx] + grid.rowHeights[slot.rowIdx];
-      const useBottom = (slot.bottom - rowTop) <= (rowBot - slot.top);
-      const laneY = useBottom ? rowBot : rowTop;
-      const edgeX = goingLeft ? boxLeft : boxRight;
-      const sx = slotMidX(slot);
-      const pts = [[sx, useBottom ? slot.bottom : slot.top]];
-      if (Math.abs(laneY - pts[0][1]) > 0.5) pts.push([sx, laneY]);
-      pts.push([edgeX, laneY]);
-      return pts;
-    }
-
-    const goingUp = twy < (boxTop + boxBottom) / 2;
-    const edgeY = goingUp ? boxTop : boxBottom;
-    const loRow = goingUp ? 0 : slot.rowIdx + 1;
-    const hiRow = goingUp ? slot.rowIdx - 1 : numRows - 1;
-    const sx = slotMidX(slot);
-    let travelX = sx; // no corridor to search -> exit straight, no jog
-    if (hiRow >= loRow) {
-      travelX = findClearVerticalX(grid, grid.rowYOffset[loRow], grid.rowYOffset[hiRow] + grid.rowHeights[hiRow], towardPoint[0], [slot.name]);
-    }
-    const nearEdgeY = goingUp ? grid.rowYOffset[slot.rowIdx] : grid.rowYOffset[slot.rowIdx] + grid.rowHeights[slot.rowIdx];
-    const pts = [[sx, goingUp ? slot.top : slot.bottom]];
-    if (Math.abs(nearEdgeY - pts[0][1]) > 0.5) pts.push([sx, nearEdgeY]);
-    if (Math.abs(travelX - sx) > 0.5) pts.push([travelX, nearEdgeY]);
-    if (Math.abs(edgeY - nearEdgeY) > 0.5) pts.push([travelX, edgeY]);
-    return pts;
-  }
-
-  // Full zone-to-zone path, walking up to the lowest common ancestor
-  // scope when the two zones sit in different containers/boundary.
-  // Returns null (caller falls back to the legacy router) when either
-  // zone has no recorded scope -- e.g. a fixture built before channel
-  // metadata existed, or a future zone kind this doesn't yet cover.
-  function channelPath(fromZoneName, toZoneName, lane) {
-    if (!channels) return null;
-    const A = resolveEndpoint(fromZoneName), B = resolveEndpoint(toZoneName);
-    if (!A || !B) return null;
-    if (A.scopeId === B.scopeId) return pathWithinScope(A.grid, A.slot, B.slot, lane);
-
-    const chainA = ancestorChain(A.scopeId), chainB = ancestorChain(B.scopeId);
-    let lca = null, aIdx = -1, bIdx = -1;
-    for (let i = 0; i < chainA.length; i++) {
-      const j = chainB.indexOf(chainA[i]);
-      if (j !== -1) { lca = chainA[i]; aIdx = i; bIdx = j; break; }
-    }
-    if (lca == null) return null;
-
-    // Walk ONE side up from its own scope to the LCA, one level at a
-    // time -- each level exits through its own box's wall toward that
-    // box's position one level up, so a target nested two-plus levels
-    // below the LCA (e.g. zone -> container -> boundary -> outer) gets a
-    // separate stub through EVERY wall it's actually behind, not just
-    // the outermost one.
-    function walkUp(chain, idx, endpoint, targetPoint) {
-      let pts = [];
-      let curScope = chain[0], curGrid = endpoint.grid, curSlot = endpoint.slot;
-      for (let level = 0; level < idx; level++) {
-        const parentScope = chain[level + 1];
-        const parentGrid = gridOf(parentScope);
-        const boxName = curScope === 'boundary' ? 'boundary' : curScope;
-        const boxSlotInParent = parentGrid && slotIn(parentGrid, boxName);
-        if (!parentGrid || !boxSlotInParent) return null;
-        pts = pts.concat(exitStub(curGrid, curSlot, targetPoint));
-        curScope = parentScope; curGrid = parentGrid; curSlot = boxSlotInParent;
-      }
-      return { pts, slot: curSlot, grid: curGrid };
-    }
-
-    const bAnchor = [slotMidX(B.slot), (B.slot.top + B.slot.bottom) / 2];
-    const aAnchor = [slotMidX(A.slot), (A.slot.top + A.slot.bottom) / 2];
-    const upA = walkUp(chainA, aIdx, A, bAnchor);
-    const upB = walkUp(chainB, bIdx, B, aAnchor);
-    if (!upA || !upB) return null;
-
-    const midPts = pathWithinScope(gridOf(lca), upA.slot, upB.slot, lane);
-    const suffix = upB.pts.length ? upB.pts.slice().reverse() : [];
-    return upA.pts.concat(midPts, suffix);
-  }
-  const laneCounts = {};
-
-  // Adapt a ZONE-level channel path (endpoints on the zone's own
-  // boundary) to the actual NODE cards the edge connects, by re-anchoring
-  // the first/last waypoint to the node's own edge in whichever axis the
-  // adjoining segment travels.
-  function nodeizeChannelPath(zonePts, sNode, tNode) {
-    if (!zonePts || zonePts.length < 2) return null;
-    const sx = (sNode.left + sNode.right) / 2, sy = cy(sNode);
-    const tx = (tNode.left + tNode.right) / 2, ty = cy(tNode);
-    const n = zonePts.length;
-
-    const fdx = zonePts[1][0] - zonePts[0][0], fdy = zonePts[1][1] - zonePts[0][1];
-    const srcAxis = Math.abs(fdy) >= Math.abs(fdx) ? 0 : 1; // 0=x, 1=y
-    const srcOldVal = zonePts[0][srcAxis];
-    let srcEnd = 0;
-    while (srcEnd < n && Math.abs(zonePts[srcEnd][srcAxis] - srcOldVal) < 0.5) srcEnd++;
-
-    const ldx = zonePts[n - 1][0] - zonePts[n - 2][0], ldy = zonePts[n - 1][1] - zonePts[n - 2][1];
-    const tgtAxis = Math.abs(ldy) >= Math.abs(ldx) ? 0 : 1;
-    const tgtOldVal = zonePts[n - 1][tgtAxis];
-    let tgtStart = n - 1;
-    while (tgtStart >= 0 && Math.abs(zonePts[tgtStart][tgtAxis] - tgtOldVal) < 0.5) tgtStart--;
-    tgtStart++;
-
-    const start = srcAxis === 0 ? [sx, fdy >= 0 ? sNode.bottom : sNode.top] : [fdx >= 0 ? sNode.right : sNode.left, sy];
-    const end = tgtAxis === 0 ? [tx, ldy >= 0 ? tNode.top : tNode.bottom] : [ldx >= 0 ? tNode.left : tNode.right, ty];
-
-    if (srcEnd > tgtStart) {
-      // The whole zone-level path is one uniform run in the shared axis
-      // (a direct same-row/same-column jog with no intermediate turn),
-      // so there's no natural breakpoint between "belongs to source" and
-      // "belongs to target" -- insert one at the channel's own midpoint.
-      if (srcAxis === 0) {
-        const laneY = (zonePts[0][1] + zonePts[n - 1][1]) / 2;
-        return [start, [sx, laneY], [tx, laneY], end];
-      }
-      const laneX = (zonePts[0][0] + zonePts[n - 1][0]) / 2;
-      return [start, [laneX, sy], [laneX, ty], end];
-    }
-
-    const pts = zonePts.map(p => p.slice());
-    for (let i = 0; i < srcEnd; i++) pts[i][srcAxis] = srcAxis === 0 ? sx : sy;
-    for (let i = tgtStart; i < n; i++) pts[i][tgtAxis] = tgtAxis === 0 ? tx : ty;
-    return [start].concat(pts, [end]);
-  }
-
-  // Drop consecutive duplicate/collinear points so tiny near-zero-length
-  // stubs introduced by nodeizeChannelPath don't leave visual artifacts.
-  function dedupCollinear(pts) {
-    const out = [pts[0]];
-    for (let i = 1; i < pts.length; i++) {
-      const p = pts[i];
-      const prev = out[out.length - 1];
-      if (Math.abs(p[0] - prev[0]) < 0.5 && Math.abs(p[1] - prev[1]) < 0.5) continue;
-      if (out.length >= 2) {
-        const p0 = out[out.length - 2];
-        const collinearH = Math.abs(prev[1] - p0[1]) < 0.5 && Math.abs(p[1] - p0[1]) < 0.5;
-        const collinearV = Math.abs(prev[0] - p0[0]) < 0.5 && Math.abs(p[0] - p0[0]) < 0.5;
-        if (collinearH || collinearV) { out[out.length - 1] = p; continue; }
-      }
-      out.push(p);
-    }
-    return out;
+    return ex;
   }
 
   // ── Pre-pass: gap/V-track/H-track allocation ──
@@ -2084,6 +2047,19 @@ function route(model, packed, opts = {}) {
   });
   Object.keys(hTrackEdges).forEach(key => { const g = hTrackEdges[key]; g.sort((a, b) => (a.srcY - b.srcY) || (a.tgtY - b.tgtY)); hTrackCounts[key] = g.length; g.forEach((it, i) => { hTrackIndex[it.idx] = i; }); });
 
+  // Total edges sharing each unordered zone-pair, so parallel edges
+  // between the same two zones (different node pairs) get nudged apart
+  // on their turn segments instead of landing exactly on top of a
+  // shortest path some other edge already claimed.
+  const laneCounts = {};
+  const pairTotalCounts = {};
+  edges.forEach(edge => {
+    const s = nodeRectsById[edge.source], t = nodeRectsById[edge.target];
+    if (!s || !t || s.zoneName === t.zoneName) return;
+    const key = [s.zoneName, t.zoneName].sort().join('|');
+    pairTotalCounts[key] = (pairTotalCounts[key] || 0) + 1;
+  });
+
   // ── main per-edge routing ──
   const collected = [];
   edges.forEach((edge, edgeIdx) => {
@@ -2113,65 +2089,24 @@ function route(model, packed, opts = {}) {
       }
     }
     const sameZone = s.zoneName === t.zoneName;
-    let x1, y1, x2, y2, d;
-    let arrowDir = 'right', useFixedArrow = false;
+    const laneKey = [s.zoneName, t.zoneName].sort().join('|');
+    if (!laneCounts[laneKey]) laneCounts[laneKey] = 0;
+    const laneIdx = laneCounts[laneKey]++;
+    const totalForPair = pairTotalCounts[laneKey] || 1;
 
-    if (sameZone) {
-      const srcCol = s.col || 0, tgtCol = t.col || 0;
-      if (srcCol !== tgtCol) {
-        const dirRight = tgtCol > srcCol;
-        if (dirRight) { x1 = s.right; x2 = t.left; } else { x1 = s.left; x2 = t.right; }
-        y1 = cy(s); y2 = cy(t);
-        let midX;
-        if (dirRight) { midX = x1 + 28 + (edgeIdx % 4) * 5; if (midX > x2 - 18) midX = x2 - 18; }
-        else { midX = x1 - 28 - (edgeIdx % 4) * 5; if (midX < x2 + 18) midX = x2 + 18; }
-        d = (Math.abs(y2 - y1) < 1) ? ('M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2)
-          : ('M' + x1 + ',' + y1 + ' L' + midX + ',' + y1 + ' L' + midX + ',' + y2 + ' L' + x2 + ',' + y2);
-        useFixedArrow = true; arrowDir = dirRight ? 'right' : 'left';
-      } else {
-        // same sub-column vertical
-        const srcRow = s.rowIdx, tgtRow = t.rowIdx;
-        const rowGap = Math.abs(tgtRow - srcRow) || 1;
-        const goingDown = tgtRow > srcRow || (tgtRow === srcRow && t.top > s.top);
-        x1 = (s.left + s.right) / 2; x2 = (t.left + t.right) / 2;
-        if (goingDown) { y1 = s.bottom; y2 = t.top; } else { y1 = s.top; y2 = t.bottom; }
-        if (rowGap <= 1) {
-          const hasReverse = edges.some(e2 => e2.source === edge.target && e2.target === edge.source);
-          if (hasReverse) { const lane = goingDown ? -10 : 10; x1 += lane; x2 += lane; }
-          d = 'M' + x1 + ',' + y1 + ' L' + x2 + ',' + y2;
-        } else {
-          const sideOffset = 14 + (edgeIdx % 3) * 6;
-          const sideX = s.right + sideOffset;
-          const stubBendY = goingDown ? y1 + 14 : y1 - 14;
-          const tgtRightEdge = t.right, tgtCenterY = cy(t);
-          d = 'M' + x1 + ',' + y1 + ' L' + x1 + ',' + stubBendY + ' L' + sideX + ',' + stubBendY + ' L' + sideX + ',' + tgtCenterY + ' L' + tgtRightEdge + ',' + tgtCenterY;
-          useFixedArrow = true; arrowDir = 'left';
-        }
-      }
-    } else {
-      // Cross-zone: walk the channel grid (see channelPath above) instead
-      // of guessing a shape and reactively dodging what it crosses.
-      const laneKey = [s.zoneName, t.zoneName].sort().join('|');
-      if (!laneCounts[laneKey]) laneCounts[laneKey] = 0;
-      const laneIdx = laneCounts[laneKey]++;
-      const zonePts = channelPath(s.zoneName, t.zoneName, { idx: laneIdx, count: 1 });
-      const nodePts = zonePts && nodeizeChannelPath(zonePts, s, t);
-      if (nodePts) {
-        d = pointsToD(dedupCollinear(nodePts));
-      } else {
-        // Fallback for anything channelPath doesn't cover yet (e.g. a
-        // zone missing from packed.channels): keep the old best-effort
-        // H-V-H router rather than failing to draw the edge at all.
-        const edgeMargin = 12;
-        const x1 = (s.left + s.right) / 2, x2 = (t.left + t.right) / 2;
-        const fx1 = x1 < x2 ? s.right + edgeMargin : s.left - edgeMargin;
-        const fx2 = x1 < x2 ? t.left - edgeMargin : t.right + edgeMargin;
-        const fTrackX = snapToGap((fx1 + fx2) / 2, fx1, fx2);
-        d = pointsToD(routeOrthogonal(fx1, cy(s), fx2, cy(t), fTrackX, edge.source, edge.target));
-      }
+    const excludeIds = new Set([
+      ...exclusionsFor(s.id, s.zoneName),
+      ...exclusionsFor(t.id, t.zoneName),
+    ]);
+    let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds);
+    if (!path) {
+      // Should only happen if a diagram genuinely has no clear route (e.g.
+      // fully enclosed with no gap) -- fall back to a direct line rather
+      // than dropping the edge.
+      path = [[(s.left + s.right) / 2, cy(s)], [(t.left + t.right) / 2, cy(t)]];
     }
-
-    const markerId = useFixedArrow ? (arrowDir === 'left' ? 'arrowhead-left' : 'arrowhead-right') : 'arrowhead';
+    const d = pointsToD(path);
+    const markerId = 'arrowhead';
     collected.push({ source: edge.source, target: edge.target, d, markerId });
   });
 

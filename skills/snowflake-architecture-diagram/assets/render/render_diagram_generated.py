@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
 # Canonical source: /Users/abannerjee/Documents/snowgram-eng/backend/sql/dev_temp_abannerjee/render_diagram.dev.sql
 # sha256(source): e89c6ee158ba9535fa23db871b3a0acc612be7ad8477c9d718b9ae9c36db9ac2
-# generated: 2026-08-28T16:59:27+00:00
+# generated: 2026-08-31T02:34:32+00:00
 
 
 import json, base64

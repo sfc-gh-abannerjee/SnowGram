@@ -4,6 +4,132 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-08-31 (part 2)
+
+### Added
+- Replaced the channel-walk router (added earlier the same day) with a
+  genuinely different approach: `gridroute.mjs`, a visibility-grid +
+  Dijkstra shortest-path router with a per-turn cost penalty. The
+  channel-walk router still guessed a path shape from zone/scope
+  structure and needed a growing pile of special cases (lane spread,
+  exit-stub direction, multi-level walk-ups) to avoid touching obstacles
+  it wasn't told about explicitly. This router instead builds a
+  visibility grid from every obstacle's left/right/top/bottom edges,
+  and finds the minimum-cost path (Manhattan distance + a fixed penalty
+  per 90-degree turn) through it. A segment that would cross a
+  non-excluded obstacle's interior is simply not a move that exists in
+  the search graph -- "never touch a component you aren't connecting
+  to" is a property of the search space, not a rule checked afterward.
+  Node/zone/container/boundary rects all become one flat obstacle list;
+  per edge, the only per-call state is which rects the two endpoints are
+  allowed to sit inside (their own zone plus its container/boundary
+  ancestry, reusing the existing `zoneScope`/`containerScope` maps).
+  Removed `channelPath`/`pathWithinScope`/`exitStub`/`findClearVerticalX`/
+  `nodeizeChannelPath` and the whole scope-walking machinery entirely --
+  route.mjs no longer needs to know about zones/containers/scopes at all,
+  only about rects.
+- Wired the new module into `build_udf.mjs`'s bundle order (it was missing
+  entirely on the first attempt, so the UDF's smoke test caught the
+  bundled body diverging from a direct `layout()` call before it ever
+  reached Snowflake).
+
+### Fixed
+- Found and fixed two real bugs while dogfooding the new router against
+  every fixture (verified this time via a full crossing-detector scan,
+  not eyeballing a screenshot): (1) double-bookkeeping in the Dijkstra
+  loop -- `dist` was set directly AND passed through a `push()` helper
+  that re-checked `dist` and always found the value already matching
+  exactly, so it silently dropped every neighbor expansion and the search
+  terminated after only the seed states. (2) the obstacle list was built
+  from `nodeRects[].name`, a field that doesn't exist on node rects
+  (they use `.id`) -- every node obstacle collapsed to the literal id
+  `"node:undefined"`, which then matched every edge's own exclusion set,
+  so node-level obstacle avoidance was silently disabled for every edge
+  in every diagram. Caught by a fixture (`row_wrap_stress`) where a
+  shortest path happened to pass directly through an un-avoided sibling
+  node; both bugs were root-caused by writing a script that reproduces
+  the exact crossing (source/target ids, the crossing segment, the rect
+  it crosses) rather than re-guessing from a screenshot.
+- Fixed the review harness's arrow-separator regex a second time (a
+  different run used an em dash where a prior fix only covered `->` and
+  `→`) by widening the match to any short run of non-alphanumeric
+  characters instead of enumerating specific glyphs, so the next
+  variant doesn't need another patch.
+
+### Verified
+- Full local fixture suite (`row_wrap_stress`, `medallion`,
+  `nested_containers`, `fanout_finin`) re-rendered and visually reviewed:
+  every edge is a clean, minimal-turn orthogonal path; parallel edges
+  between the same zone pair separate naturally (their true shortest
+  paths differ slightly since the specific node positions differ) without
+  needing an explicit lane-nudge pass, which was tried and reverted after
+  it mutated individual waypoints without their neighbors, producing
+  diagonal segments -- removed in favor of correctness over cosmetic
+  lane spacing.
+- Live re-test (Apex Health, "Snowflake on Azure" prompt) after
+  redeploying `LAYOUT_DIAGRAM`: Microsoft Azure correctly wraps Azure
+  Sources/Transformations/Orchestration/Legacy Consumers and the nested
+  Snowflake Data Cloud boundary; every connector inside and across the
+  boundary is a short, minimal-turn, non-crossing orthogonal path.
+
+## [Track 1: Layout Engine / CoCo Skill] - 2026-08-31
+
+### Fixed
+- The channel router's lane spread never activated: every call site passed
+  a hardcoded `{ idx, count: 1 }`, so `pathWithinScope`'s and
+  `nodeizeChannelPath`'s lane-offset logic was always inert (`count > 1`
+  never true). Multiple edges between the same zone pair (different node
+  pairs) all computed the identical shared travel X/Y and visually
+  overlapped or crossed each other in the open channel between zones,
+  even though each individual path was orthogonal. Fixed by pre-counting
+  edges per unordered zone-pair before the main loop and passing the real
+  count through; parallel edges now spread into distinct, non-overlapping
+  lanes. Reproduced and verified against a small synthetic 3-source/
+  2-target fixture before and after.
+- `include_platform_boundary` containers computed correct geometry (via
+  `LAYOUT_DIAGRAM`) but never rendered visually through the live
+  pipeline: `TEMP.ABANNERJEE.RENDER_DIAGRAM` (a separately deployed UDF)
+  was last created 2026-06-22 and had never been redeployed since
+  container-drawing support was added to the canonical
+  `render_diagram.dev.sql` source -- confirmed via `SHOW FUNCTIONS`
+  (`created_on`) and a direct diff against the synced local copy.
+  Redeployed `RENDER_DIAGRAM` from the current canonical source; verified
+  live end-to-end (`CALL GENERATE_DIAGRAM_ARTIFACTS(...)` with a
+  `CONTAINERS` payload) that the container box now actually draws,
+  wrapping the platform boundary as one of its children.
+
+### Added
+- Extended `GENERATE_DIAGRAM_ARTIFACTS`'s live signature from 5 to 6
+  arguments, adding a `CONTAINERS` (JSON array string) parameter that
+  gets forwarded into both the narrow and wide `graph_json` payloads sent
+  to `LAYOUT_DIAGRAM`/`RENDER_DIAGRAM` -- closing the gap flagged in the
+  prior entry (the tool schema previously had no way to pass container
+  data at all, so `include_platform_boundary` was unreachable from the
+  live agent regardless of instructions). Required dropping the old
+  5-arg procedure first (`CREATE OR REPLACE` doesn't replace a
+  different-arity overload; a bare add attempt failed with "ambiguous
+  PROCEDURE overloading").
+- Added a `CONTAINERS` property to the agent's `GENERATE_DIAGRAM_ARTIFACTS`
+  tool schema and a new orchestration section instructing the agent to
+  build a container with `include_platform_boundary: true` whenever the
+  user explicitly states which cloud hosts their Snowflake account, and
+  to omit `CONTAINERS` entirely otherwise (never guess the cloud).
+  Republished as `SNOWGRAM_AGENT` `VERSION$14`; confirmed `DEFAULT_VERSION`
+  was updated to match. **Caught and fixed before publishing became live**:
+  the agent's `tool_resources.GENERATE_DIAGRAM_ARTIFACTS.name` field
+  pins the exact procedure overload to call by argument-type signature;
+  it still said `(VARCHAR, VARCHAR, VARCHAR, VARCHAR, VARCHAR)` (the old,
+  now-dropped 5-arg overload) even after adding `CONTAINERS` to the tool
+  schema -- every diagram call would have failed with the new signature
+  live. Updated it to the 6-arg signature before publishing.
+- Live re-test (Apex Health, "Snowflake on Azure" prompt) confirms the
+  full fix set end-to-end: Microsoft Azure now correctly wraps Azure
+  Sources/Partner Data Share/Transform/Orchestration/Private Connectivity
+  AND the nested Snowflake Data Cloud boundary as one container, matching
+  the actual "Snowflake hosted on Azure" architecture -- the original,
+  repeatedly-raised complaint from earlier in this project. Routing
+  throughout is clean and orthogonal with no visible card crossings.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-08-29
 
 ### Added
