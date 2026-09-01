@@ -101,6 +101,29 @@ function portsOf(rect) {
   ];
 }
 
+// Builds ONE port point on a specific side of `rect`, shifted `offset` px
+// along that side from its midpoint (clamped so it can't slide past the
+// rounded corners). Used so several edges biased to the SAME side of the
+// same node don't all collapse onto the identical pixel port -- without
+// this, 3 sibling edges sharing a target side/point also share their final
+// approach segment and render as one visible line with one arrowhead,
+// hiding that 3 separate connections exist (found via direct visual
+// inspection of a fixture render + the live-agent apex-health SVG, both
+// showing identical duplicate final segments into a fan-in target).
+function offsetPortOn(rect, side, offset) {
+  const CORNER_MARGIN = 8;
+  if (side === 'top' || side === 'bottom') {
+    const half = Math.max(0, (rect.right - rect.left) / 2 - CORNER_MARGIN);
+    const dx = Math.max(-half, Math.min(half, offset));
+    const midX = (rect.left + rect.right) / 2;
+    return { x: midX + dx, y: side === 'top' ? rect.top : rect.bottom, dir: 1, side };
+  }
+  const half = Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN);
+  const dy = Math.max(-half, Math.min(half, offset));
+  const midY = (rect.top + rect.bottom) / 2;
+  return { x: side === 'left' ? rect.left : rect.right, y: midY + dy, dir: 0, side };
+}
+
 const CLEARANCE = 10; // px of standoff a path must keep from an unrelated obstacle's edge
 
 /**
@@ -142,12 +165,10 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
   // consistency across the whole cluster regardless of any one member's
   // exact position. Restrict to just the requested side when given.
   if (portBias && portBias.srcSide) {
-    const forced = srcPorts.filter(p => p.side === portBias.srcSide);
-    if (forced.length) srcPorts = forced;
+    srcPorts = [offsetPortOn(srcRect, portBias.srcSide, portBias.srcOffset || 0)];
   }
   if (portBias && portBias.tgtSide) {
-    const forced = tgtPorts.filter(p => p.side === portBias.tgtSide);
-    if (forced.length) tgtPorts = forced;
+    tgtPorts = [offsetPortOn(tgtRect, portBias.tgtSide, portBias.tgtOffset || 0)];
   }
   srcPorts.concat(tgtPorts).forEach(p => { insertSorted(X, p.x); insertSorted(Y, p.y); });
 
@@ -242,10 +263,27 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
   }
   pts.reverse();
 
-  // Prepend/append the true node-center-to-port stub (the seed cost
-  // already accounted for it; this just materializes the waypoint).
-  const srcCenter = [(srcRect.left + srcRect.right) / 2, (srcRect.top + srcRect.bottom) / 2];
-  const tgtCenter = [(tgtRect.left + tgtRect.right) / 2, (tgtRect.top + tgtRect.bottom) / 2];
+  // Prepend/append a stub from the actual port straight into the rect's
+  // interior (to its center ALONG THE ENTRY AXIS only), so the final
+  // segment stays a clean horizontal/vertical line hidden under the card.
+  // Using the rect's overall geometric center here (as this used to)
+  // broke as soon as a port could sit somewhere other than the exact
+  // midpoint of its side (see the fan-out offset ports below): a port at
+  // e.g. (rect.left, midY+14) followed by a stub at (midX, midY) is a
+  // DIAGONAL jump -- found via SVG path-data inspection showing a
+  // non-orthogonal final segment on a fan-in edge.
+  const firstGridPt = pts.length ? pts[0] : null;
+  const lastGridPt = pts.length ? pts[pts.length - 1] : null;
+  function stubInto(rect, port) {
+    const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
+    if (!port) return [midX, midY];
+    if (Math.abs(port[1] - rect.top) < 0.5 || Math.abs(port[1] - rect.bottom) < 0.5) {
+      return [port[0], midY]; // entered via top/bottom: move in Y only, keep the port's X
+    }
+    return [midX, port[1]]; // entered via left/right: move in X only, keep the port's Y
+  }
+  const srcCenter = stubInto(srcRect, firstGridPt);
+  const tgtCenter = stubInto(tgtRect, lastGridPt);
   const full = [srcCenter].concat(pts, [tgtCenter]);
 
   // Drop redundant collinear waypoints (three or more consecutive points
@@ -269,8 +307,8 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
   // instead of each edge independently picking whichever port tied on
   // cost. Arrays are objects in JS, so this doesn't change the return
   // type for existing callers that only index into it.
-  const firstPort = pts.length ? pts[0] : tgtCenter;
-  const lastPort = pts.length ? pts[pts.length - 1] : srcCenter;
+  const firstPort = firstGridPt || srcCenter;
+  const lastPort = lastGridPt || tgtCenter;
   out.srcSide = sideOf(srcRect, firstPort);
   out.tgtSide = sideOf(tgtRect, lastPort);
   return out;

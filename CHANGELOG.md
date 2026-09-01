@@ -4,6 +4,68 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01 (part 4: connector routing readability)
+
+### Fixed
+- **Fan-in port collapse**: when several sibling edges shared a target's side
+  (via the existing hard port-bias constraint), they all landed on the exact
+  same port point and shared the same final approach segment, so 3+ separate
+  connections rendered as ONE visible line with ONE arrowhead -- found by
+  direct SVG path-data inspection (Azure Synapse/SQL/Blob -> dbt in the
+  apex-health live render all ended at the identical (x,y)). Fixed with two
+  changes in `gridroute.mjs`/`route.mjs`: (1) each additional edge sharing a
+  (node, side) now gets an alternating fan-out offset (`nextSlotOffset`,
+  +-14px increments) along that side instead of reusing the exact midpoint;
+  (2) the node-center "stub" segment appended after the real routed path
+  (previously always the rect's raw geometric center) now stays aligned with
+  the actual port's off-axis coordinate, or a nonzero offset produced a
+  diagonal (non-orthogonal) jog back to center. Also fixed an off-by-one in
+  the new slot counter (the 2nd edge into a shared port was getting offset 0,
+  colliding with the 1st edge's own unbiased port). Verified via direct SVG
+  path-data diffing (4 distinct, purely-orthogonal endpoints where there used
+  to be 1) and a Playwright render of the raw `.svg` (not the interactive
+  HTML, whose separate wide-layout pass isn't pixel-comparable) showing 3-4
+  visibly distinct arrows into a fan-in target.
+- **Zone ordering ignored real graph topology for a subset of edges**:
+  `assignRanks` in `pack.mjs` decided which zone-to-zone edges counted as
+  "forward" (for its longest-path layering) purely from each zone's raw
+  DECLARATION ORDER in the input model (`order[tz] <= order[sz]`), not from
+  the actual edge graph. A zone declared early but whose only real edge
+  arrives from a zone declared much later (e.g. a Governance zone declared
+  right after Ingestion, fed only by a Warehouse zone declared near the end)
+  had that edge silently treated as a back-edge and never got pulled to its
+  correct position -- forcing that edge to travel backward across the entire
+  diagram. Replaced the declaration-order filter with a real graph
+  reachability check: an edge is now only excluded if adding it would close
+  an actual cycle in the zone graph. Verified on the live apex-health
+  scenario: Governance moved from a stranded early column into its correct
+  topological position immediately after Warehouse, with a short local edge.
+- **Row-wrap always restarted left-to-right on every new row**: `wrapUnits`
+  (used for both the outer zone/container wrap and the platform-boundary's
+  internal zone wrap) filled each wrapped row start-to-finish in the same
+  direction, so an edge crossing from the END of one row to the logical
+  START of the next had to travel the full canvas width -- flagged directly
+  from a live-agent render as "an unintuitive jumble of connection lines."
+  Fixed by making the wrap boustrophedon (snake): every ODD row now lays out
+  its items in mirrored (reversed) order, so the item continuing the flow
+  right after the last item of the row above lands in the same column,
+  directly below it, instead of at the opposite edge. Verified via a
+  controlled A/B test that replayed the EXACT node/edge model captured from
+  a live-agent trace through the fixed engine: `Bronze -> Silver` and
+  `Governance -> Gold` both became short vertical hops instead of full-width
+  backward jumps. Also verified on a second, independently-generated
+  live-agent scenario (multi-cloud security analytics, 9 zones / 2 rows)
+  with different topology, confirming the fix generalizes.
+- Found (not yet fixed) while validating the snake fix: zones are bucketed
+  by category (onprem < snow/bridge < outcome) and an `outcome`-category
+  zone always sorts to the very last position regardless of its actual
+  topological rank. A zone that connects DIRECTLY to an outcome zone from
+  the MIDDLE of the pipeline (e.g. Gold Layer -> Snowsight, with Alerts /
+  Incident Search / Anomaly Detection all sitting topologically between
+  them) still produces a long cross-diagram edge, since the outcome zone is
+  forced to the end no matter which of its several predecessors is
+  numerically closest. Tracked as a follow-up; not addressed in this pass.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01 (Phase 5: PDF/PNG export)
 
 ### Added

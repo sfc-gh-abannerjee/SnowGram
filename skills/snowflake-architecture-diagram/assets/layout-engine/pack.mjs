@@ -46,6 +46,24 @@ function wrapUnits(items, maxWidth, colGap, rowGap) {
     rowX += u.width + colGap;
     if (rowHeights[rowIdx] === undefined || u.height > rowHeights[rowIdx]) rowHeights[rowIdx] = u.height;
   });
+  // Boustrophedon (snake) reflow: mirror the left-right order of every ODD
+  // row, so the item that continues the flow right after the last item of
+  // the row above lands directly below it (a short vertical hop) instead
+  // of restarting at the far-left edge of a fresh row. A strict
+  // reading-order wrap forces any edge crossing a row boundary near the
+  // END of one row to travel the full canvas width to reach the START of
+  // the next -- this is exactly the "unintuitive jumble of connection
+  // lines" a real SE/SA would never draw, flagged from a live-agent
+  // render (the item ending row 1 on the far right had to connect all the
+  // way back to the item starting row 2 on the far left).
+  const byRow = {};
+  items.forEach(u => { (byRow[u.rowIdx] = byRow[u.rowIdx] || []).push(u); });
+  Object.keys(byRow).forEach(key => {
+    if (Number(key) % 2 === 0) return; // even rows (0, 2, ...) keep left-to-right
+    const reversed = byRow[key].slice().reverse();
+    let x = 0;
+    reversed.forEach(u => { u.xInRow = x; x += u.width + colGap; });
+  });
   const rowYOffset = [];
   let acc = 0;
   for (let r = 0; r < rowHeights.length; r++) { rowYOffset[r] = acc; acc += (rowHeights[r] || 0) + rowGap; }
@@ -333,14 +351,52 @@ function assignRanks(zones, edges) {
   const nodeToZone = {};
   zones.forEach(z => (z.node_ids || []).forEach(id => { nodeToZone[id] = z.name; }));
   const names = zones.map(z => z.name);
-  const order = {}; names.forEach((n, i) => { order[n] = i; });
+  const order = {}; names.forEach((n, i) => { order[n] = i; }); // tie-break only, no longer used to filter edges
   const succ = {}; names.forEach(n => { succ[n] = []; });
+
+  // Collect all zone-level edges (deduped pairs), in declaration order.
+  const zoneEdges = [];
+  const seenPair = new Set();
   edges.forEach(e => {
     const sz = nodeToZone[e.source], tz = nodeToZone[e.target];
     if (!sz || !tz || sz === tz) return;
-    if (order[tz] <= order[sz]) return;
+    const key = sz + '\u0000' + tz;
+    if (seenPair.has(key)) return;
+    seenPair.add(key);
+    zoneEdges.push([sz, tz]);
+  });
+
+  // Add each zone-level edge unless it would introduce an actual cycle in
+  // the zone graph -- that is the correct definition of a topological
+  // "back edge" for layering purposes, NOT whichever zone happened to be
+  // declared earlier in the input model. The previous check (order[tz] <=
+  // order[sz]) used the model's raw zone-declaration order as a proxy for
+  // "forward", which silently drops a perfectly acyclic edge whenever its
+  // target zone happens to be declared earlier than its source (e.g. a
+  // "Governance" zone declared right after "Ingestion" but whose only
+  // real edge is FROM a "Warehouse" zone declared much later in the flow).
+  // That zone then never gets pulled to its correct rank and its edge has
+  // to travel backward across the whole diagram to reach it -- exactly
+  // the readability problem flagged from a live-agent render (Warehouse
+  // -> Governance cutting back across every other zone). A real
+  // reachability check accepts that edge (no cycle exists) and correctly
+  // ranks Governance right after Warehouse instead.
+  function reachable(from, to) {
+    if (from === to) return true;
+    const seen = new Set([from]);
+    const queue = [from];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur === to) return true;
+      (succ[cur] || []).forEach(n => { if (!seen.has(n)) { seen.add(n); queue.push(n); } });
+    }
+    return false;
+  }
+  zoneEdges.forEach(([sz, tz]) => {
+    if (reachable(tz, sz)) return; // would close a cycle -- a genuine back-edge, skip
     if (succ[sz].indexOf(tz) === -1) succ[sz].push(tz);
   });
+
   const rank = {}; names.forEach(n => { rank[n] = 0; });
   let changed = true, safety = 0;
   while (changed && safety < 50) {

@@ -520,6 +520,24 @@ function wrapUnits(items, maxWidth, colGap, rowGap) {
     rowX += u.width + colGap;
     if (rowHeights[rowIdx] === undefined || u.height > rowHeights[rowIdx]) rowHeights[rowIdx] = u.height;
   });
+  // Boustrophedon (snake) reflow: mirror the left-right order of every ODD
+  // row, so the item that continues the flow right after the last item of
+  // the row above lands directly below it (a short vertical hop) instead
+  // of restarting at the far-left edge of a fresh row. A strict
+  // reading-order wrap forces any edge crossing a row boundary near the
+  // END of one row to travel the full canvas width to reach the START of
+  // the next -- this is exactly the "unintuitive jumble of connection
+  // lines" a real SE/SA would never draw, flagged from a live-agent
+  // render (the item ending row 1 on the far right had to connect all the
+  // way back to the item starting row 2 on the far left).
+  const byRow = {};
+  items.forEach(u => { (byRow[u.rowIdx] = byRow[u.rowIdx] || []).push(u); });
+  Object.keys(byRow).forEach(key => {
+    if (Number(key) % 2 === 0) return; // even rows (0, 2, ...) keep left-to-right
+    const reversed = byRow[key].slice().reverse();
+    let x = 0;
+    reversed.forEach(u => { u.xInRow = x; x += u.width + colGap; });
+  });
   const rowYOffset = [];
   let acc = 0;
   for (let r = 0; r < rowHeights.length; r++) { rowYOffset[r] = acc; acc += (rowHeights[r] || 0) + rowGap; }
@@ -807,14 +825,52 @@ function assignRanks(zones, edges) {
   const nodeToZone = {};
   zones.forEach(z => (z.node_ids || []).forEach(id => { nodeToZone[id] = z.name; }));
   const names = zones.map(z => z.name);
-  const order = {}; names.forEach((n, i) => { order[n] = i; });
+  const order = {}; names.forEach((n, i) => { order[n] = i; }); // tie-break only, no longer used to filter edges
   const succ = {}; names.forEach(n => { succ[n] = []; });
+
+  // Collect all zone-level edges (deduped pairs), in declaration order.
+  const zoneEdges = [];
+  const seenPair = new Set();
   edges.forEach(e => {
     const sz = nodeToZone[e.source], tz = nodeToZone[e.target];
     if (!sz || !tz || sz === tz) return;
-    if (order[tz] <= order[sz]) return;
+    const key = sz + '\u0000' + tz;
+    if (seenPair.has(key)) return;
+    seenPair.add(key);
+    zoneEdges.push([sz, tz]);
+  });
+
+  // Add each zone-level edge unless it would introduce an actual cycle in
+  // the zone graph -- that is the correct definition of a topological
+  // "back edge" for layering purposes, NOT whichever zone happened to be
+  // declared earlier in the input model. The previous check (order[tz] <=
+  // order[sz]) used the model's raw zone-declaration order as a proxy for
+  // "forward", which silently drops a perfectly acyclic edge whenever its
+  // target zone happens to be declared earlier than its source (e.g. a
+  // "Governance" zone declared right after "Ingestion" but whose only
+  // real edge is FROM a "Warehouse" zone declared much later in the flow).
+  // That zone then never gets pulled to its correct rank and its edge has
+  // to travel backward across the whole diagram to reach it -- exactly
+  // the readability problem flagged from a live-agent render (Warehouse
+  // -> Governance cutting back across every other zone). A real
+  // reachability check accepts that edge (no cycle exists) and correctly
+  // ranks Governance right after Warehouse instead.
+  function reachable(from, to) {
+    if (from === to) return true;
+    const seen = new Set([from]);
+    const queue = [from];
+    while (queue.length) {
+      const cur = queue.shift();
+      if (cur === to) return true;
+      (succ[cur] || []).forEach(n => { if (!seen.has(n)) { seen.add(n); queue.push(n); } });
+    }
+    return false;
+  }
+  zoneEdges.forEach(([sz, tz]) => {
+    if (reachable(tz, sz)) return; // would close a cycle -- a genuine back-edge, skip
     if (succ[sz].indexOf(tz) === -1) succ[sz].push(tz);
   });
+
   const rank = {}; names.forEach(n => { rank[n] = 0; });
   let changed = true, safety = 0;
   while (changed && safety < 50) {
@@ -1555,6 +1611,29 @@ function portsOf(rect) {
   ];
 }
 
+// Builds ONE port point on a specific side of `rect`, shifted `offset` px
+// along that side from its midpoint (clamped so it can't slide past the
+// rounded corners). Used so several edges biased to the SAME side of the
+// same node don't all collapse onto the identical pixel port -- without
+// this, 3 sibling edges sharing a target side/point also share their final
+// approach segment and render as one visible line with one arrowhead,
+// hiding that 3 separate connections exist (found via direct visual
+// inspection of a fixture render + the live-agent apex-health SVG, both
+// showing identical duplicate final segments into a fan-in target).
+function offsetPortOn(rect, side, offset) {
+  const CORNER_MARGIN = 8;
+  if (side === 'top' || side === 'bottom') {
+    const half = Math.max(0, (rect.right - rect.left) / 2 - CORNER_MARGIN);
+    const dx = Math.max(-half, Math.min(half, offset));
+    const midX = (rect.left + rect.right) / 2;
+    return { x: midX + dx, y: side === 'top' ? rect.top : rect.bottom, dir: 1, side };
+  }
+  const half = Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN);
+  const dy = Math.max(-half, Math.min(half, offset));
+  const midY = (rect.top + rect.bottom) / 2;
+  return { x: side === 'left' ? rect.left : rect.right, y: midY + dy, dir: 0, side };
+}
+
 const CLEARANCE = 10; // px of standoff a path must keep from an unrelated obstacle's edge
 
 /**
@@ -1596,12 +1675,10 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
   // consistency across the whole cluster regardless of any one member's
   // exact position. Restrict to just the requested side when given.
   if (portBias && portBias.srcSide) {
-    const forced = srcPorts.filter(p => p.side === portBias.srcSide);
-    if (forced.length) srcPorts = forced;
+    srcPorts = [offsetPortOn(srcRect, portBias.srcSide, portBias.srcOffset || 0)];
   }
   if (portBias && portBias.tgtSide) {
-    const forced = tgtPorts.filter(p => p.side === portBias.tgtSide);
-    if (forced.length) tgtPorts = forced;
+    tgtPorts = [offsetPortOn(tgtRect, portBias.tgtSide, portBias.tgtOffset || 0)];
   }
   srcPorts.concat(tgtPorts).forEach(p => { insertSorted(X, p.x); insertSorted(Y, p.y); });
 
@@ -1696,10 +1773,27 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
   }
   pts.reverse();
 
-  // Prepend/append the true node-center-to-port stub (the seed cost
-  // already accounted for it; this just materializes the waypoint).
-  const srcCenter = [(srcRect.left + srcRect.right) / 2, (srcRect.top + srcRect.bottom) / 2];
-  const tgtCenter = [(tgtRect.left + tgtRect.right) / 2, (tgtRect.top + tgtRect.bottom) / 2];
+  // Prepend/append a stub from the actual port straight into the rect's
+  // interior (to its center ALONG THE ENTRY AXIS only), so the final
+  // segment stays a clean horizontal/vertical line hidden under the card.
+  // Using the rect's overall geometric center here (as this used to)
+  // broke as soon as a port could sit somewhere other than the exact
+  // midpoint of its side (see the fan-out offset ports below): a port at
+  // e.g. (rect.left, midY+14) followed by a stub at (midX, midY) is a
+  // DIAGONAL jump -- found via SVG path-data inspection showing a
+  // non-orthogonal final segment on a fan-in edge.
+  const firstGridPt = pts.length ? pts[0] : null;
+  const lastGridPt = pts.length ? pts[pts.length - 1] : null;
+  function stubInto(rect, port) {
+    const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
+    if (!port) return [midX, midY];
+    if (Math.abs(port[1] - rect.top) < 0.5 || Math.abs(port[1] - rect.bottom) < 0.5) {
+      return [port[0], midY]; // entered via top/bottom: move in Y only, keep the port's X
+    }
+    return [midX, port[1]]; // entered via left/right: move in X only, keep the port's Y
+  }
+  const srcCenter = stubInto(srcRect, firstGridPt);
+  const tgtCenter = stubInto(tgtRect, lastGridPt);
   const full = [srcCenter].concat(pts, [tgtCenter]);
 
   // Drop redundant collinear waypoints (three or more consecutive points
@@ -1723,8 +1817,8 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
   // instead of each edge independently picking whichever port tied on
   // cost. Arrays are objects in JS, so this doesn't change the return
   // type for existing callers that only index into it.
-  const firstPort = pts.length ? pts[0] : tgtCenter;
-  const lastPort = pts.length ? pts[pts.length - 1] : srcCenter;
+  const firstPort = firstGridPt || srcCenter;
+  const lastPort = lastGridPt || tgtCenter;
   out.srcSide = sideOf(srcRect, firstPort);
   out.tgtSide = sideOf(tgtRect, lastPort);
   return out;
@@ -1880,6 +1974,26 @@ function route(model, packed, opts = {}) {
   // that node's one side, not split across two different sides.
   const srcSideUsed = {};
   const tgtSideUsed = {};
+  // Same-side siblings still need DISTINCT port points, or their final
+  // approach segments overlap exactly and 3 separate edges render as one
+  // visible line with one arrowhead (found via direct SVG path-data
+  // inspection: Azure Synapse/SQL/Blob -> dbt in the apex-health live
+  // render all ended at the identical (x,y) with the same trailing
+  // segment). Each additional edge sharing a (node, side) gets the next
+  // slot in an alternating fan-out sequence around the side's midpoint.
+  const PORT_SLOT_SPACING = 14; // px between adjacent fanned-out ports
+  const srcSideSlot = {};
+  const tgtSideSlot = {};
+  function nextSlotOffset(slotMap, key) {
+    // Called only once a bias already exists for this (node, side), i.e.
+    // this is at LEAST the 2nd edge sharing it -- so the sequence must
+    // start at n=1 on the very first call, or that 2nd edge silently gets
+    // offset 0 and collides with the 1st edge's unbiased (also-0) port.
+    const n = (slotMap[key] || 0) + 1;
+    slotMap[key] = n;
+    const magnitude = Math.ceil(n / 2) * PORT_SLOT_SPACING;
+    return (n % 2 === 1) ? magnitude : -magnitude;
+  }
 
   // ── main per-edge routing ──
   const collected = [];
@@ -1908,6 +2022,8 @@ function route(model, packed, opts = {}) {
       ...exclusionsFor(t.id, t.zoneName),
     ]);
     const portBias = { srcSide: srcSideUsed[s.id] || null, tgtSide: tgtSideUsed[t.id] || null };
+    if (portBias.srcSide) portBias.srcOffset = nextSlotOffset(srcSideSlot, s.id);
+    if (portBias.tgtSide) portBias.tgtOffset = nextSlotOffset(tgtSideSlot, t.id);
     let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds, 3, pathUsage, portBias);
     if (!path) {
       // Should only happen if a diagram genuinely has no clear route (e.g.

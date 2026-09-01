@@ -138,6 +138,26 @@ export function route(model, packed, opts = {}) {
   // that node's one side, not split across two different sides.
   const srcSideUsed = {};
   const tgtSideUsed = {};
+  // Same-side siblings still need DISTINCT port points, or their final
+  // approach segments overlap exactly and 3 separate edges render as one
+  // visible line with one arrowhead (found via direct SVG path-data
+  // inspection: Azure Synapse/SQL/Blob -> dbt in the apex-health live
+  // render all ended at the identical (x,y) with the same trailing
+  // segment). Each additional edge sharing a (node, side) gets the next
+  // slot in an alternating fan-out sequence around the side's midpoint.
+  const PORT_SLOT_SPACING = 14; // px between adjacent fanned-out ports
+  const srcSideSlot = {};
+  const tgtSideSlot = {};
+  function nextSlotOffset(slotMap, key) {
+    // Called only once a bias already exists for this (node, side), i.e.
+    // this is at LEAST the 2nd edge sharing it -- so the sequence must
+    // start at n=1 on the very first call, or that 2nd edge silently gets
+    // offset 0 and collides with the 1st edge's unbiased (also-0) port.
+    const n = (slotMap[key] || 0) + 1;
+    slotMap[key] = n;
+    const magnitude = Math.ceil(n / 2) * PORT_SLOT_SPACING;
+    return (n % 2 === 1) ? magnitude : -magnitude;
+  }
 
   // ── main per-edge routing ──
   const collected = [];
@@ -166,6 +186,8 @@ export function route(model, packed, opts = {}) {
       ...exclusionsFor(t.id, t.zoneName),
     ]);
     const portBias = { srcSide: srcSideUsed[s.id] || null, tgtSide: tgtSideUsed[t.id] || null };
+    if (portBias.srcSide) portBias.srcOffset = nextSlotOffset(srcSideSlot, s.id);
+    if (portBias.tgtSide) portBias.tgtOffset = nextSlotOffset(tgtSideSlot, t.id);
     let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds, 3, pathUsage, portBias);
     if (!path) {
       // Should only happen if a diagram genuinely has no clear route (e.g.
