@@ -4,6 +4,43 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01
+
+### Fixed
+- Found the actual root cause of the crossings flagged in part 3 below,
+  by extracting exact geometry from a live-agent HTML output, confirming
+  a real crossing, then adding a temporary debug print directly in
+  `route.mjs` to capture the exact obstacles/excludeIds/path at the
+  moment the offending edge was computed. That showed
+  `routeShortestOrthogonal` itself already returning a safe path (e.g.
+  y=203.5, clear of the obstacle) -- but the edge's *final* emitted `d`
+  used a different, unsafe value (y=193.5, inside the obstacle). Something
+  between the search and the output was mutating an already-correct path.
+  Traced to two leftover pieces of pre-gridroute.mjs code in `route.mjs`
+  that neither the earlier channel-walk rewrite nor the gridroute.mjs
+  rewrite had removed:
+  1. `spineThroughChain` -- a shortcut for edges with a pack.mjs
+     "dummy-node chain" (inserted for rank-spanning edges) that drew a
+     straight sweep through the chain's lane with *zero* obstacle
+     checking, gated ahead of the gridroute.mjs call so it could still
+     fire for some edges.
+  2. A post-hoc "repair pass" that ran on every edge's path *after*
+     gridroute.mjs, re-scanning for crossings and nudging one endpoint of
+     an offending segment sideways by a fixed clearance -- without
+     verifying that shift didn't put the segment (or the neighboring one
+     sharing that point) into a *new* obstacle. This is what actually
+     mutated the confirmed-safe gridroute.mjs output into an unsafe one.
+  Removed both entirely (deleted ~300 lines of now-dead code:
+  `spineThroughChain`, `snapToGap`, `verticalSegmentClear`, the unused
+  `routeOrthogonal`, and the repair-pass loop) rather than patching them,
+  since gridroute.mjs's Dijkstra search already guarantees every path is
+  obstacle-free by construction -- there is nothing left for either of
+  these to legitimately do. Verified: full local test suite still passes
+  (0 crossings across all fixtures), the exact reconstructed topology that
+  produced the reported crossing now returns the safe path unmodified,
+  and a fresh live-agent run's HTML was re-extracted and checked
+  coordinate-by-coordinate (0 crossings, 0 unexplained overlaps).
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-08-31 (part 3)
 
 ### Added
