@@ -4,6 +4,33 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01 (part 3)
+
+### Fixed
+- The port-consistency fix from part 2 was insufficient, and my validation
+  didn't catch it -- caught by the user zooming into the actual rendered
+  image, not by anything I checked. Audit of what happened: I verified
+  "same final entry pixel" and "0 crossings" on the deployed output, but
+  never checked that sibling fan-in edges took a *consistent-shaped* route
+  to get there. A soft `PORT_BIAS` cost penalty (+50) on the non-preferred
+  side is exactly the kind of thing that passes a coordinate-level check
+  (all 3 edges DID converge on the same final point) while still looking
+  wrong -- for a card far enough from its siblings, the raw distance
+  saved by using its geometrically-closer side exceeded the penalty, so
+  it won anyway. Traced with a direct replay of the exact 3-edge sequence
+  against the real deployed geometry, which is what actually surfaced it
+  (`azsql->dbt` and `blob->dbt` computed different tgtSide values despite
+  the bias). Fixed by making `portBias` a hard constraint instead of a
+  cost nudge: `routeShortestOrthogonal` now filters `srcPorts`/`tgtPorts`
+  down to just the requested side when a bias is given, rather than
+  leaving all 4 ports in play with a penalty on 3 of them. Removed the
+  now-dead `PORT_BIAS` constant and the bias-cost lines in port seeding.
+  Lesson for future validation: "shares an endpoint" and "0 obstacle
+  crossings" are necessary but not sufficient checks for a fan cluster --
+  also need to compare the actual route *shape* (turn sequence) each
+  sibling took, or just look at the rendered image closely rather than
+  trusting an aggregate coordinate check.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01 (part 2)
 
 ### Fixed

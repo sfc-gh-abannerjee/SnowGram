@@ -1540,10 +1540,11 @@ function insertSorted(arr, v) {
 // (midpoints of each side), each tagged with the outward direction so the
 // search can charge a turn if the first real move doesn't continue that
 // way, and a `side` label ('top'|'bottom'|'left'|'right') so callers can
-// bias the search toward a specific side (see PORT_BIAS below) -- used to
-// keep several edges that share a target/source entering/exiting through
-// the same side instead of each independently picking whichever port is
-// marginally cheapest.
+// bias the search toward a specific side (a hard restriction, not a cost
+// nudge -- see the srcPorts/tgtPorts filtering in routeShortestOrthogonal)
+// -- used to keep several edges that share a target/source
+// entering/exiting through the same side instead of each independently
+// picking whichever port is marginally cheapest.
 function portsOf(rect) {
   const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
   return [
@@ -1553,8 +1554,6 @@ function portsOf(rect) {
     { x: rect.right, y: midY, dir: 0, side: 'right' },
   ];
 }
-
-const PORT_BIAS = 50; // extra cost for entering/exiting a non-preferred side
 
 const CLEARANCE = 10; // px of standoff a path must keep from an unrelated obstacle's edge
 
@@ -1587,8 +1586,23 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
   const X = buildAxis(xs, bounds.minX, bounds.maxX);
   const Y = buildAxis(ys, bounds.minY, bounds.maxY);
 
-  const srcPorts = portsOf(srcRect);
-  const tgtPorts = portsOf(tgtRect);
+  let srcPorts = portsOf(srcRect);
+  let tgtPorts = portsOf(tgtRect);
+  // A fan-in/fan-out bias is a HARD constraint, not a soft cost nudge: a
+  // penalty small enough to still let a genuinely-closer alternate side
+  // win for an outlying member of the cluster (observed: a fixed +50
+  // penalty was overridden by a ~150px distance saving for a card far
+  // from its siblings) defeats the entire point, which is visual
+  // consistency across the whole cluster regardless of any one member's
+  // exact position. Restrict to just the requested side when given.
+  if (portBias && portBias.srcSide) {
+    const forced = srcPorts.filter(p => p.side === portBias.srcSide);
+    if (forced.length) srcPorts = forced;
+  }
+  if (portBias && portBias.tgtSide) {
+    const forced = tgtPorts.filter(p => p.side === portBias.tgtSide);
+    if (forced.length) tgtPorts = forced;
+  }
   srcPorts.concat(tgtPorts).forEach(p => { insertSorted(X, p.x); insertSorted(Y, p.y); });
 
   const xi = x => X.indexOf(x);
@@ -1619,8 +1633,7 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
   const seedSources = [];
   srcPorts.forEach(p => {
     const d0 = Math.abs(p.x - (srcRect.left + srcRect.right) / 2) + Math.abs(p.y - (srcRect.top + srcRect.bottom) / 2);
-    const bias = (portBias && portBias.srcSide && portBias.srcSide !== p.side) ? PORT_BIAS : 0;
-    seedSources.push({ xI: xi(p.x), yI: yi(p.y), dir: p.dir, cost: d0 + bias, x: p.x, y: p.y });
+    seedSources.push({ xI: xi(p.x), yI: yi(p.y), dir: p.dir, cost: d0, x: p.x, y: p.y });
   });
   seedSources.forEach(s => {
     const k = key(s.xI, s.yI, s.dir);
@@ -1631,9 +1644,7 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
 
   const targetStates = new Map(); // key -> {x,y,cost}
   tgtPorts.forEach(p => {
-    const d0 = Math.abs(p.x - (tgtRect.left + tgtRect.right) / 2) + Math.abs(p.y - (tgtRect.top + tgtRect.bottom) / 2);
-    const bias = (portBias && portBias.tgtSide && portBias.tgtSide !== p.side) ? PORT_BIAS : 0;
-    const extra = d0 + bias;
+    const extra = Math.abs(p.x - (tgtRect.left + tgtRect.right) / 2) + Math.abs(p.y - (tgtRect.top + tgtRect.bottom) / 2);
     targetStates.set(key(xi(p.x), yi(p.y), p.dir), { x: p.x, y: p.y, extra });
     targetStates.set(key(xi(p.x), yi(p.y), 1 - p.dir), { x: p.x, y: p.y, extra });
   });
