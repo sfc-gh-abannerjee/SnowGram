@@ -85,16 +85,24 @@ function insertSorted(arr, v) {
 // Ports: the up-to-4 candidate attachment points on a rect's own boundary
 // (midpoints of each side), each tagged with the outward direction so the
 // search can charge a turn if the first real move doesn't continue that
-// way.
+// way, and a `side` label ('top'|'bottom'|'left'|'right') so callers can
+// bias the search toward a specific side (see PORT_BIAS below) -- used to
+// keep several edges that share a target/source entering/exiting through
+// the same side instead of each independently picking whichever port is
+// marginally cheapest.
 function portsOf(rect) {
   const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
   return [
-    { x: midX, y: rect.top, dir: 1 },
-    { x: midX, y: rect.bottom, dir: 1 },
-    { x: rect.left, y: midY, dir: 0 },
-    { x: rect.right, y: midY, dir: 0 },
+    { x: midX, y: rect.top, dir: 1, side: 'top' },
+    { x: midX, y: rect.bottom, dir: 1, side: 'bottom' },
+    { x: rect.left, y: midY, dir: 0, side: 'left' },
+    { x: rect.right, y: midY, dir: 0, side: 'right' },
   ];
 }
+
+const PORT_BIAS = 50; // extra cost for entering/exiting a non-preferred side
+
+const CLEARANCE = 10; // px of standoff a path must keep from an unrelated obstacle's edge
 
 /**
  * @param {{left,top,right,bottom,id}[]} obstacles - every rect that could block a path
@@ -104,8 +112,20 @@ function portsOf(rect) {
  * @param {{minX,minY,maxX,maxY}} bounds - canvas extent (fallback grid lines)
  * @returns {[number,number][]|null} waypoints, or null if no path exists (shouldn't happen on a bounded canvas)
  */
-export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds, margin = 3, usage = null) {
-  const active = obstacles.filter(o => !excludeIds.has(o.id));
+export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds, margin = 3, usage = null, portBias = null) {
+  // Inflate every obstacle the path is NOT allowed to touch by a fixed
+  // clearance before it's used for blocking/grid-line generation, so a
+  // path keeps visible breathing room from a zone/container/card it
+  // isn't connecting to instead of just barely legally grazing its edge
+  // (margin above only controls "on the boundary is legal", it says
+  // nothing about preferring more distance). The endpoints' own
+  // zone/container chain is excluded from `obstacles` entirely (never
+  // reaches this filter), so hugging THAT boundary exactly is unaffected.
+  const active = obstacles.filter(o => !excludeIds.has(o.id)).map(o => ({
+    id: o.id,
+    left: o.left - CLEARANCE, top: o.top - CLEARANCE,
+    right: o.right + CLEARANCE, bottom: o.bottom + CLEARANCE,
+  }));
 
   const xs = [];
   const ys = [];
@@ -145,7 +165,8 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
   const seedSources = [];
   srcPorts.forEach(p => {
     const d0 = Math.abs(p.x - (srcRect.left + srcRect.right) / 2) + Math.abs(p.y - (srcRect.top + srcRect.bottom) / 2);
-    seedSources.push({ xI: xi(p.x), yI: yi(p.y), dir: p.dir, cost: d0, x: p.x, y: p.y });
+    const bias = (portBias && portBias.srcSide && portBias.srcSide !== p.side) ? PORT_BIAS : 0;
+    seedSources.push({ xI: xi(p.x), yI: yi(p.y), dir: p.dir, cost: d0 + bias, x: p.x, y: p.y });
   });
   seedSources.forEach(s => {
     const k = key(s.xI, s.yI, s.dir);
@@ -157,8 +178,10 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
   const targetStates = new Map(); // key -> {x,y,cost}
   tgtPorts.forEach(p => {
     const d0 = Math.abs(p.x - (tgtRect.left + tgtRect.right) / 2) + Math.abs(p.y - (tgtRect.top + tgtRect.bottom) / 2);
-    targetStates.set(key(xi(p.x), yi(p.y), p.dir), { x: p.x, y: p.y, extra: d0 });
-    targetStates.set(key(xi(p.x), yi(p.y), 1 - p.dir), { x: p.x, y: p.y, extra: d0 });
+    const bias = (portBias && portBias.tgtSide && portBias.tgtSide !== p.side) ? PORT_BIAS : 0;
+    const extra = d0 + bias;
+    targetStates.set(key(xi(p.x), yi(p.y), p.dir), { x: p.x, y: p.y, extra });
+    targetStates.set(key(xi(p.x), yi(p.y), 1 - p.dir), { x: p.x, y: p.y, extra });
   });
 
   let best = null, bestCost = Infinity;
@@ -228,5 +251,25 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
     if (Math.abs(p[0] - out[out.length - 1][0]) < 0.5 && Math.abs(p[1] - out[out.length - 1][1]) < 0.5) continue;
     out.push(p);
   }
+  // Attach which side of each rect the winning path actually used, so a
+  // caller routing several edges that share this src/tgt can bias
+  // subsequent calls (via portBias) toward the same side -- keeps a fan-
+  // in/fan-out cluster entering/exiting through one consistent side
+  // instead of each edge independently picking whichever port tied on
+  // cost. Arrays are objects in JS, so this doesn't change the return
+  // type for existing callers that only index into it.
+  const firstPort = pts.length ? pts[0] : tgtCenter;
+  const lastPort = pts.length ? pts[pts.length - 1] : srcCenter;
+  out.srcSide = sideOf(srcRect, firstPort);
+  out.tgtSide = sideOf(tgtRect, lastPort);
   return out;
+}
+
+function sideOf(rect, point) {
+  const [x, y] = point;
+  if (Math.abs(y - rect.top) < 0.5) return 'top';
+  if (Math.abs(y - rect.bottom) < 0.5) return 'bottom';
+  if (Math.abs(x - rect.left) < 0.5) return 'left';
+  if (Math.abs(x - rect.right) < 0.5) return 'right';
+  return null;
 }

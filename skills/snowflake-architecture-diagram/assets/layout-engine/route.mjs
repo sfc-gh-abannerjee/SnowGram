@@ -129,6 +129,16 @@ export function route(model, packed, opts = {}) {
     pairTotalCounts[key] = (pairTotalCounts[key] || 0) + 1;
   });
 
+  // Fan-in/fan-out port consistency: once one edge picks a side to
+  // exit/enter a given node, later edges sharing that SAME node (as
+  // source, or as target, tracked separately since a node's fan-out side
+  // and fan-in side are independent) are biased toward the same side
+  // instead of each independently landing on whichever port ties on
+  // cost -- e.g. 3 sources feeding one node should all enter through
+  // that node's one side, not split across two different sides.
+  const srcSideUsed = {};
+  const tgtSideUsed = {};
+
   // ── main per-edge routing ──
   const collected = [];
   edges.forEach((edge, edgeIdx) => {
@@ -155,13 +165,16 @@ export function route(model, packed, opts = {}) {
       ...exclusionsFor(s.id, s.zoneName),
       ...exclusionsFor(t.id, t.zoneName),
     ]);
-    let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds, 3, pathUsage);
+    const portBias = { srcSide: srcSideUsed[s.id] || null, tgtSide: tgtSideUsed[t.id] || null };
+    let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds, 3, pathUsage, portBias);
     if (!path) {
       // Should only happen if a diagram genuinely has no clear route (e.g.
       // fully enclosed with no gap) -- fall back to a direct line rather
       // than dropping the edge.
       path = [[(s.left + s.right) / 2, cy(s)], [(t.left + t.right) / 2, cy(t)]];
     }
+    if (path.srcSide && !srcSideUsed[s.id]) srcSideUsed[s.id] = path.srcSide;
+    if (path.tgtSide && !tgtSideUsed[t.id]) tgtSideUsed[t.id] = path.tgtSide;
     registerPathUsage(pathUsage, path);
     const d = pointsToD(path);
     const markerId = 'arrowhead';

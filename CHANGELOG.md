@@ -4,6 +4,38 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01 (part 2)
+
+### Fixed
+- Two style issues flagged from a fresh live-agent review, both real:
+  1. **Inconsistent fan-in/fan-out port sides.** 3 sources feeding one
+     target independently picked whichever port tied on shortest-path
+     cost, so 2 entered dbt's left edge and 1 entered its bottom edge --
+     technically correct routing, but visually inconsistent. Added port
+     `side` labels + an optional `portBias` to `routeShortestOrthogonal`
+     (a cost penalty on non-preferred sides), and in `route.mjs` track
+     which side each node's first edge used (`srcSideUsed`/`tgtSideUsed`,
+     scored separately since a node's fan-out side and fan-in side are
+     independent) and bias every later edge sharing that node toward it.
+  2. **Paths hugging an unrelated zone/container's wall.** Confirmed
+     first, then genuinely mis-fixed: my first attempt raised the
+     `segmentBlockedByRect` `margin` (3 -> 14), which actually makes
+     hugging *more* permissive -- margin only defines how far a segment
+     may sit inside an obstacle's edge and still count as "on the
+     boundary, not blocked"; a bigger margin tolerates deeper intrusion,
+     the opposite of the ask. Reverted margin to 3. The real fix:
+     inflate every *active* (non-excluded) obstacle's rect by a fixed
+     `CLEARANCE` (10px) before it's used for blocking and grid-line
+     generation, so a path must keep visible standoff from anything it
+     isn't connecting to. The exclusion filter runs first, so an
+     endpoint's own zone/container chain is never inflated and can still
+     be hugged exactly where it needs to be (its own boundary).
+  Verified: full local suite still 0 crossings across all fixtures; a
+  fresh live-agent run (genuinely different topology -- 17 nodes, 5
+  top-row zones -- so not a cached/repeat response) checked
+  coordinate-by-coordinate came back 0 crossings, and the fan-in cluster
+  and container walls are visibly cleaner in the rendered PNG.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01
 
 ### Fixed
