@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
 # Canonical source: /Users/abannerjee/Documents/snowgram-eng/backend/sql/dev_temp_abannerjee/render_diagram.dev.sql
-# sha256(source): e89c6ee158ba9535fa23db871b3a0acc612be7ad8477c9d718b9ae9c36db9ac2
-# generated: 2026-08-31T02:34:32+00:00
+# sha256(source): 79c2db4146d4a2d69d71234befd6edc566cd66af716d8147d72fccfbe7a4ec83
+# generated: 2026-09-01T19:39:53+00:00
 
 
 import json, base64
@@ -222,7 +222,7 @@ def _svg(layout, icons, edge_labels, title, doc):
         head.append('<desc>' + _xesc(doc['overview']) + '</desc>')
     head.append('<rect x="0" y="0" width="' + str(W) + '" height="' + str(H) + '" fill="#ffffff"/>')
     head.append('<defs><marker id="arrowhead" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6 Z" fill="#5b6770"/></marker></defs>')
-    return '<?xml version="1.0" encoding="UTF-8"?>\\n' + ''.join(head + body + ['</svg>'])
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ''.join(head + body + ['</svg>'])
 
 
 def _svg_doc_panel(doc, x, y0, maxw):

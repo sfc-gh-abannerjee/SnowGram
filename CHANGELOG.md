@@ -4,6 +4,62 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01 (Phase 5: PDF/PNG export)
+
+### Added
+- `GENERATE_DIAGRAM_ARTIFACTS` now produces `.pdf` and `.png` alongside the
+  existing `.mmd`/`.drawio.xml`/`.svg`/`.html` (six formats total). Approach,
+  confirmed via a real feasibility spike (not assumed): reuse the existing
+  `.svg` deliverable, wrap it in a minimal HTML shell with an `@page` rule
+  sized to the SVG's own width/height (weasyprint defaults to A4 otherwise,
+  which clips/scales a wide architecture diagram), render PDF via
+  `weasyprint`, then rasterize that PDF to PNG via `pdf2image`/`poppler`.
+  All four packages are in the standard Snowflake Anaconda channel; the
+  whole pipeline runs inside the Python stored-proc sandbox with no browser
+  subprocess, no external network, no EXTERNAL_ACCESS_INTEGRATION.
+  `GENERATE_TEMPLATE_ARTIFACTS` inherits this for free (it's a thin wrapper
+  that calls `GENERATE_DIAGRAM_ARTIFACTS` internally) -- verified directly,
+  not assumed.
+- Spike findings worth keeping: feeding weasyprint the FULL interactive HTML
+  fails (`RecursionError` in weasyprint's CSS `var()` resolver -- our
+  CSS-custom-property theming/animation isn't supported), so PDF/PNG must be
+  derived from the plain `.svg` output instead, which has no CSS variables.
+  weasyprint 62.x also no longer exposes `Document.write_png()` (removed);
+  PDF->PNG via `pdf2image`/poppler is the working path. Deploying any
+  `weasyprint`-`PACKAGES` proc also requires explicitly listing
+  `snowflake-snowpark-python` in `PACKAGES` or it fails to deploy with a
+  misleading `ModuleNotFoundError: No module named 'snowflake'`.
+- Updated the `SNOWGRAM_AGENT` spec (Section 4 response template, Step 5
+  orchestration note, and both `GENERATE_DIAGRAM_ARTIFACTS` /
+  `GENERATE_TEMPLATE_ARTIFACTS` tool descriptions, including their DOC_JSON
+  parameter descriptions) from "four portable formats" to "six", with PDF/PNG
+  listed. Deployed via `ALTER AGENT ... MODIFY LIVE VERSION SET
+  SPECIFICATION`, then `ALTER AGENT ... COMMIT` + `SET DEFAULT_VERSION` --
+  confirmed the CLI's `agent-save` alone does NOT move DEFAULT_VERSION (the
+  describe output still showed the old spec after agent-save reported
+  success), matching the previously-documented publish/default-version gap.
+  Verified end-to-end on a fresh live-agent run: the agent's actual response
+  now lists working PDF and PNG download links.
+
+### Fixed
+- Found and fixed a stale-source bug in `_svg()`: the LOCAL canonical
+  `render_diagram.dev.sql` and its `render_diagram_generated.py` mirror
+  (used offline by `render_local.py`/`review_harness.py` for fast testing
+  without a Snowflake round trip) had a double-escaped XML declaration join
+  (`'<?xml ...?>\\n'`), producing a literal two-character `\n` instead of a
+  real newline -- visible as stray text at the top of any locally-rendered
+  `.svg`. Verified via direct `CALL TEMP.ABANNERJEE.RENDER_DIAGRAM(...)`
+  that the LIVE deployed UDF was unaffected (already emits a real newline),
+  so this was a local-file/live drift in the opposite direction from usual --
+  no live redeploy was needed. Fixed the canonical source anyway so local
+  testing matches live; `render_diagram_generated.py` re-synced via
+  `build_render.py`.
+- `generate_artifacts.dev.sql` had drifted from the live deployed procedure
+  (missing the `CONTAINERS` parameter added in an earlier session's
+  live-only edit). Re-synced from a fresh `GET_DDL` fetch of the live 6-arg
+  version before adding PDF/PNG, so the local source and live object match
+  again.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01 (part 3)
 
 ### Fixed
