@@ -92,13 +92,18 @@ def _category(ctype: str, label: str, path: str | None) -> str:
         "postgres", "mysql", "oracle", "mongo", "redis", "external", "data lake",
         "databricks", "spark", "bigquery", "synapse", "redshift", "pub/sub", "pubsub",
         "dbt", "airflow", "fivetran", "matillion", "informatica", "talend",
+        # Azure-specific services the agent sends as space-separated names
+        "data factory", "private link", "privatelink", "service bus",
+        "event hub", "azure sql", "azure blob", "azure function",
+        # AWS equivalents
+        "glue", "lambda", "kinesis", "sqs", "sns",
     )):
         return "onprem"
-    # Generic vendor-prefix heuristic: any non-Snowflake cloud vendor's OWN
-    # service (azure_*, aws_*, gcp_*, google_*) is virtually always outside
-    # the Snowflake account boundary even when no more specific keyword
-    # above matched -- e.g. azure_data_factory, azure_sql, aws_glue.
-    if any(c.startswith(p) for p in ("azure_", "aws_", "gcp_", "google_")):
+    # Generic vendor-prefix heuristic: handles BOTH underscore-separated
+    # (azure_data_factory) AND space-separated (azure data factory) forms,
+    # since the agent sends the latter style and startswith("azure_") alone
+    # silently fell through to "snow" for all space-separated Azure names.
+    if any(c.startswith(p) for p in ("azure_", "azure ", "aws_", "aws ", "gcp_", "gcp ", "google_", "google ")):
         return "onprem"
     return "snow"
 
@@ -198,6 +203,8 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
             "componentType": id_to_type.get(n.get("id"), ""),
             "zone": n.get("layer") or n.get("zone") or "Main",
             "category": cats.get(n.get("id")),
+            "detail": n.get("detail") or "",
+            "style": n.get("style"),
         }
         for n in nodes
     ]
@@ -207,15 +214,28 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
         if (e.get("source") or e.get("from")) and (e.get("target") or e.get("to"))
     ]
     edge_labels = {}
+    edge_bidirectional = {}
+    edge_styles = {}
+    _valid_styles = {"dataflow", "governance", "legacy", "private_link", "data_share"}
     for e in edges:
         s = e.get("source") or e.get("from")
         t = e.get("target") or e.get("to")
-        if e.get("label") and s and t:
-            edge_labels[f"{s}|{t}"] = e["label"]
+        if s and t:
+            key = f"{s}|{t}"
+            if e.get("label"):
+                edge_labels[key] = e["label"]
+            if e.get("bidirectional"):
+                edge_bidirectional[key] = True
+            if e.get("style") in _valid_styles:
+                edge_styles[key] = e["style"]
 
     base_graph = {"nodes": g_nodes, "edges": g_edges}
     if model.get("containers"):
         base_graph["containers"] = model["containers"]
+    if model.get("boundaryLabel"):
+        base_graph["boundaryLabel"] = model["boundaryLabel"]
+    if model.get("boundarySubtitle"):
+        base_graph["boundarySubtitle"] = model["boundarySubtitle"]
 
     # narrow geometry (svg/drawio/mmd) + wide geometry (HTML icon-left)
     layout = _run_layout(json.dumps(base_graph), wide=False)
@@ -223,13 +243,15 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
         ln["label"] = id_to_label.get(ln.get("id"), ln.get("label") or ln.get("id"))
 
     html_layout = _run_layout(json.dumps({**base_graph, "nodeStyle": "wide"}), wide=True)
+    id_to_detail: dict = {n.get("id"): n.get("detail") or "" for n in nodes}
     for ln in html_layout.get("nodes", []) or []:
         nid = ln.get("id")
         ln["label"] = id_to_label.get(nid, ln.get("label") or nid)
         ln["componentType"] = id_to_type.get(nid, "")
         ln["category"] = cats.get(nid)
+        ln["detail"] = id_to_detail.get(nid, "")
 
-    enrich: dict = {"icons": icons, "edgeLabels": edge_labels}
+    enrich: dict = {"icons": icons, "edgeLabels": edge_labels, "edgeBidirectional": edge_bidirectional, "edgeStyles": edge_styles}
     if doc:
         enrich["doc"] = doc
 

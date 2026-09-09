@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
-# Canonical source: /Users/abannerjee/Documents/snowgram-eng/backend/sql/dev_temp_abannerjee/render_diagram.dev.sql
-# sha256(source): 79c2db4146d4a2d69d71234befd6edc566cd66af716d8147d72fccfbe7a4ec83
-# generated: 2026-09-01T19:39:53+00:00
+# Canonical source: /Users/abannerjee/Documents/SnowGram/skills/snowflake-architecture-diagram/assets/render/source/render_diagram.dev.sql
+# sha256(source): f3485e432557852b4ec527599cede75a580504b1234ec65d383633fc2e6786e9
+# generated: 2026-09-09T21:34:59+00:00
 
 
 import json, base64
@@ -135,6 +135,64 @@ def _clean_points(pts):
     return out
 
 
+def _edge_label_point(pts, node_boxes, placed_boxes, label_len):
+    """Pick where an edge's label text should sit along its polyline.
+
+    The naive approach (pts[len(pts)//2]) picks the middle WAYPOINT INDEX,
+    not a true position -- for a short or lopsided path that point can land
+    right on top of an endpoint's icon, and gives no way to notice when two
+    different edges' labels would land on top of each other. This walks the
+    polyline by actual distance and tries a small set of candidate fractions
+    (starting at the true midpoint, then progressively further out), picking
+    the first one that clears every node's icon/label box AND every label
+    already placed by an earlier edge -- falling back to the plain midpoint
+    if nothing clears (never worse than the old behavior).
+    """
+    if len(pts) < 2:
+        return pts[0] if pts else (0.0, 0.0)
+    seg_lens = []
+    total = 0.0
+    for i in range(len(pts) - 1):
+        dx = pts[i + 1][0] - pts[i][0]
+        dy = pts[i + 1][1] - pts[i][1]
+        l = (dx * dx + dy * dy) ** 0.5
+        seg_lens.append(l)
+        total += l
+    if total <= 0:
+        return tuple(pts[len(pts) // 2])
+
+    def point_at(frac):
+        target_d = total * frac
+        acc = 0.0
+        for i, l in enumerate(seg_lens):
+            if acc + l >= target_d or i == len(seg_lens) - 1:
+                t = 0.0 if l == 0 else max(0.0, min(1.0, (target_d - acc) / l))
+                x = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t
+                y = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t
+                return (x, y)
+            acc += l
+        return tuple(pts[-1])
+
+    half_w = max(20.0, label_len * 3.2)
+    half_h = 8.0
+
+    def label_box(pt):
+        return (pt[0] - half_w, pt[1] - half_h, pt[0] + half_w, pt[1] + half_h)
+
+    def overlaps(a, b, pad=0.0):
+        return not (a[2] + pad < b[0] or b[2] + pad < a[0] or a[3] + pad < b[1] or b[3] + pad < a[1])
+
+    for frac in (0.5, 0.4, 0.6, 0.3, 0.7, 0.22, 0.78):
+        pt = point_at(frac)
+        box = label_box(pt)
+        if any(overlaps(box, nb, pad=4.0) for nb in node_boxes):
+            continue
+        if any(overlaps(box, pb) for pb in placed_boxes):
+            continue
+        return pt
+    return point_at(0.5)
+
+
 def _doc_norm(doc):
     if not isinstance(doc, dict):
         return None
@@ -146,10 +204,39 @@ def _doc_norm(doc):
     return {'overview': ov, 'components': comps, 'best_practices': bps}
 
 
+# ---------------- Shared edge-category helpers ----------------
+# Used by both _svg() and _html() so connector styling is consistent across
+# all four artifact types without duplicating the classification logic.
+def _node_meta(layout):
+    meta = {}
+    for n in (layout.get("nodes") or []):
+        meta[n["id"]] = {
+            "label": n.get("label") or n["id"],
+            "componentType": n.get("componentType") or "",
+        }
+    return meta
+
+def _edge_cat(e, lbl, node_meta):
+    src = node_meta.get(e.get("from")) or {}
+    tgt = node_meta.get(e.get("to")) or {}
+    blob = " ".join([
+        (lbl or ""),
+        str(src.get("componentType") or ""), str(src.get("label") or ""),
+        str(tgt.get("componentType") or ""), str(tgt.get("label") or ""),
+    ]).lower()
+    if "legacy" in blob:
+        return "legacy"
+    if any(k in blob for k in ("governance", "catalog", "polic", "lineage", "mask", "classif", "horizon")):
+        return "governance"
+    return "dataflow"
+
+
 # ---------------- SVG (diagram + doc panel) ----------------
-def _svg(layout, icons, edge_labels, title, doc):
-    W = int(round(layout.get('width') or 800)) + 40
-    diagram_h = int(round(layout.get('height') or 400))
+def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=None):
+    edge_bidir = edge_bidir or {}
+    edge_styles = edge_styles or {}
+    W = int(round(layout.get("width") or 800)) + 40
+    diagram_h = int(round(layout.get("height") or 400))
     yoff = 50 if title else 12
     body = []
 
@@ -160,70 +247,235 @@ def _svg(layout, icons, edge_labels, title, doc):
         return round(float(v) + yoff, 1)
 
     if title:
-        body.append('<text x="20" y="32" font-size="20" font-weight="bold" fill="#11162e">' + _xesc(title) + '</text>')
+        body.append("<text x=\"20\" y=\"32\" font-size=\"20\" font-weight=\"bold\" fill=\"#11162e\">" + _xesc(title) + "</text>")
     if _LOGO_DATA_URI:
-        body.append('<image href="' + _LOGO_DATA_URI + '" xlink:href="' + _LOGO_DATA_URI +
-                    '" x="' + str(W - 97 - 18) + '" y="12" width="97" height="22" preserveAspectRatio="xMidYMid meet"/>')
-    b = layout.get('platformBoundary')
+        body.append("<image href=\"" + _LOGO_DATA_URI + "\" xlink:href=\"" + _LOGO_DATA_URI +
+                    "\" x=\"" + str(W - 97 - 18) + "\" y=\"12\" width=\"97\" height=\"22\" preserveAspectRatio=\"xMidYMid meet\"/>")
+    b = layout.get("platformBoundary")
     if b:
-        body.append('<rect x="' + str(X(b['x'])) + '" y="' + str(Y(b['y'])) + '" width="' + str(round(b['w'], 1)) +
-                    '" height="' + str(round(b['h'], 1)) + '" rx="14" fill="none" stroke="#29B5E8" stroke-width="2" stroke-dasharray="8 5"/>')
-        body.append('<text x="' + str(X(b['x']) + 12) + '" y="' + str(Y(b['y']) + 20) + '" font-size="12" font-weight="bold" fill="#29B5E8">Snowflake Data Cloud</text>')
+        b_label = str(b.get("label") or "Snowflake Data Cloud")
+        b_sub = str(b.get("subtitle") or "")
+        body.append("<rect x=\"" + str(X(b["x"])) + "\" y=\"" + str(Y(b["y"])) + "\" width=\"" + str(round(b["w"], 1)) +
+                    "\" height=\"" + str(round(b["h"], 1)) + "\" rx=\"14\" fill=\"none\" stroke=\"#29B5E8\" stroke-width=\"2\" stroke-dasharray=\"8 5\"/>")
+        body.append("<text x=\"" + str(X(b["x"]) + 12) + "\" y=\"" + str(Y(b["y"]) + 20) + "\" font-size=\"12\" font-weight=\"bold\" fill=\"#29B5E8\">" + _xesc(b_label) + "</text>")
+        if b_sub:
+            body.append("<text x=\"" + str(X(b["x"]) + 12) + "\" y=\"" + str(Y(b["y"]) + 33) + "\" font-size=\"9.5\" fill=\"#29B5E8\" opacity=\"0.75\">" + _xesc(b_sub) + "</text>")
     for c in _containers_sorted(layout):
-        body.append('<rect x="' + str(X(c['x'])) + '" y="' + str(Y(c['y'])) + '" width="' + str(round(c['w'], 1)) +
-                    '" height="' + str(round(c['h'], 1)) + '" rx="12" fill="none" stroke="#7C5CFC" stroke-width="1.75" stroke-dasharray="5 3"/>')
-        body.append('<text x="' + str(X(c['x']) + 12) + '" y="' + str(Y(c['y']) + 18) + '" font-size="11" font-weight="bold" fill="#7C5CFC" letter-spacing="0.4">' + _xesc(str(c.get('label') or c['id']).upper()) + '</text>')
-    for z in layout.get('zones', []):
-        fill, stroke = _pal(z.get('category'))
-        body.append('<rect x="' + str(X(z['x'])) + '" y="' + str(Y(z['y'])) + '" width="' + str(round(z['w'], 1)) +
-                    '" height="' + str(round(z['h'], 1)) + '" rx="10" fill="' + fill + '" stroke="' + stroke + '" stroke-width="1.5"/>')
-        body.append('<text x="' + str(X(z['x']) + 12) + '" y="' + str(Y(z['y']) + 22) + '" font-size="13" font-weight="bold" fill="#11162e">' + _xesc(z['name']) + '</text>')
-    for e in layout.get('edges', []):
-        pts = _clean_points(e.get('points') or [])
+        cc = str(c.get("color") or "#7C5CFC")
+        body.append("<rect x=\"" + str(X(c["x"])) + "\" y=\"" + str(Y(c["y"])) + "\" width=\"" + str(round(c["w"], 1)) +
+                    "\" height=\"" + str(round(c["h"], 1)) + "\" rx=\"12\" fill=\"none\" stroke=\"" + cc + "\" stroke-width=\"1.75\" stroke-dasharray=\"5 3\"/>")
+        sub = str(c.get("subtitle") or "")
+        body.append("<text x=\"" + str(X(c["x"]) + 12) + "\" y=\"" + str(Y(c["y"]) + 18) + "\" font-size=\"11\" font-weight=\"bold\" fill=\"" + cc + "\" letter-spacing=\"0.4\">" + _xesc(str(c.get("label") or c["id"]).upper()) + "</text>")
+        if sub:
+            body.append("<text x=\"" + str(X(c["x"]) + 12) + "\" y=\"" + str(Y(c["y"]) + 31) + "\" font-size=\"9\" fill=\"" + cc + "\" opacity=\"0.75\">" + _xesc(sub) + "</text>")
+    for z in layout.get("zones", []):
+        fill, stroke = _pal(z.get("category"))
+        body.append("<rect x=\"" + str(X(z["x"])) + "\" y=\"" + str(Y(z["y"])) + "\" width=\"" + str(round(z["w"], 1)) +
+                    "\" height=\"" + str(round(z["h"], 1)) + "\" rx=\"10\" fill=\"" + fill + "\" stroke=\"" + stroke + "\" stroke-width=\"1.5\"/>")
+        body.append("<text x=\"" + str(X(z["x"]) + 12) + "\" y=\"" + str(Y(z["y"]) + 22) + "\" font-size=\"13\" font-weight=\"bold\" fill=\"#11162e\">" + _xesc(z["name"]) + "</text>")
+
+    # Node metadata (component type and label) keyed by id, used to classify
+    # each connector as data flow, governance, or legacy so the three read
+    # as visually distinct families (color, dash pattern, weight) instead
+    # of one uniform gray line for every relationship.
+    node_meta = _node_meta(layout)
+    def edge_category(e, lbl):
+        return _edge_cat(e, lbl, node_meta)
+
+    edge_style = {
+        "dataflow": {"stroke": "#5b6770", "width": "1.8", "dash": None, "marker": "ah-dataflow"},
+        "governance": {"stroke": "#7C5CFC", "width": "1.5", "dash": "1.5 3", "marker": "ah-governance"},
+        "legacy": {"stroke": "#C08A3E", "width": "1.4", "dash": "7 4", "marker": "ah-legacy"},
+        "private_link": {"stroke": "#2E9E4F", "width": "1.8", "dash": None, "marker": "ah-private_link"},
+        "data_share": {"stroke": "#1763c6", "width": "2.2", "dash": None, "marker": "ah-data_share"},
+    }
+
+    node_boxes = [(float(n["x"]), float(n["y"]), float(n["x"]) + float(n["w"]), float(n["y"]) + float(n["h"])) for n in layout.get("nodes", [])]
+    # Zone/container/boundary title text sits in the top-left corner of each
+    # box -- treat that strip as an obstacle too, or an edge label routed
+    # near a zone header can land directly on top of its bold title (found
+    # via direct visual review: "read over Azure Private Link" landed
+    # right across the word "Ingestion").
+    for z in layout.get("zones", []):
+        name_w = len(str(z.get("name") or "")) * 7.8
+        node_boxes.append((float(z["x"]) + 8, float(z["y"]) + 6, float(z["x"]) + 8 + name_w, float(z["y"]) + 28))
+    for c in _containers_sorted(layout):
+        name_w = len(str(c.get("label") or c["id"])) * 6.8
+        node_boxes.append((float(c["x"]) + 8, float(c["y"]) + 4, float(c["x"]) + 8 + name_w, float(c["y"]) + 22))
+    label_claimed = set()
+    placed_label_boxes = []
+    cats_used = set()
+    for e in layout.get("edges", []):
+        pts = _clean_points(e.get("points") or [])
         if len(pts) < 2:
             continue
-        d = 'M' + str(X(pts[0][0])) + ',' + str(Y(pts[0][1]))
+        lbl = edge_labels.get(str(e.get("from")) + "|" + str(e.get("to")))
+        explicit = edge_styles.get(str(e.get("from")) + "|" + str(e.get("to")))
+        cat = explicit if explicit in edge_style else edge_category(e, lbl)
+        cats_used.add(cat)
+        st = edge_style[cat]
+        d = "M" + str(X(pts[0][0])) + "," + str(Y(pts[0][1]))
         for q in pts[1:]:
-            d += ' L' + str(X(q[0])) + ',' + str(Y(q[1]))
-        body.append('<path d="' + d + '" fill="none" stroke="#5b6770" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round" marker-end="url(#arrowhead)"/>')
-        lbl = edge_labels.get(str(e.get('from')) + '|' + str(e.get('to')))
+            d += " L" + str(X(q[0])) + "," + str(Y(q[1]))
+        dash_attr = (" stroke-dasharray=\"" + st["dash"] + "\"") if st["dash"] else ""
+        is_bidir = bool(edge_bidir.get(str(e.get("from")) + "|" + str(e.get("to"))))
+        marker_start_attr = (" marker-start=\"url(#" + st["marker"] + "-start)\"") if is_bidir else ""
+        body.append("<path d=\"" + d + "\" fill=\"none\" stroke=\"" + st["stroke"] + "\" stroke-width=\"" + st["width"] +
+                    "\" stroke-linejoin=\"round\" stroke-linecap=\"round\"" + dash_attr + marker_start_attr + " marker-end=\"url(#" + st["marker"] + ")\"/>")
         if lbl:
-            mp = pts[len(pts) // 2]
-            body.append('<text x="' + str(X(mp[0])) + '" y="' + str(Y(mp[1]) - 4) + '" font-size="10" fill="#5b6770" text-anchor="middle" paint-order="stroke" stroke="#ffffff" stroke-width="3" stroke-linejoin="round">' + _xesc(lbl) + '</text>')
-    icon = 44
-    for n in layout.get('nodes', []):
-        x, y, w, h = float(n['x']), float(n['y']), float(n['w']), float(n['h'])
-        cx = X(x + w / 2)
-        cpl = max(8, int(w / 6.4))  # chars/line that fit the node width at 11.5px
-        lines = _wrap(n.get('label') or n['id'], cpl)
-        uri = icons.get(n['id'])
-        if uri:
-            ix = X(x + w / 2) - icon / 2
-            iy = Y(y) + 8
-            body.append('<image x="' + str(round(ix, 1)) + '" y="' + str(round(iy, 1)) + '" width="' + str(icon) + '" height="' + str(icon) + '" preserveAspectRatio="xMidYMid meet" href="' + uri + '" xlink:href="' + uri + '"/>')
-            ty = iy + icon + 14
-            baseline = 'auto'
-        else:
-            body.append('<rect x="' + str(X(x)) + '" y="' + str(Y(y)) + '" width="' + str(round(w, 1)) + '" height="' + str(round(h, 1)) + '" rx="8" fill="#ffffff" stroke="#9AA4B2"/>')
-            ty = Y(y + h / 2) - (len(lines) - 1) * 6.5  # center the wrapped block vertically
-            baseline = 'central'
-        for j, ln in enumerate(lines):
-            body.append('<text x="' + str(round(cx, 1)) + '" y="' + str(round(ty + j * 13, 1)) + '" font-size="11.5" fill="#11162e" text-anchor="middle" dominant-baseline="' + baseline + '">' + _xesc(ln) + '</text>')
+            # Several sibling edges sharing a target or source often carry
+            # the IDENTICAL label (e.g. 3 sources all labeled "extract" into
+            # one dbt node, or a governance node fanning "policies and
+            # lineage" out 3 times) -- showing the same text 2-3x right on
+            # top of each other is pure clutter, not new information.
+            # Render it once per (node, label) pair; still draw every line.
+            src_key = (e.get("from"), lbl)
+            tgt_key = (e.get("to"), lbl)
+            if src_key in label_claimed or tgt_key in label_claimed:
+                lbl = None
+            else:
+                label_claimed.add(src_key)
+                label_claimed.add(tgt_key)
+        if lbl:
+            mp = _edge_label_point(pts, node_boxes, placed_label_boxes, len(lbl))
+            placed_label_boxes.append((mp[0] - max(20.0, len(lbl) * 3.2), mp[1] - 8.0, mp[0] + max(20.0, len(lbl) * 3.2), mp[1] + 8.0))
+            body.append("<text x=\"" + str(X(mp[0])) + "\" y=\"" + str(Y(mp[1]) - 4) + "\" font-size=\"10\" fill=\"#5b6770\" text-anchor=\"middle\" paint-order=\"stroke\" stroke=\"#ffffff\" stroke-width=\"3\" stroke-linejoin=\"round\">" + _xesc(lbl) + "</text>")
 
-    panel_top = Y(diagram_h) + 24
+    # Node cards are drawn AFTER (i.e. visually on top of) every connector
+    # path above -- an opaque card hides whatever portion of a routed line
+    # falls inside its own footprint, which is exactly how the interactive
+    # HTML viewer avoids ever showing a line crossing a card: connectors sit
+    # in a layer underneath the opaque card divs there. Giving the static
+    # SVG the same real, opaque card boundary (instead of a bare floating
+    # icon with nothing to paint over an incoming wire) gets the same
+    # effect for free, so lines visually stop right at a card edge instead
+    # of visibly cutting across its icon or label.
+    icon_box = 38
+    for n in layout.get("nodes", []):
+        x, y, w, h = float(n["x"]), float(n["y"]), float(n["w"]), float(n["h"])
+        rx, ry = X(x), Y(y)
+        uri = icons.get(n["id"])
+        label = n.get("label") or n["id"]
+        sub = (n.get("componentType") or "").upper()
+        if n.get("style") == "gateway":
+            # Small icon-only chip + caption underneath, no card chrome --
+            # visually reads as network plumbing (a bridge/connector), not a
+            # full service, for nodes like Azure Private Link / AWS PrivateLink.
+            # Icon center is a FIXED offset from the box's own top (ry), NOT
+            # centered in h -- h can be taller than the chip itself (row-band-
+            # shared with a taller sibling card), but the connector port
+            # (measure.mjs's iconCenterY = GATEWAY.padTop + GATEWAY.iconBox/2,
+            # i.e. top+24) is always anchored to that same fixed offset.
+            gsz = 32
+            gcx, gcy = rx + w / 2, ry + 24
+            body.append("<rect x=\"" + str(round(gcx - gsz / 2, 1)) + "\" y=\"" + str(round(gcy - gsz / 2, 1)) +
+                        "\" width=\"" + str(gsz) + "\" height=\"" + str(gsz) +
+                        "\" rx=\"9\" fill=\"#eaf6fc\" stroke=\"#29B5E8\" stroke-width=\"1.25\" stroke-dasharray=\"3 2\"/>")
+            if uri:
+                im = gsz - 10
+                body.append("<image x=\"" + str(round(gcx - im / 2, 1)) + "\" y=\"" + str(round(gcy - im / 2, 1)) +
+                            "\" width=\"" + str(im) + "\" height=\"" + str(im) +
+                            "\" preserveAspectRatio=\"xMidYMid meet\" href=\"" + uri + "\" xlink:href=\"" + uri + "\"/>")
+            cap_lines = _wrap(label, 14)
+            cap_y = gcy + gsz / 2 + 11
+            for j, ln in enumerate(cap_lines):
+                body.append("<text x=\"" + str(round(gcx, 1)) + "\" y=\"" + str(round(cap_y + j * 10, 1)) +
+                            "\" font-size=\"9\" font-weight=\"600\" fill=\"#5b6678\" text-anchor=\"middle\">" + _xesc(ln) + "</text>")
+            continue
+        if n.get("style") == "chip":
+            # Small pill with the label inline -- one stage of an inline
+            # medallion pipeline (Bronze -> Silver -> Gold), not a full card.
+            # Positioned at a FIXED offset from the box's own top (ry), NOT
+            # centered in the box's full h -- h can be taller than the pill
+            # itself (row-band-shared with a taller sibling card elsewhere),
+            # but the connector port (measure.mjs's iconCenterY = CHIP.height/2,
+            # i.e. top+15) is always anchored to that same fixed top offset.
+            # Found via direct coordinate check (2026-09-09): centering the
+            # pill in a 98px-tall inflated box put its visual center 34px
+            # below where the connector arrived, so the arrowhead floated
+            # well above the pill instead of touching it.
+            chip_h = 30.0
+            chip_ty = ry
+            body.append("<rect x=\"" + str(round(rx, 1)) + "\" y=\"" + str(round(chip_ty, 1)) + "\" width=\"" + str(round(w, 1)) +
+                        "\" height=\"" + str(chip_h) + "\" rx=\"15\" fill=\"#eaf6fc\" stroke=\"#29B5E8\" stroke-width=\"1.25\"/>")
+            body.append("<text x=\"" + str(round(rx + w / 2, 1)) + "\" y=\"" + str(round(chip_ty + chip_h / 2 + 3.5, 1)) +
+                        "\" font-size=\"10.5\" font-weight=\"700\" fill=\"#16203a\" text-anchor=\"middle\">" + _xesc(label) + "</text>")
+            continue
+        body.append("<rect x=\"" + str(round(rx, 1)) + "\" y=\"" + str(round(ry + 2, 1)) + "\" width=\"" + str(round(w, 1)) +
+                    "\" height=\"" + str(round(h, 1)) + "\" rx=\"14\" fill=\"#0a1e3c\" opacity=\"0.10\"/>")
+        body.append("<rect x=\"" + str(round(rx, 1)) + "\" y=\"" + str(round(ry, 1)) + "\" width=\"" + str(round(w, 1)) +
+                    "\" height=\"" + str(round(h, 1)) + "\" rx=\"14\" fill=\"#ffffff\" stroke=\"#c9d4e3\" stroke-width=\"1\"/>")
+        pad = 13
+        icx, icy = rx + pad, ry + h / 2 - icon_box / 2
+        if uri:
+            body.append("<rect x=\"" + str(round(icx, 1)) + "\" y=\"" + str(round(icy, 1)) + "\" width=\"" + str(icon_box) +
+                        "\" height=\"" + str(icon_box) + "\" rx=\"11\" fill=\"#eaf6fc\" stroke=\"#29B5E8\" stroke-opacity=\"0.25\"/>")
+            im = icon_box - 12
+            body.append("<image x=\"" + str(round(icx + 6, 1)) + "\" y=\"" + str(round(icy + 6, 1)) + "\" width=\"" + str(im) +
+                        "\" height=\"" + str(im) + "\" preserveAspectRatio=\"xMidYMid meet\" href=\"" + uri + "\" xlink:href=\"" + uri + "\"/>")
+            text_x = icx + icon_box + 10
+        else:
+            text_x = rx + pad
+        avail_w = (rx + w - pad) - text_x
+        cpl = max(6, int(avail_w / 5.8))
+        lines = _wrap(label, cpl)
+        text_h = len(lines) * 13 + (5 if sub else 0)
+        ty = ry + h / 2 - text_h / 2 + 10
+        for j, ln in enumerate(lines):
+            body.append("<text x=\"" + str(round(text_x, 1)) + "\" y=\"" + str(round(ty + j * 13, 1)) + "\" font-size=\"11.5\" font-weight=\"700\" fill=\"#16203a\">" + _xesc(ln) + "</text>")
+        if sub:
+            body.append("<text x=\"" + str(round(text_x, 1)) + "\" y=\"" + str(round(ty + len(lines) * 13 + 3, 1)) + "\" font-size=\"8.5\" font-weight=\"600\" fill=\"#5b6678\" letter-spacing=\"0.3\">" + _xesc(sub) + "</text>")
+
+    legend_defs = {"dataflow": "Data flow", "governance": "Governance / policy", "legacy": "Legacy / transitional",
+                   "private_link": "Private connectivity", "data_share": "Secure data sharing"}
+    legend_y = Y(diagram_h) + 20
+    if len(cats_used) > 1:
+        lx = 20.0
+        for cat in ("dataflow", "governance", "legacy", "private_link", "data_share"):
+            if cat not in cats_used:
+                continue
+            st = edge_style[cat]
+            body.append("<line x1=\"" + str(round(lx, 1)) + "\" y1=\"" + str(round(legend_y, 1)) + "\" x2=\"" + str(round(lx + 24, 1)) +
+                        "\" y2=\"" + str(round(legend_y, 1)) + "\" stroke=\"" + st["stroke"] + "\" stroke-width=\"" + st["width"] +
+                        "\"" + ((" stroke-dasharray=\"" + st["dash"] + "\"") if st["dash"] else "") + "/>")
+            body.append("<text x=\"" + str(round(lx + 30, 1)) + "\" y=\"" + str(round(legend_y + 3.5, 1)) + "\" font-size=\"10.5\" fill=\"#5b6678\">" + _xesc(legend_defs[cat]) + "</text>")
+            lx += 30 + len(legend_defs[cat]) * 6.2 + 24
+        legend_y += 18
+    else:
+        legend_y = Y(diagram_h)
+
+    panel_top = legend_y + 24
     panel, panel_bottom = _svg_doc_panel(doc, 20, panel_top, W - 40)
     body.extend(panel)
-    H = int(round(max(Y(diagram_h), panel_bottom))) + 24
+    H = int(round(max(legend_y, panel_bottom))) + 24
 
-    aria = title or (doc.get('overview') if doc else None) or 'SnowGram architecture diagram'
-    head = ['<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="' + str(W) + '" height="' + str(H) + '" viewBox="0 0 ' + str(W) + ' ' + str(H) + '" font-family="Arial,Helvetica,sans-serif" text-rendering="geometricPrecision" shape-rendering="geometricPrecision" role="img" aria-label="' + _xesc(aria) + '">',
-            '<title>' + _xesc(aria) + '</title>']
-    if doc and doc.get('overview'):
-        head.append('<desc>' + _xesc(doc['overview']) + '</desc>')
-    head.append('<rect x="0" y="0" width="' + str(W) + '" height="' + str(H) + '" fill="#ffffff"/>')
-    head.append('<defs><marker id="arrowhead" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L7,3 L0,6 Z" fill="#5b6770"/></marker></defs>')
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + ''.join(head + body + ['</svg>'])
-
+    aria = title or (doc.get("overview") if doc else None) or "SnowGram architecture diagram"
+    head = ["<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" width=\"" + str(W) + "\" height=\"" + str(H) + "\" viewBox=\"0 0 " + str(W) + " " + str(H) + "\" font-family=\"Arial,Helvetica,sans-serif\" text-rendering=\"geometricPrecision\" shape-rendering=\"geometricPrecision\" role=\"img\" aria-label=\"" + _xesc(aria) + "\">",
+            "<title>" + _xesc(aria) + "</title>"]
+    if doc and doc.get("overview"):
+        head.append("<desc>" + _xesc(doc["overview"]) + "</desc>")
+    head.append("<rect x=\"0\" y=\"0\" width=\"" + str(W) + "\" height=\"" + str(H) + "\" fill=\"#ffffff\"/>")
+    head.append("<defs>"
+                "<marker id=\"ah-dataflow\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#5b6770\"/></marker>"
+                "<marker id=\"ah-governance\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#7C5CFC\"/></marker>"
+                "<marker id=\"ah-legacy\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#C08A3E\"/></marker>"
+                "<marker id=\"ah-private_link\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#2E9E4F\"/></marker>"
+                "<marker id=\"ah-data_share\" markerWidth=\"10\" markerHeight=\"10\" refX=\"8\" refY=\"3.5\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L8,3.5 L0,7 Z\" fill=\"#1763c6\"/></marker>"
+                # Mirrored (tip pointing the opposite way) counterparts for
+                # marker-start on a bidirectional edge -- orient="auto" at
+                # the path START uses the same forward tangent as the END
+                # marker, so reusing the ah-* path as-is would point INTO
+                # the line instead of away from it; the geometry has to be
+                # pre-mirrored rather than relying on auto-start-reverse
+                # (an SVG2 feature not reliably supported by the PDF
+                # rasterizer this renderer also feeds).
+                "<marker id=\"ah-dataflow-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#5b6770\"/></marker>"
+                "<marker id=\"ah-governance-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#7C5CFC\"/></marker>"
+                "<marker id=\"ah-legacy-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#C08A3E\"/></marker>"
+                "<marker id=\"ah-private_link-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#2E9E4F\"/></marker>"
+                "<marker id=\"ah-data_share-start\" markerWidth=\"10\" markerHeight=\"10\" refX=\"2\" refY=\"3.5\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M8,0 L0,3.5 L8,7 Z\" fill=\"#1763c6\"/></marker>"
+                "</defs>")
+    return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + "".join(head + body + ["</svg>"])
 
 def _svg_doc_panel(doc, x, y0, maxw):
     if not doc:
@@ -299,7 +551,8 @@ def _drawio(layout, icons, edge_labels, title, doc):
     b = layout.get('platformBoundary')
     if b:
         st = 'rounded=1;dashed=1;fillColor=none;strokeColor=#29B5E8;verticalAlign=top;fontColor=#29B5E8;fontStyle=1;'
-        cells.append('<mxCell id="boundary" value="Snowflake Data Cloud" style="' + _xesc(st) + '" vertex="1" parent="1">' + geo(b['x'], b['y'], b['w'], b['h']) + '</mxCell>')
+        b_label = str(b.get('label') or 'Snowflake Data Cloud')
+        cells.append('<mxCell id="boundary" value="' + _xesc(b_label) + '" style="' + _xesc(st) + '" vertex="1" parent="1">' + geo(b['x'], b['y'], b['w'], b['h']) + '</mxCell>')
     for c in _containers_sorted(layout):
         st = 'rounded=1;dashed=1;dashPattern=5 3;fillColor=none;strokeColor=#7C5CFC;verticalAlign=top;fontColor=#7C5CFC;fontStyle=1;'
         cid = 'container_' + _sid(c['id'])
@@ -520,11 +773,11 @@ _THEME_CSS = (
     ':root{--bg:#eef2f7;--fg:#16203a;--header-c1:#2aa3df;--header-c2:#1366b3;--header-grad:linear-gradient(120deg,var(--header-c1),var(--header-c2));'
     '--border:#dbe3ee;--panel-bg:#ffffff;--panel-fg:#16203a;--muted:#5b6678;--link:#1763c6;'
     '--paper:#f7f9fc;--node-bg:#ffffff;--node-border:#c9d4e3;--node-fg:#16203a;--zone-label:#5b6678;'
-    '--legend-bg:#ffffff;--connector-color:#7587a0;--accent:#1763c6;--primary-hover:#e0820b;--container-color:#7C5CFC}'
+    '--legend-bg:#ffffff;--connector-color:#7587a0;--accent:#1763c6;--primary-hover:#e0820b;--container-color:#7C5CFC;--legacy-color:#C08A3E;--private-link-color:#2E9E4F;--data-share-color:#1763c6}'
     ':root[data-theme="dark"]{--bg:#070b18;--fg:#e8edf6;--header-c1:#0b5874;--header-c2:#0a1733;--header-grad:linear-gradient(120deg,var(--header-c1),var(--header-c2));'
     '--border:#23304f;--panel-bg:#0e1730;--panel-fg:#e8edf6;--muted:#93a0b8;--link:#7cc0ff;'
     '--paper:#0b1326;--node-bg:#13203c;--node-border:#26375c;--node-fg:#eef3fc;--zone-label:#aab8d4;'
-    '--legend-bg:#0e1730;--connector-color:#8aa0b4;--accent:#6cb9ff;--primary-hover:#ffb454;--container-color:#a78bfa}'
+    '--legend-bg:#0e1730;--connector-color:#8aa0b4;--accent:#6cb9ff;--primary-hover:#ffb454;--container-color:#a78bfa;--legacy-color:#d9a165;--private-link-color:#4CB963;--data-share-color:#6cb9ff}'
     'html,body{margin:0}'
     'body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;'
     'background:var(--bg);color:var(--fg);transition:background .25s,color .25s}'
@@ -550,8 +803,16 @@ _THEME_CSS = (
     '.connectors{position:absolute;left:0;top:0;overflow:visible}'
     '.z-label{font-weight:700;font-size:11px;fill:var(--zone-label);letter-spacing:.8px}'
     '.b-rect{stroke:var(--accent-2)}.b-label{font-weight:800;font-size:11.5px;fill:var(--accent-2);letter-spacing:.9px}'
+    '.b-sub{font-size:9px;fill:var(--accent-2);opacity:.75;letter-spacing:.3px}'
     '.container-rect{stroke:var(--container-color);stroke-width:1.75px;stroke-dasharray:5 3}.container-label{font-weight:700;font-size:10px;fill:var(--container-color);letter-spacing:.6px}'
+    '.container-subtitle{font-size:8.5px;fill:var(--container-color);letter-spacing:.3px}'
     '.conn-arrow{fill:var(--connector-color)}'
+    '.conn-arrow-gov{fill:var(--container-color)}.conn-arrow-leg{fill:var(--legacy-color)}'
+    '.conn-arrow-plink{fill:var(--private-link-color)}.conn-arrow-dshare{fill:var(--data-share-color)}'
+    '.connector-group.cat-governance .connector-path{stroke:var(--container-color);stroke-dasharray:1.5 3;opacity:.88}'
+    '.connector-group.cat-legacy .connector-path{stroke:var(--legacy-color);stroke-dasharray:7 4;opacity:.88}'
+    '.connector-group.cat-private_link .connector-path{stroke:var(--private-link-color);stroke-dasharray:none;opacity:.9}'
+    '.connector-group.cat-data_share .connector-path{stroke:var(--data-share-color);stroke-width:2.2;stroke-dasharray:none;opacity:.95}'
     '.flow-node{position:absolute;box-sizing:border-box;background:var(--node-bg);border:1px solid var(--node-border);'
     'border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 7px;'
     'text-align:center;color:var(--node-fg);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.18);'
@@ -559,6 +820,16 @@ _THEME_CSS = (
     '.flow-node img{width:38px;height:38px;margin-bottom:4px}'
     '.fn-title{font-weight:600;font-size:11.5px;line-height:1.15}'
     '.fn-sub{margin-top:2px;font-size:9.5px;line-height:1.1;color:var(--muted)}'
+    '.fn-detail{margin-top:2px;font-size:9px;line-height:1.2;color:var(--muted);font-style:italic}'
+    '.gateway-node{background:transparent;border:none;box-shadow:none;padding:8px 0 0 0;justify-content:flex-start}'
+    '.gw-chip{width:32px;height:32px;border-radius:9px;background:rgba(41,181,232,.12);'
+    'border:1.25px dashed var(--accent);display:flex;align-items:center;justify-content:center}'
+    '.gw-chip img{width:22px;height:22px;margin-bottom:0}'
+    '.gw-caption{margin-top:6px;font-size:9px;font-weight:600;line-height:1.15;color:var(--muted);text-align:center}'
+    '.chip-node{background:transparent;border:none;box-shadow:none;padding:0;justify-content:flex-start}'
+    '.chip-label{display:inline-flex;align-items:center;justify-content:center;height:30px;padding:0 12px;'
+    'border-radius:15px;background:rgba(41,181,232,.12);border:1.25px solid var(--accent);'
+    'font-size:10.5px;font-weight:700;white-space:nowrap}'
     '.doc-panel{max-width:1000px;width:100%;margin:22px auto 8px;background:var(--panel-bg);color:var(--panel-fg);'
     'border:1px solid var(--border);border-radius:16px;padding:22px 28px;line-height:1.55;box-sizing:border-box}'
     '.doc-panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.8px;margin:18px 0 8px;color:var(--accent)}'
@@ -639,6 +910,21 @@ _THEME_CSS = (
     'line-height:var(--node-line);letter-spacing:var(--title-track);color:var(--node-fg)}'
     '.nodes-wide .fn-sub{margin:0;font-family:var(--font-sub);font-weight:var(--sub-weight);font-size:var(--sub-size);'
     'line-height:1.2;color:var(--muted);text-transform:uppercase;letter-spacing:var(--sub-track)}'
+    # The interactive HTML always renders in wide mode, so ".nodes-wide
+    # .flow-node" above (flex-direction:row, align-items:center) has equal
+    # specificity to -- and comes AFTER, so silently overrides -- the plain
+    # ".chip-node"/".gateway-node" rules earlier in this file. Found via
+    # direct DOM bounding-box check (2026-09-09): the chip label sat 20px
+    # from its box's top in the HTML export while the SVG export (which has
+    # no wide-mode override) correctly sat flush at 0 -- an HTML/SVG/PDF
+    # drift the router's port math can't see. Re-assert column-direction +
+    # top alignment for these two styles specifically, matching-specificity
+    # selectors placed LAST so they win regardless of narrow/wide mode.
+    '.nodes-wide .chip-node{flex-direction:column;align-items:center;justify-content:flex-start;'
+    'text-align:center;gap:0;padding:0}'
+    '.nodes-wide .gateway-node{flex-direction:column;align-items:center;justify-content:flex-start;'
+    'text-align:center;gap:0;padding:8px 0 0 0}'
+    '.nodes-wide .chip-node::before,.nodes-wide .gateway-node::before{content:none}'
 )
 
 _THEME_INIT = (
@@ -1043,7 +1329,7 @@ _PANEL_JS = (
 )
 
 
-def _html(layout, icons, edge_labels, title, doc):
+def _html(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=None):
     t = _xesc(title or 'SnowGram Diagram')
     W = int(round(layout.get('width') or 800))
     H = int(round(layout.get('height') or 400))
@@ -1059,20 +1345,41 @@ def _html(layout, icons, edge_labels, title, doc):
     # connectors svg is padded via a negative-origin viewBox; cards are offset by +pad to match
     s = ['<svg data-connectors-svg class="connectors" width="' + str(W2) + '" height="' + str(H2) +
          '" viewBox="' + str(-pad) + ' ' + str(-pad) + ' ' + str(W2) + ' ' + str(H2) + '" xmlns="http://www.w3.org/2000/svg">']
-    s.append('<defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" '
-             'markerUnits="strokeWidth"><path class="conn-arrow" d="M0,0 L7,3 L0,6 Z"/></marker></defs>')
+    s.append('<defs>'
+             '<marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-gov" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-gov" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-leg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-leg" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-plink" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-plink" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-dshare" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-dshare" d="M0,0 L8,3.5 L0,7 Z"/></marker>'
+             '<marker id="ah-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah-gov-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-gov" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah-leg-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-leg" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah-plink-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-plink" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah-dshare-start" markerWidth="10" markerHeight="10" refX="2" refY="3.5" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-dshare" d="M8,0 L0,3.5 L8,7 Z"/></marker>'
+             '</defs>')
     b = layout.get('platformBoundary')
     if b:
+        b_label = str(b.get('label') or 'Snowflake Data Cloud').upper()
+        b_sub = str(b.get('subtitle') or '')
         s.append('<rect class="b-rect" x="' + str(round(b['x'], 1)) + '" y="' + str(round(b['y'], 1)) + '" width="' +
                  str(round(b['w'], 1)) + '" height="' + str(round(b['h'], 1)) + '" rx="14" fill="none" '
                  'stroke-width="2" stroke-dasharray="8 5"/>')
         s.append('<text class="b-label" x="' + str(round(b['x'] + 12, 1)) + '" y="' + str(round(b['y'] + 20, 1)) +
-                 '">SNOWFLAKE DATA CLOUD</text>')
+                 '">' + _xesc(b_label) + '</text>')
+        if b_sub:
+            s.append('<text class="b-sub" x="' + str(round(b['x'] + 12, 1)) + '" y="' + str(round(b['y'] + 33, 1)) +
+                     '">' + _xesc(b_sub) + '</text>')
     for c in _containers_sorted(layout):
+        cc = c.get('color') or None
+        c_stroke = (' stroke="' + cc + '"') if cc else ''
+        c_color = (' fill="' + cc + '"') if cc else ''
         s.append('<rect class="container-rect" x="' + str(round(c['x'], 1)) + '" y="' + str(round(c['y'], 1)) + '" width="' +
-                 str(round(c['w'], 1)) + '" height="' + str(round(c['h'], 1)) + '" rx="12" fill="none"/>')
+                 str(round(c['w'], 1)) + '" height="' + str(round(c['h'], 1)) + '" rx="12" fill="none"' + c_stroke + '/>'  )
         s.append('<text class="container-label" x="' + str(round(c['x'] + 12, 1)) + '" y="' + str(round(c['y'] + 18, 1)) +
-                 '">' + _xesc(str(c.get('label') or c['id']).upper()) + '</text>')
+                 '"' + c_color + '>' + _xesc(str(c.get('label') or c['id']).upper()) + '</text>')
+        sub = str(c.get('subtitle') or '')
+        if sub:
+            s.append('<text class="container-subtitle" x="' + str(round(c['x'] + 12, 1)) + '" y="' + str(round(c['y'] + 31, 1)) + '"' + c_color + ' opacity="0.7">' + _xesc(sub) + '</text>')
     for z in zones:
         _f, stroke = _pal(z.get('category'))
         s.append('<rect x="' + str(round(z['x'], 1)) + '" y="' + str(round(z['y'], 1)) + '" width="' +
@@ -1080,6 +1387,13 @@ def _html(layout, icons, edge_labels, title, doc):
                  '" fill-opacity="0.08" stroke="' + stroke + '" stroke-opacity="0.55" stroke-width="1.25"/>')
         s.append('<text class="z-label" x="' + str(round(z['x'] + 12, 1)) + '" y="' + str(round(z['y'] + 21, 1)) +
                  '">' + _xesc(str(z['name']).upper()) + '</text>')
+    _nm = _node_meta(layout)
+    _ebidir = edge_bidir or {}
+    _estyles = edge_styles or {}
+    _cat_marker = {'dataflow': 'ah', 'governance': 'ah-gov', 'legacy': 'ah-leg',
+                   'private_link': 'ah-plink', 'data_share': 'ah-dshare'}
+    _cat_start  = {'dataflow': 'ah-start', 'governance': 'ah-gov-start', 'legacy': 'ah-leg-start',
+                   'private_link': 'ah-plink-start', 'data_share': 'ah-dshare-start'}
     for e in edges:
         pts = e.get('points') or []
         if not pts:
@@ -1087,9 +1401,14 @@ def _html(layout, icons, edge_labels, title, doc):
         d = 'M' + str(round(pts[0][0], 1)) + ',' + str(round(pts[0][1], 1))
         for q in pts[1:]:
             d += ' L' + str(round(q[0], 1)) + ',' + str(round(q[1], 1))
-        s.append('<g class="connector-group" data-source-id="' + _xesc(e.get('from')) + '" data-target-id="' +
+        lbl = edge_labels.get(str(e.get('from')) + '|' + str(e.get('to')))
+        _explicit = _estyles.get(str(e.get('from')) + '|' + str(e.get('to')))
+        cat = _explicit if _explicit in _cat_marker else _edge_cat(e, lbl, _nm)
+        is_bidir = bool(_ebidir.get(str(e.get('from')) + '|' + str(e.get('to'))))
+        mstart = (' marker-start="url(#' + _cat_start[cat] + ')"') if is_bidir else ''
+        s.append('<g class="connector-group cat-' + cat + '" data-source-id="' + _xesc(e.get('from')) + '" data-target-id="' +
                  _xesc(e.get('to')) + '"><path class="connector-hit" d="' + d + '"/>'
-                 '<path class="connector-path" d="' + d + '" marker-end="url(#ah)"/></g>')
+                 '<path class="connector-path" d="' + d + '"' + mstart + ' marker-end="url(#' + _cat_marker[cat] + ')"/></g>')
     s.append('</svg>')
 
     # wide (icon-left) node when the HTML layout carries componentType (merged by GENERATE)
@@ -1101,12 +1420,33 @@ def _html(layout, icons, edge_labels, title, doc):
         uri = icons.get(n['id'])
         label = n.get('label') or n['id']
         tid = 'node:' + str(n['id']) + ':title'
+        if n.get('style') == 'gateway':
+            # Small icon-only chip + caption, no card chrome -- network
+            # plumbing (Azure Private Link / AWS PrivateLink), not a full
+            # service card.
+            ico = (('<img src="' + uri + '" alt=""/>') if uri else '')
+            inner = ('<span class="gw-chip">' + ico + '</span>'
+                     '<span class="gw-caption" data-edit-id="' + _xesc(tid) + '">' + _xesc(label) + '</span>')
+            cards.append('<div class="flow-node gateway-node" data-node-id="' + _xesc(n['id']) + '" style="left:' + str(lx) +
+                         'px;top:' + str(ty) + 'px;width:' + str(w) + 'px;height:' + str(h) + 'px">' + inner + '</div>')
+            continue
+        if n.get('style') == 'chip':
+            # Inline pill for one stage of a medallion pipeline (Bronze ->
+            # Silver -> Gold) -- centered at a fixed pill height regardless
+            # of the box's own h (a taller sibling elsewhere may stretch it).
+            inner = '<span class="chip-label" data-edit-id="' + _xesc(tid) + '">' + _xesc(label) + '</span>'
+            cards.append('<div class="flow-node chip-node" data-node-id="' + _xesc(n['id']) + '" style="left:' + str(lx) +
+                         'px;top:' + str(ty) + 'px;width:' + str(w) + 'px;height:' + str(h) + 'px">' + inner + '</div>')
+            continue
         if wide:
             ico = '<span class="fn-ico">' + (('<img src="' + uri + '" alt=""/>') if uri else '') + '</span>'
             sub = _xesc(n.get('componentType') or '')
+            det = _xesc(n.get('detail') or '')
             txt = '<span class="fn-text"><span class="fn-title" data-edit-id="' + _xesc(tid) + '">' + _xesc(label) + '</span>'
             if sub:
                 txt += '<span class="fn-sub" data-edit-id="node:' + _xesc(str(n['id'])) + ':sub">' + sub + '</span>'
+            if det:
+                txt += '<span class="fn-detail" data-edit-id="node:' + _xesc(str(n['id'])) + ':detail">' + det + '</span>'
             txt += '</span>'
             inner = ico + txt
         else:
@@ -1177,11 +1517,13 @@ def _html(layout, icons, edge_labels, title, doc):
 def render(layout, enrich, title, html_layout=None):
     icons = (enrich or {}).get('icons', {}) or {}
     edge_labels = (enrich or {}).get('edgeLabels', {}) or {}
+    edge_bidir = (enrich or {}).get('edgeBidirectional', {}) or {}
+    edge_styles = (enrich or {}).get('edgeStyles', {}) or {}
     doc = _doc_norm((enrich or {}).get('doc'))
-    svg = _svg(layout, icons, edge_labels, title, doc)
+    svg = _svg(html_layout or layout, icons, edge_labels, title, doc, edge_bidir, edge_styles)
     drawio = _drawio(layout, icons, edge_labels, title, doc)
     mmd = _mermaid(layout, icons, edge_labels, title, doc)
-    html = _html(html_layout or layout, icons, edge_labels, title, doc)
+    html = _html(html_layout or layout, icons, edge_labels, title, doc, edge_bidir, edge_styles)
     return {'mmd': mmd, 'drawio': drawio, 'svg': svg, 'html': html}
 
 

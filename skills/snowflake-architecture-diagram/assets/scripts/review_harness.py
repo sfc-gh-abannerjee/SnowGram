@@ -154,7 +154,7 @@ def live_agent_check(agent_fqn: str, connection: str, out_dir: Path) -> dict | N
     (out_dir / "live_agent_response.txt").write_text(response, encoding="utf-8")
 
     import re
-    m = re.search(r"HTML \(interactive\)\s*\S{0,3}\s*\[.*?\]\((https://[^)]+)\)", response)
+    m = re.search(r"\[HTML \(interactive\)\]\((https://[^)]+)\)", response)
     if not m:
         return {"response_file": "live_agent_response.txt", "warning": "Could not find an HTML download link in the response."}
     html_path = out_dir / "live_agent_apex_health.html"
