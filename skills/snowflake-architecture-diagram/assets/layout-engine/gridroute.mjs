@@ -92,12 +92,16 @@ function insertSorted(arr, v) {
 // entering/exiting through the same side instead of each independently
 // picking whichever port is marginally cheapest.
 function portsOf(rect) {
-  const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
+  const midX = (rect.left + rect.right) / 2;
+  // Left/right ports anchor to the card's icon (fixed near the top,
+  // regardless of label length) rather than the raw geometric center --
+  // see offsetPortOn's comment for why the plain center is unsafe.
+  const sideY = rect.iconCenterY != null ? rect.iconCenterY : (rect.top + rect.bottom) / 2;
   return [
     { x: midX, y: rect.top, dir: 1, side: 'top' },
     { x: midX, y: rect.bottom, dir: 1, side: 'bottom' },
-    { x: rect.left, y: midY, dir: 0, side: 'left' },
-    { x: rect.right, y: midY, dir: 0, side: 'right' },
+    { x: rect.left, y: sideY, dir: 0, side: 'left' },
+    { x: rect.right, y: sideY, dir: 0, side: 'right' },
   ];
 }
 
@@ -118,13 +122,26 @@ function offsetPortOn(rect, side, offset) {
     const midX = (rect.left + rect.right) / 2;
     return { x: midX + dx, y: side === 'top' ? rect.top : rect.bottom, dir: 1, side };
   }
-  const half = Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN);
-  const dy = Math.max(-half, Math.min(half, offset));
-  const midY = (rect.top + rect.bottom) / 2;
+  // Left/right ports fan out around the ICON's center, not the card's raw
+  // geometric center -- for a short (1-line) label, the card's own midpoint
+  // already sits near the icon's bottom edge, so even a small positive
+  // offset on top of it pushed a connector past the icon and directly onto
+  // the label text below (found via exact SVG coordinate measurement: a
+  // fan-out offset landed a port within 3px of a card's own label baseline,
+  // visibly striking through it). Clamping to the icon's own half-height
+  // (instead of half the card's full height) keeps every fanned-out port on
+  // the icon's graphic, where it can never collide with text.
+  const ICON_MARGIN = 4;
+  const halfRange = rect.iconHalfHeight != null
+    ? Math.max(0, rect.iconHalfHeight - ICON_MARGIN)
+    : Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN);
+  const dy = Math.max(-halfRange, Math.min(halfRange, offset));
+  const midY = rect.iconCenterY != null ? rect.iconCenterY : (rect.top + rect.bottom) / 2;
   return { x: side === 'left' ? rect.left : rect.right, y: midY + dy, dir: 0, side };
 }
 
-const CLEARANCE = 10; // px of standoff a path must keep from an unrelated obstacle's edge
+const CLEARANCE = 14; // px of standoff a path must keep from an unrelated obstacle's edge
+// (inter-zone dynGapBase=48, so 2*14=28px inflated width still leaves a 20px corridor)
 
 /**
  * @param {{left,top,right,bottom,id}[]} obstacles - every rect that could block a path
@@ -209,11 +226,31 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
     push(s.cost, s.xI, s.yI, s.dir);
   });
 
+  // Only accept arrival at a port moving along ITS OWN natural axis (a
+  // top/bottom port, dir:1, must be reached by a vertical move; a
+  // left/right port, dir:0, by a horizontal one). Accepting the
+  // perpendicular direction too (as this used to, via `1 - p.dir`) let the
+  // search end a path AT a left/right port's pixel by arriving from
+  // straight above/below instead of from the side -- geometrically legal,
+  // but the marker orientation and edge-approach direction then have
+  // NOTHING to do with the face the port is actually on. Two visible
+  // symptoms, both found by direct comparison against the live agent's own
+  // render (not a synthetic test payload): (1) an arrowhead whose triangle
+  // points along the card's edge instead of into it, so it doesn't visibly
+  // "aim at" anything; (2) since the marker's width straddles the path
+  // perpendicular to its direction, a marker on a vertical final segment
+  // ending at a LEFT-edge port has half its triangle spill sideways INTO
+  // the card, where the opaque card painted on top hides it -- reproducing
+  // the same hidden-arrowhead symptom the stubInto() removal (above) was
+  // meant to fix for good. Forcing same-axis arrival costs at most one
+  // extra TURN_PENALTY (the search simply detours a bit or picks a
+  // different one of the rect's 4 candidate ports instead), which is the
+  // correct trade: pay a small routing cost for a visually correct
+  // approach, rather than a free but wrong-looking one.
   const targetStates = new Map(); // key -> {x,y,cost}
   tgtPorts.forEach(p => {
     const extra = Math.abs(p.x - (tgtRect.left + tgtRect.right) / 2) + Math.abs(p.y - (tgtRect.top + tgtRect.bottom) / 2);
     targetStates.set(key(xi(p.x), yi(p.y), p.dir), { x: p.x, y: p.y, extra });
-    targetStates.set(key(xi(p.x), yi(p.y), 1 - p.dir), { x: p.x, y: p.y, extra });
   });
 
   let best = null, bestCost = Infinity;
@@ -263,28 +300,27 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
   }
   pts.reverse();
 
-  // Prepend/append a stub from the actual port straight into the rect's
-  // interior (to its center ALONG THE ENTRY AXIS only), so the final
-  // segment stays a clean horizontal/vertical line hidden under the card.
-  // Using the rect's overall geometric center here (as this used to)
-  // broke as soon as a port could sit somewhere other than the exact
-  // midpoint of its side (see the fan-out offset ports below): a port at
-  // e.g. (rect.left, midY+14) followed by a stub at (midX, midY) is a
-  // DIAGONAL jump -- found via SVG path-data inspection showing a
-  // non-orthogonal final segment on a fan-in edge.
-  const firstGridPt = pts.length ? pts[0] : null;
-  const lastGridPt = pts.length ? pts[pts.length - 1] : null;
-  function stubInto(rect, port) {
-    const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
-    if (!port) return [midX, midY];
-    if (Math.abs(port[1] - rect.top) < 0.5 || Math.abs(port[1] - rect.bottom) < 0.5) {
-      return [port[0], midY]; // entered via top/bottom: move in Y only, keep the port's X
-    }
-    return [midX, port[1]]; // entered via left/right: move in X only, keep the port's Y
-  }
-  const srcCenter = stubInto(srcRect, firstGridPt);
-  const tgtCenter = stubInto(tgtRect, lastGridPt);
-  const full = [srcCenter].concat(pts, [tgtCenter]);
+  // The path already starts/ends exactly at the computed port (pts[0] /
+  // pts[pts.length-1] ARE the port coordinates the A* search targeted --
+  // see portsOf/offsetPortOn above). An earlier version of this function
+  // additionally plunged a synthetic "stub" segment past the port into
+  // each rect's own interior, so the wire (and its end-of-line arrowhead)
+  // would be hidden under a borderless, floating icon that had no card
+  // outline to visually terminate against. Now that cards render as
+  // opaque, bordered boxes painted ON TOP of the connector layer, that
+  // plunge does the opposite of what is wanted: the arrowhead marker sits
+  // at the path's LAST point, so extending past the true edge moves the
+  // marker from the visible gap between cards to a point *inside* the
+  // opaque card -- where it is invisible, along with most of the final
+  // segment (found via direct visual review: after switching to opaque
+  // cards, essentially no arrowheads were visible anywhere in the
+  // diagram, because every straight final approach collapsed, via
+  // collinear-point reduction, down to just this now-hidden stub point).
+  // Ending the path exactly at the port keeps the arrowhead visible right
+  // at the card boundary -- which is also literally what "connect to the
+  // edge of the card" means.
+  const full = pts;
+
 
   // Drop redundant collinear waypoints (three or more consecutive points
   // on the same line collapse to the endpoints).
@@ -307,8 +343,8 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
   // instead of each edge independently picking whichever port tied on
   // cost. Arrays are objects in JS, so this doesn't change the return
   // type for existing callers that only index into it.
-  const firstPort = firstGridPt || srcCenter;
-  const lastPort = lastGridPt || tgtCenter;
+  const firstPort = pts.length ? pts[0] : null;
+  const lastPort = pts.length ? pts[pts.length - 1] : null;
   out.srcSide = sideOf(srcRect, firstPort);
   out.tgtSide = sideOf(tgtRect, lastPort);
   return out;

@@ -46,13 +46,21 @@ const CARD = {
   // .icon — clamp(28,60%,44) box + margin-bottom 6
   iconBox: 44,
   iconMarginBottom: 6,
-  // .label — font ~12.5px, line-height ~1.25, margin-bottom 2
+  // .label — font ~12.5px, line-height ~1.25
   labelFont: 12.5,
   labelLineHeight: 1.25,
-  labelMarginBottom: 2,
+  // .fn-sub — the uppercase componentType badge (e.g. "DYNAMIC TABLE"),
+  // rendered between title and detail whenever componentType is set. Card
+  // height omitted this line entirely until 2026-09-09 (found via direct
+  // DOM overflow measurement: every card with a detail line clipped its
+  // last line by 7-14px, matching this line's height almost exactly).
+  subFont: 9.5,
+  subLineHeight: 1.1,
+  subMarginTop: 2,
   // .detail — font ~10.5px, line-height 1.4
   detailFont: 10.5,
   detailLineHeight: 1.4,
+  detailMarginTop: 2,
 };
 
 // CARD_WIDE — icon-left (wide) card geometry. The icon sits BESIDE the text
@@ -71,7 +79,14 @@ const CARD_WIDE = {
   iconGap: 10,           // horizontal gap between icon and text
   labelFont: 12.5,
   labelLineHeight: 1.2,
-  labelMarginBottom: 1,
+  // .nodes-wide .fn-sub — --sub-size:8.5px, line-height:1.2.
+  // See CARD.subFont comment: previously omitted from card height entirely.
+  subFont: 8.5,
+  subLineHeight: 1.2,
+  // .nodes-wide .fn-text{gap:var(--title-gap)} — --title-gap:1px, applied by
+  // flexbox ONCE between each pair of visible children (title/sub/detail),
+  // not once per child. See measureNodeWide's gapH comment.
+  titleGap: 1,
   detailFont: 10,
   detailLineHeight: 1.3,
 };
@@ -91,6 +106,8 @@ const ZONE = {
 const LAYOUT = {
   outerColGap: 72, // .arch-layout gap (between non-boundary columns)
   rankColGap: 20, // .rank-column vertical gap (multi-zone column)
+  // gap between adjacent chips in a chip-row zone (tight, connected-looking)
+  chipColGap: 6,
   // dynamic inner-grid gap inside the platform boundary
   dynGapBase: 48,
   dynGapStep: 14,
@@ -154,7 +171,18 @@ const QUALIFIERS = {
 // Average glyph width as a fraction of font size for the UI font stack.
 // Tuned to a mid value for a typical sans-serif; close enough for line
 // counts without a real text metric.
-const AVG_GLYPH_RATIO = 0.52;
+//
+// Biased slightly high (0.52 -> 0.58) on 2026-09-09: measured against the
+// actual rendered .fn-title (font-weight 600) and .fn-sub (uppercase,
+// letter-spacing) elements, both of which are consistently WIDER than a
+// regular-weight glyph -- 0.52 undercounted wrapped lines for both (e.g.
+// "Inbound Secure Data Share" measured 2 lines at 0.52 but rendered 3;
+// "azure blob storage" measured 1 line but rendered 2), so the resulting
+// card height came up short and the browser's `overflow:hidden` clipped
+// the last line. Underestimating wrap height is much worse than
+// overestimating it (clipped text vs. a few px of harmless extra padding),
+// so bias toward the higher ratio rather than a per-weight-exact model.
+const AVG_GLYPH_RATIO = 0.58;
 
 function defaultMeasureText(text, fontPx) {
   if (!text) return 0;
@@ -172,23 +200,87 @@ function lineCount(text, fontPx, wrapWidth, measureText) {
 // Compute { w, h } for a single node card given its label + detail.
 function measureNode(node, opts = {}) {
   const measureText = opts.measureText || defaultMeasureText;
+  if (node.style === 'gateway') return measureNodeGateway(node, measureText);
+  if (node.style === 'chip') return measureNodeChip(node, measureText);
   if (opts.nodeStyle === 'wide') return measureNodeWide(node, opts, measureText);
 
   const w = opts.cardWidth || CARD.width;
   const wrapWidth = w - CARD.padLeft - CARD.padRight;
 
   const labelLineH = CARD.labelFont * CARD.labelLineHeight;
+  const subLineH = CARD.subFont * CARD.subLineHeight;
   const detailLineH = CARD.detailFont * CARD.detailLineHeight;
 
   const labelLines = lineCount(node.label, CARD.labelFont, wrapWidth, measureText);
+  const subLines = lineCount(node.componentType, CARD.subFont, wrapWidth, measureText);
   const detailLines = lineCount(node.detail, CARD.detailFont, wrapWidth, measureText);
 
   const iconH = CARD.iconBox + CARD.iconMarginBottom;
-  const labelH = labelLines * labelLineH + (labelLines ? CARD.labelMarginBottom : 0);
-  const detailH = detailLines * detailLineH;
+  // .fn-title has no margin of its own; .fn-sub and .fn-detail each carry
+  // their own independent margin-top:2px (unlike CARD_WIDE's flex `gap`,
+  // which applies once per boundary -- these are two separate CSS spacing
+  // models, see measureNodeWide's gapH comment for the wide one).
+  const labelH = labelLines * labelLineH;
+  const subH = subLines * subLineH + (subLines ? CARD.subMarginTop : 0);
+  const detailH = detailLines * detailLineH + (detailLines ? CARD.detailMarginTop : 0);
 
-  const h = CARD.padTop + iconH + labelH + detailH + CARD.padBottom;
-  return { w, h: Math.round(h) };
+  const h = CARD.padTop + iconH + labelH + subH + detailH + CARD.padBottom;
+  // Icon's own vertical center, as an offset from the card's top edge --
+  // fixed regardless of label length, since the icon always sits first
+  // with the label/detail stacked below it. Routing uses this (rather than
+  // the card's raw geometric center) to anchor left/right connector ports,
+  // so they land on the icon's graphic instead of drifting into the label
+  // text as labels get longer/wrap to more lines (found via direct SVG
+  // coordinate measurement: a fan-out port offset pushed a connector's
+  // terminal stub to land within 3px of a card's own label text, visually
+  // striking through it).
+  //
+  // NOTE: this intentionally uses the hardcoded `+8` icon-top offset that
+  // the vendored static-SVG renderer (_svg() in render_diagram_generated.py,
+  // `iy = Y(y) + 8`) actually draws with -- NOT CARD.padTop (16). The two
+  // constants describe different things: CARD.padTop is the interactive
+  // HTML viewer's CSS padding (mirrored here for card *height* sizing),
+  // while the static SVG export's icon placement is a separate, simpler
+  // hand-rolled absolute offset that does not read CARD.padTop at all. Using
+  // padTop here would anchor ports 8px below where the icon is actually
+  // drawn, right back into the label row this fix exists to avoid.
+  const iconCenterY = 8 + CARD.iconBox / 2;
+  return { w, h: Math.round(h), iconCenterY, iconHalfHeight: CARD.iconBox / 2 };
+}
+
+// Small icon-only chip + a one-line caption underneath, for network-plumbing
+// "gateway" nodes (Azure Private Link, AWS PrivateLink) that bridge two
+// boundaries rather than living fully inside either one. Deliberately much
+// narrower than a normal card and skips the `detail` line entirely -- a
+// gateway node's whole purpose is a small, minimal visual footprint.
+const GATEWAY = { width: 88, iconBox: 32, padTop: 8, padBottom: 6, captionFont: 9, captionLineHeight: 1.15 };
+
+function measureNodeGateway(node, measureText) {
+  const w = GATEWAY.width;
+  const wrapWidth = w - 8;
+  const captionLines = lineCount(node.label, GATEWAY.captionFont, wrapWidth, measureText);
+  const captionLineH = GATEWAY.captionFont * GATEWAY.captionLineHeight;
+  const captionH = Math.max(1, captionLines) * captionLineH;
+  const h = GATEWAY.padTop + GATEWAY.iconBox + captionH + GATEWAY.padBottom;
+  const iconCenterY = GATEWAY.padTop + GATEWAY.iconBox / 2;
+  return { w, h: Math.round(h), iconCenterY, iconHalfHeight: GATEWAY.iconBox / 2 };
+}
+
+// Single-line pill sized to its own label, for a "chip-row" zone -- a
+// compact inline pipeline (e.g. Bronze -> Silver -> Gold medallion stages)
+// rendered as small connected pills in one row instead of stacked full-size
+// cards. Width is intentionally per-node (not the fixed CARD.width every
+// other node style shares), since sibling chips' labels are rarely the
+// same length.
+const CHIP = { minWidth: 64, padX: 14, height: 30, font: 10.5 };
+
+function measureNodeChip(node, measureText) {
+  // Chip labels render bold (font-weight:700), which the default
+  // glyph-width heuristic (tuned for regular weight) underestimates --
+  // pad the measured width so the pill doesn't visually clip the label.
+  const textW = measureText(String(node.label || node.id || ''), CHIP.font) * 1.2;
+  const w = Math.max(CHIP.minWidth, Math.ceil(textW) + CHIP.padX * 2);
+  return { w, h: CHIP.height, iconCenterY: CHIP.height / 2, iconHalfHeight: CHIP.height / 2 };
 }
 
 // Wide (icon-left) card: icon sits BESIDE the text, so height is
@@ -200,17 +292,36 @@ function measureNodeWide(node, opts, measureText) {
   const wrapWidth = w - C.padLeft - C.padRight - C.iconBox - C.iconGap;
 
   const labelLineH = C.labelFont * C.labelLineHeight;
+  const subLineH = C.subFont * C.subLineHeight;
   const detailLineH = C.detailFont * C.detailLineHeight;
 
   const labelLines = lineCount(node.label, C.labelFont, wrapWidth, measureText);
+  const subLines = lineCount(node.componentType, C.subFont, wrapWidth, measureText);
   const detailLines = lineCount(node.detail, C.detailFont, wrapWidth, measureText);
 
-  const labelH = labelLines * labelLineH + (labelLines && detailLines ? C.labelMarginBottom : 0);
+  // .fn-text is a flex column with `gap:var(--title-gap)` applied between
+  // EVERY pair of visible children (title/sub/detail) -- one gap per
+  // boundary between two present elements, not per element. Previously
+  // this double-counted the title-sub gap while never counting the
+  // sub-detail gap at all (found 2026-09-09 via residual clipping after
+  // the subH fix: cards with both a componentType AND a detail line were
+  // still short by ~1-2px).
+  const segments = 1 + (subLines ? 1 : 0) + (detailLines ? 1 : 0);
+  const gapH = Math.max(0, segments - 1) * C.titleGap;
+
+  const labelH = labelLines * labelLineH;
+  // .fn-sub (the componentType badge) renders between title and detail
+  // whenever componentType is set -- see constants.mjs CARD.subFont comment.
+  const subH = subLines * subLineH;
   const detailH = detailLines * detailLineH;
-  const textH = labelH + detailH;
+  const textH = labelH + subH + detailH + gapH;
 
   const h = C.padTop + Math.max(C.iconBox, textH) + C.padBottom;
-  return { w, h: Math.round(h) };
+  // Icon sits centered within the max(iconBox, textH) content band, so its
+  // own vertical center coincides with that band's center -- see the narrow
+  // measureNode's iconCenterY comment for why routing needs this.
+  const iconCenterY = C.padTop + Math.max(C.iconBox, textH) / 2;
+  return { w, h: Math.round(h), iconCenterY, iconHalfHeight: C.iconBox / 2 };
 }
 
 
@@ -283,6 +394,16 @@ function categoryFrom(node) {
   return 'snow';
 }
 
+// A cloud vendor's PRIVATE CONNECTIVITY construct (Azure Private Link, AWS
+// PrivateLink) is network plumbing that bridges two boundaries rather than
+// a full service living inside either one -- render it as a small
+// icon+caption chip (see measure.mjs) instead of a normal card.
+function isGatewayLike(node) {
+  const t = String(node.componentType || node.object_type || '').toLowerCase();
+  const l = String(node.label || '').toLowerCase();
+  return /private[\s_-]?link/.test(t) || /private[\s_-]?link/.test(l);
+}
+
 // Ensure zones exist and node_ids are populated (mirrors the viewer's
 // defensive backfill).
 function normalize(model) {
@@ -290,8 +411,20 @@ function normalize(model) {
     id: n.id,
     label: n.label != null ? n.label : n.id,
     detail: n.detail || '',
+    // Needed by measure.mjs to size the .fn-sub componentType badge line --
+    // dropping this field here silently zeroed that line out of every card's
+    // computed height (found 2026-09-09: cards with a detail line clipped
+    // their last line because subH always computed to 0 through the real
+    // pipeline, even though measureNode itself correctly accounts for it).
+    componentType: n.componentType || '',
     category: categoryFrom(n),
     zone: n.zone || n.boundary || 'Main',
+    // 'gateway' shrinks the card to a small icon+caption chip (see
+    // measure.mjs/measureNodeGateway) for network-plumbing nodes (Azure
+    // Private Link, AWS PrivateLink) that are a bridge/connector, not a
+    // full service -- auto-detected from componentType/label so the agent
+    // doesn't need to know about this render detail.
+    style: n.style || (isGatewayLike(n) ? 'gateway' : null),
   }));
   const edges = (model.edges || []).map(e => ({
     source: e.source != null ? e.source : e.from,
@@ -335,12 +468,27 @@ function normalize(model) {
   }
 
   const nodeIdSet = {}; nodes.forEach(n => { nodeIdSet[n.id] = true; });
+
+  // A zone whose members are ALL explicitly styled 'chip' (e.g. inline
+  // medallion pipeline stages -- Bronze/Silver/Gold) renders as a compact
+  // single-row strip of connected pills instead of stacked full-size cards.
+  // Opt-in only (no auto-detection): the agent marks each such node
+  // "style":"chip" itself, since nothing about a node's componentType alone
+  // reliably signals "this belongs in an inline pipeline chip-row".
+  const nodeStyleById = {}; nodes.forEach(n => { nodeStyleById[n.id] = n.style; });
+  zones.forEach(z => {
+    const ids = z.node_ids || [];
+    z.chipRow = ids.length > 0 && ids.every(id => nodeStyleById[id] === 'chip');
+  });
+
   const containers = Array.isArray(model.containers)
     ? model.containers
         .filter(c => c && c.id != null)
         .map(c => ({
           id: String(c.id),
           label: c.label != null ? c.label : String(c.id),
+          subtitle: c.subtitle != null ? String(c.subtitle) : null,
+          color: c.color != null ? String(c.color) : null,
           zone_names: Array.isArray(c.zone_names) ? c.zone_names.slice() : [],
           node_ids: Array.isArray(c.node_ids) ? c.node_ids.filter(id => nodeIdSet[id]) : [],
           container_ids: Array.isArray(c.container_ids) ? c.container_ids.map(String) : [],
@@ -358,6 +506,8 @@ function normalize(model) {
     consolidate: model.consolidate !== false,
     consolidate_sub_groups: model.consolidate_sub_groups === true,
     nodeStyle: model.nodeStyle || null,
+    boundaryLabel: model.boundaryLabel != null ? String(model.boundaryLabel) : null,
+    boundarySubtitle: model.boundarySubtitle != null ? String(model.boundarySubtitle) : null,
   };
 }
 
@@ -583,6 +733,117 @@ function balancedWrapCap(items, maxWidth, colGap) {
   return lo;
 }
 
+// Refines the WITHIN-ROW order of a wrapUnits() result for zone-wrapping
+// items (each item has a `.z.name`), by directly minimizing total weighted
+// cross-row edge distance (sum, over every pair of zones in ADJACENT rows
+// connected by >=1 real edge, of |sequence-index difference| * edge count).
+// This REPLACES an earlier median/barycenter-heuristic version: verified by
+// direct cost comparison (see CHANGELOG) that the median heuristic can
+// converge to a WORSE arrangement than the simple "reverse every odd row"
+// snake pattern already baked into wrapUnits, because each zone chasing
+// its own median independently doesn't minimize the row's actual total
+// edge length when neighbors compete for the same position -- median
+// minimizes a different, per-item objective, not the sum we actually care
+// about. Exhaustively tries every permutation for a row (rows are small --
+// typically well under MAX_EXHAUSTIVE items -- so this is cheap and exact,
+// not a heuristic approximation) with a greedy adjacent-swap fallback for
+// unusually large rows. Only reorders WITHIN each row -- never moves an
+// item to a different row -- so it can't break the bucket-contiguity the
+// platform boundary depends on (see assignRanks' bucketOf comment).
+function refineZoneRowOrderByEdgeLength(innerWrap, zonesInBoundary, edges, colGap) {
+  if (innerWrap.numRows < 2) return; // nothing to align across rows
+
+  const zoneOfNode = {};
+  zonesInBoundary.forEach(item => (item.z.node_ids || []).forEach(id => { zoneOfNode[id] = item.z.name; }));
+  const edgeWeight = {}; // "zoneA\u0000zoneB" (a<b) -> count of direct edges between them
+  edges.forEach(e => {
+    const sz = zoneOfNode[e.source], tz = zoneOfNode[e.target];
+    if (!sz || !tz || sz === tz) return;
+    const key = sz < tz ? sz + '\u0000' + tz : tz + '\u0000' + sz;
+    edgeWeight[key] = (edgeWeight[key] || 0) + 1;
+  });
+  function weightBetween(a, b) {
+    const key = a < b ? a + '\u0000' + b : b + '\u0000' + a;
+    return edgeWeight[key] || 0;
+  }
+
+  const byRow = {};
+  zonesInBoundary.forEach(item => { (byRow[item.rowIdx] = byRow[item.rowIdx] || []).push(item); });
+  const rowKeys = Object.keys(byRow).map(Number).sort((a, b) => a - b);
+
+  const posOf = {}; // zoneName -> current sequence index within its row
+  rowKeys.forEach(r => byRow[r].forEach((item, i) => { posOf[item.z.name] = i; }));
+
+  // Cost of placing `order` (a candidate arrangement of row r's items) given
+  // the CURRENT (already-decided) positions of rows r-1 and r+1.
+  function rowCost(r, order) {
+    let total = 0;
+    order.forEach((item, i) => {
+      [r - 1, r + 1].forEach(nr => {
+        if (!byRow[nr]) return;
+        byRow[nr].forEach(other => {
+          const w = weightBetween(item.z.name, other.z.name);
+          if (w) total += w * Math.abs(i - posOf[other.z.name]);
+        });
+      });
+    });
+    return total;
+  }
+
+  function permutations(arr) {
+    if (arr.length <= 1) return [arr];
+    const out = [];
+    for (let i = 0; i < arr.length; i++) {
+      const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+      permutations(rest).forEach(p => out.push([arr[i]].concat(p)));
+    }
+    return out;
+  }
+
+  const MAX_EXHAUSTIVE = 7; // 7! = 5040 candidates -- negligible cost, always exact
+
+  for (let pass = 0; pass < 6; pass++) {
+    let anyChange = false;
+    const passRows = pass % 2 === 0 ? rowKeys : rowKeys.slice().reverse();
+    passRows.forEach(r => {
+      let row = byRow[r];
+      if (row.length < 2) return;
+      if (row.length <= MAX_EXHAUSTIVE) {
+        let best = row, bestCost = rowCost(r, row);
+        permutations(row).forEach(perm => {
+          const c = rowCost(r, perm);
+          if (c < bestCost) { bestCost = c; best = perm; }
+        });
+        if (best !== row) { byRow[r] = row = best; anyChange = true; }
+      } else {
+        // Greedy adjacent-swap local search: cheap, not guaranteed globally
+        // optimal, but converges quickly and only runs for unusually wide
+        // rows where exhaustive search would be too slow.
+        let improved = true;
+        while (improved) {
+          improved = false;
+          for (let i = 0; i < row.length - 1; i++) {
+            const swapped = row.slice();
+            const tmp = swapped[i]; swapped[i] = swapped[i + 1]; swapped[i + 1] = tmp;
+            if (rowCost(r, swapped) < rowCost(r, row)) { row = swapped; improved = true; anyChange = true; }
+          }
+        }
+        byRow[r] = row;
+      }
+      row.forEach((item, i) => { posOf[item.z.name] = i; });
+    });
+    if (!anyChange) break;
+  }
+
+  // Recompute xInRow per row from the refined order (row membership,
+  // heights and Y-offsets are all untouched -- only intra-row sequence
+  // changed), then re-center each row exactly as wrapUnits itself does.
+  rowKeys.forEach(r => { let x = 0; byRow[r].forEach(item => { item.xInRow = x; x += item.width + colGap; }); });
+  const rowContentWidth = [];
+  zonesInBoundary.forEach(item => { const right = item.xInRow + item.width; if (!(rowContentWidth[item.rowIdx] > right)) rowContentWidth[item.rowIdx] = right; });
+  zonesInBoundary.forEach(item => { item.xInRow += (innerWrap.totalWidth - rowContentWidth[item.rowIdx]) / 2; });
+}
+
 // ── Nested containers (Phase 2) ──────────────────────────────────────
 // A container is a generalized, USER-declared version of the ONE hardcoded
 // platform boundary above: it sweeps a contiguous rank-column RANGE into one
@@ -605,6 +866,11 @@ function balancedWrapCap(items, maxWidth, colGap) {
 // for route.mjs's crossing-avoidance) and a memoized `buildUnit(id)` that
 // recursively computes chrome + wrapUnits(children) bottom-up, mirroring the
 // platformBoundary's own zonesInBoundary/innerWrap pattern one level deeper.
+//
+// Extra header clearance reserved whenever a container/boundary has a
+// subtitle line (see chromeH/buildBoundaryUnit below) -- keeps the first
+// inner zone's own top border from landing on top of the subtitle text.
+const SUBTITLE_EXTRA_H = 16;
 function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank, zoneSize, maxCanvasWidth, hasBoundary, snowStart, snowEnd) {
   const empty = {
     defs: {}, rangeCache: {}, topLevelIds: [], boundaryAdopterId: null,
@@ -628,7 +894,7 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
     if (!c || c.id == null) return;
     const seedIds = new Set(c.node_ids || []);
     (c.zone_names || []).forEach(zn => (zoneNodeIdsPre[zn] || []).forEach(id => seedIds.add(id)));
-    defs[c.id] = { id: c.id, label: c.label || c.id, seedIds, childIds: (c.container_ids || []).filter(cid => cid !== c.id), parentId: null };
+    defs[c.id] = { id: c.id, label: c.label || c.id, subtitle: c.subtitle || null, color: c.color || null, seedIds, childIds: (c.container_ids || []).filter(cid => cid !== c.id), parentId: null };
     if (c.include_platform_boundary === true && hasBoundary && boundaryAdopterId == null) boundaryAdopterId = c.id;
   });
   // Link parents (first-declared wins), then break any cycles so the
@@ -753,11 +1019,17 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
       if (!items.length) return (unitCache[id] = null);
       items.sort((a, b) => a.rank - b.rank);
       const chromeW = 2 * (LAYOUT.containerBorder + LAYOUT.containerPadSide);
-      const chromeH = 2 * LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop + LAYOUT.containerPadBottom;
+      // A subtitle line (Step 2) renders just below the label but the
+      // reserved header height was never extended for it -- found via
+      // direct coordinate check (2026-09-09): the first inner zone's own
+      // top border landed AT the subtitle's text baseline, visually
+      // slicing through it. Extra clearance whenever a subtitle exists.
+      const chromeH = 2 * LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop + LAYOUT.containerPadBottom +
+        (defs[id].subtitle ? SUBTITLE_EXTRA_H : 0);
       const innerMaxWidth = Math.max(maxCanvasWidth - chromeW, CARD.width);
       const innerWrap = wrapUnits(items, innerMaxWidth, LAYOUT.outerColGap, LAYOUT.rowWrapGap);
       const unit = {
-        id, label: defs[id].label, parentId: defs[id].parentId,
+        id, label: defs[id].label, subtitle: defs[id].subtitle, color: defs[id].color, parentId: defs[id].parentId,
         width: chromeW + innerWrap.totalWidth, height: chromeH + innerWrap.totalHeight,
         items, innerWrap,
       };
@@ -812,7 +1084,7 @@ function consolidateZones(zones, nodesById, edges, opts) {
       const allIds = [];
       subGroups.forEach(sg => sg.node_ids.forEach(id => allIds.push(id)));
       const useSub = opts.consolidate_sub_groups === true;
-      out.push({ name: prefixName, category: group[0].category, node_ids: allIds, sub_groups: useSub ? subGroups : null });
+      out.push({ name: prefixName, category: group[0].category, node_ids: allIds, sub_groups: useSub ? subGroups : null, chipRow: group.every(g => g.chipRow) });
       group.forEach(g => (g.node_ids || []).forEach(id => { if (nodesById[id]) nodesById[id].zone = prefixName; }));
     }
     i = j;
@@ -932,6 +1204,14 @@ function assignRanks(zones, edges) {
 // ── Intra-zone column + row assignment (port of buildZoneEl ~1149-1227) ──
 function intraLayout(zone, edges) {
   const ids = zone.node_ids || [];
+  // chip-row zones (inline medallion-pipeline chips) are always one row,
+  // in declaration order -- no fan-out/column propagation, just a
+  // left-to-right sequence.
+  if (zone.chipRow) {
+    const col = {}, rowIdx = {};
+    ids.forEach((id, i) => { col[id] = i; rowIdx[id] = 0; });
+    return { col, rowIdx, maxCol: Math.max(0, ids.length - 1), hasFanout: false };
+  }
   const set = {}; ids.forEach(id => { set[id] = true; });
   const intra = edges.filter(e => set[e.source] && set[e.target]);
   const outDeg = {};
@@ -1107,7 +1387,10 @@ function pack(model, opts = {}) {
       zoneInfo[z.name] = { col, rowIdx, maxCol: z.sub_groups.length - 1, hasFanout: true, subGroups: z.sub_groups, subColOf };
     } else {
       const il = intraLayout(z, model.edges);
-      zoneInfo[z.name] = { col: il.col, rowIdx: il.rowIdx, maxCol: il.maxCol, hasFanout: il.hasFanout, subGroups: null, subColOf: {} };
+      const chipWidth = z.chipRow
+        ? Math.max(1, ...(z.node_ids || []).map(id => (size[id] ? size[id].w : 0)))
+        : null;
+      zoneInfo[z.name] = { col: il.col, rowIdx: il.rowIdx, maxCol: il.maxCol, hasFanout: il.hasFanout, subGroups: null, subColOf: {}, chipRow: z.chipRow, chipWidth };
     }
   });
 
@@ -1174,11 +1457,13 @@ function pack(model, opts = {}) {
 
   // card width per zone column: sub/fanout use narrower min width
   function cardWidth(zi) {
+    if (zi.chipRow) return zi.chipWidth || CARD.width;
     if (zi.subGroups) return Math.max(ZONE.subColMinWidth, CARD.width);
     if (zi.hasFanout && zi.maxCol >= 1) return Math.max(ZONE.fanoutColMinWidth, CARD.width);
     return CARD.width;
   }
   function colGap(zi) {
+    if (zi.chipRow) return LAYOUT.chipColGap;
     if (zi.subGroups) return ZONE.subColGap;
     if (zi.hasFanout && zi.maxCol >= 1) return ZONE.fanoutColGap;
     return 0;
@@ -1257,8 +1542,10 @@ function pack(model, opts = {}) {
       columns[sci].forEach(z => { const zs = zoneSize(z); zonesInBoundary.push({ z, zs, width: zs.width, height: zs.height }); });
     }
     const innerWrap = wrapUnits(zonesInBoundary, innerMaxWidth, dynInnerGap, LAYOUT.rowWrapGap);
+    refineZoneRowOrderByEdgeLength(innerWrap, zonesInBoundary, model.edges, dynInnerGap);
     const width = boundaryChromeW + innerWrap.totalWidth;
-    const height = LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop + innerWrap.totalHeight + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
+    const boundaryPadTop = LAYOUT.boundaryPadTop + (opts.boundarySubtitle ? SUBTITLE_EXTRA_H : 0);
+    const height = LAYOUT.boundaryBorder + boundaryPadTop + innerWrap.totalHeight + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
     return { width, height, zonesInBoundary, innerWrap };
   }
   const boundaryUnit = buildBoundaryUnit();
@@ -1336,7 +1623,7 @@ function pack(model, opts = {}) {
     boundaryRight = x + u.width;
     boundaryBottom = y + u.height;
     const innerOriginX = x + LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide;
-    const innerOriginY = y + LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop;
+    const innerOriginY = y + LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop + (opts.boundarySubtitle ? SUBTITLE_EXTRA_H : 0);
     const scope = { rowYOffset: u.innerWrap.rowYOffset.map(ry => ry + innerOriginY), rowHeights: u.innerWrap.rowHeights, slots: [] };
     channels.scopes.boundary = scope;
     u.zonesInBoundary.forEach(item => {
@@ -1356,7 +1643,7 @@ function pack(model, opts = {}) {
   // containerRects entry per box.
   function placeContainerUnit(unit, x, y) {
     const innerOriginX = x + LAYOUT.containerBorder + LAYOUT.containerPadSide;
-    const innerOriginY = y + LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop;
+    const innerOriginY = y + LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop + (unit.subtitle ? SUBTITLE_EXTRA_H : 0);
     const scope = { rowYOffset: unit.innerWrap.rowYOffset.map(ry => ry + innerOriginY), rowHeights: unit.innerWrap.rowHeights, slots: [] };
     channels.scopes[unit.id] = scope;
     unit.items.forEach(item => {
@@ -1378,7 +1665,7 @@ function pack(model, opts = {}) {
         scope.slots.push({ rowIdx: item.rowIdx, left, right: left + item.unit.width, top, bottom: top + item.unit.height, name: item.unit.id });
       }
     });
-    containerRects.push({ id: unit.id, label: unit.label, parentId: unit.parentId, left: x, top: y, right: x + unit.width, bottom: y + unit.height });
+    containerRects.push({ id: unit.id, label: unit.label, subtitle: unit.subtitle || null, color: unit.color || null, parentId: unit.parentId, left: x, top: y, right: x + unit.width, bottom: y + unit.height });
   }
 
   units.forEach(u => {
@@ -1449,6 +1736,13 @@ function pack(model, opts = {}) {
       if (isDummy[id]) { const mid = left + cw / 2; left = mid - DUMMY_W / 2; right = mid + DUMMY_W / 2; }
       const top = rowTop[r];
       const rect = { id, zoneName: z.name, col: c, rowIdx: r, dummy: !!isDummy[id], left, right, top, bottom: top + bandH, containerChain };
+      // Real card nodes (not dummies/zones) carry the icon's absolute
+      // vertical center so the router can anchor left/right ports there
+      // instead of the raw rect midpoint -- see measure.mjs's iconCenterY.
+      if (!isDummy[id] && size[id] && size[id].iconCenterY != null) {
+        rect.iconCenterY = top + size[id].iconCenterY;
+        rect.iconHalfHeight = size[id].iconHalfHeight;
+      }
       nodeRects.push(rect);
       if (zi.subGroups) {
         const sidx = zi.subColOf[id];
@@ -1602,12 +1896,16 @@ function insertSorted(arr, v) {
 // entering/exiting through the same side instead of each independently
 // picking whichever port is marginally cheapest.
 function portsOf(rect) {
-  const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
+  const midX = (rect.left + rect.right) / 2;
+  // Left/right ports anchor to the card's icon (fixed near the top,
+  // regardless of label length) rather than the raw geometric center --
+  // see offsetPortOn's comment for why the plain center is unsafe.
+  const sideY = rect.iconCenterY != null ? rect.iconCenterY : (rect.top + rect.bottom) / 2;
   return [
     { x: midX, y: rect.top, dir: 1, side: 'top' },
     { x: midX, y: rect.bottom, dir: 1, side: 'bottom' },
-    { x: rect.left, y: midY, dir: 0, side: 'left' },
-    { x: rect.right, y: midY, dir: 0, side: 'right' },
+    { x: rect.left, y: sideY, dir: 0, side: 'left' },
+    { x: rect.right, y: sideY, dir: 0, side: 'right' },
   ];
 }
 
@@ -1628,13 +1926,26 @@ function offsetPortOn(rect, side, offset) {
     const midX = (rect.left + rect.right) / 2;
     return { x: midX + dx, y: side === 'top' ? rect.top : rect.bottom, dir: 1, side };
   }
-  const half = Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN);
-  const dy = Math.max(-half, Math.min(half, offset));
-  const midY = (rect.top + rect.bottom) / 2;
+  // Left/right ports fan out around the ICON's center, not the card's raw
+  // geometric center -- for a short (1-line) label, the card's own midpoint
+  // already sits near the icon's bottom edge, so even a small positive
+  // offset on top of it pushed a connector past the icon and directly onto
+  // the label text below (found via exact SVG coordinate measurement: a
+  // fan-out offset landed a port within 3px of a card's own label baseline,
+  // visibly striking through it). Clamping to the icon's own half-height
+  // (instead of half the card's full height) keeps every fanned-out port on
+  // the icon's graphic, where it can never collide with text.
+  const ICON_MARGIN = 4;
+  const halfRange = rect.iconHalfHeight != null
+    ? Math.max(0, rect.iconHalfHeight - ICON_MARGIN)
+    : Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN);
+  const dy = Math.max(-halfRange, Math.min(halfRange, offset));
+  const midY = rect.iconCenterY != null ? rect.iconCenterY : (rect.top + rect.bottom) / 2;
   return { x: side === 'left' ? rect.left : rect.right, y: midY + dy, dir: 0, side };
 }
 
-const CLEARANCE = 10; // px of standoff a path must keep from an unrelated obstacle's edge
+const CLEARANCE = 14; // px of standoff a path must keep from an unrelated obstacle's edge
+// (inter-zone dynGapBase=48, so 2*14=28px inflated width still leaves a 20px corridor)
 
 /**
  * @param {{left,top,right,bottom,id}[]} obstacles - every rect that could block a path
@@ -1719,11 +2030,31 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
     push(s.cost, s.xI, s.yI, s.dir);
   });
 
+  // Only accept arrival at a port moving along ITS OWN natural axis (a
+  // top/bottom port, dir:1, must be reached by a vertical move; a
+  // left/right port, dir:0, by a horizontal one). Accepting the
+  // perpendicular direction too (as this used to, via `1 - p.dir`) let the
+  // search end a path AT a left/right port's pixel by arriving from
+  // straight above/below instead of from the side -- geometrically legal,
+  // but the marker orientation and edge-approach direction then have
+  // NOTHING to do with the face the port is actually on. Two visible
+  // symptoms, both found by direct comparison against the live agent's own
+  // render (not a synthetic test payload): (1) an arrowhead whose triangle
+  // points along the card's edge instead of into it, so it doesn't visibly
+  // "aim at" anything; (2) since the marker's width straddles the path
+  // perpendicular to its direction, a marker on a vertical final segment
+  // ending at a LEFT-edge port has half its triangle spill sideways INTO
+  // the card, where the opaque card painted on top hides it -- reproducing
+  // the same hidden-arrowhead symptom the stubInto() removal (above) was
+  // meant to fix for good. Forcing same-axis arrival costs at most one
+  // extra TURN_PENALTY (the search simply detours a bit or picks a
+  // different one of the rect's 4 candidate ports instead), which is the
+  // correct trade: pay a small routing cost for a visually correct
+  // approach, rather than a free but wrong-looking one.
   const targetStates = new Map(); // key -> {x,y,cost}
   tgtPorts.forEach(p => {
     const extra = Math.abs(p.x - (tgtRect.left + tgtRect.right) / 2) + Math.abs(p.y - (tgtRect.top + tgtRect.bottom) / 2);
     targetStates.set(key(xi(p.x), yi(p.y), p.dir), { x: p.x, y: p.y, extra });
-    targetStates.set(key(xi(p.x), yi(p.y), 1 - p.dir), { x: p.x, y: p.y, extra });
   });
 
   let best = null, bestCost = Infinity;
@@ -1773,28 +2104,27 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
   }
   pts.reverse();
 
-  // Prepend/append a stub from the actual port straight into the rect's
-  // interior (to its center ALONG THE ENTRY AXIS only), so the final
-  // segment stays a clean horizontal/vertical line hidden under the card.
-  // Using the rect's overall geometric center here (as this used to)
-  // broke as soon as a port could sit somewhere other than the exact
-  // midpoint of its side (see the fan-out offset ports below): a port at
-  // e.g. (rect.left, midY+14) followed by a stub at (midX, midY) is a
-  // DIAGONAL jump -- found via SVG path-data inspection showing a
-  // non-orthogonal final segment on a fan-in edge.
-  const firstGridPt = pts.length ? pts[0] : null;
-  const lastGridPt = pts.length ? pts[pts.length - 1] : null;
-  function stubInto(rect, port) {
-    const midX = (rect.left + rect.right) / 2, midY = (rect.top + rect.bottom) / 2;
-    if (!port) return [midX, midY];
-    if (Math.abs(port[1] - rect.top) < 0.5 || Math.abs(port[1] - rect.bottom) < 0.5) {
-      return [port[0], midY]; // entered via top/bottom: move in Y only, keep the port's X
-    }
-    return [midX, port[1]]; // entered via left/right: move in X only, keep the port's Y
-  }
-  const srcCenter = stubInto(srcRect, firstGridPt);
-  const tgtCenter = stubInto(tgtRect, lastGridPt);
-  const full = [srcCenter].concat(pts, [tgtCenter]);
+  // The path already starts/ends exactly at the computed port (pts[0] /
+  // pts[pts.length-1] ARE the port coordinates the A* search targeted --
+  // see portsOf/offsetPortOn above). An earlier version of this function
+  // additionally plunged a synthetic "stub" segment past the port into
+  // each rect's own interior, so the wire (and its end-of-line arrowhead)
+  // would be hidden under a borderless, floating icon that had no card
+  // outline to visually terminate against. Now that cards render as
+  // opaque, bordered boxes painted ON TOP of the connector layer, that
+  // plunge does the opposite of what is wanted: the arrowhead marker sits
+  // at the path's LAST point, so extending past the true edge moves the
+  // marker from the visible gap between cards to a point *inside* the
+  // opaque card -- where it is invisible, along with most of the final
+  // segment (found via direct visual review: after switching to opaque
+  // cards, essentially no arrowheads were visible anywhere in the
+  // diagram, because every straight final approach collapsed, via
+  // collinear-point reduction, down to just this now-hidden stub point).
+  // Ending the path exactly at the port keeps the arrowhead visible right
+  // at the card boundary -- which is also literally what "connect to the
+  // edge of the card" means.
+  const full = pts;
+
 
   // Drop redundant collinear waypoints (three or more consecutive points
   // on the same line collapse to the endpoints).
@@ -1817,8 +2147,8 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
   // instead of each edge independently picking whichever port tied on
   // cost. Arrays are objects in JS, so this doesn't change the return
   // type for existing callers that only index into it.
-  const firstPort = firstGridPt || srcCenter;
-  const lastPort = lastGridPt || tgtCenter;
+  const firstPort = pts.length ? pts[0] : null;
+  const lastPort = pts.length ? pts[pts.length - 1] : null;
   out.srcSide = sideOf(srcRect, firstPort);
   out.tgtSide = sideOf(tgtRect, lastPort);
   return out;
@@ -1887,6 +2217,50 @@ function route(model, packed, opts = {}) {
   zoneRects.forEach(zr => obstacles.push({ id: 'zone:' + zr.name, left: zr.left, top: zr.top, right: zr.right, bottom: zr.bottom }));
   (containers || []).forEach(c => obstacles.push({ id: 'container:' + c.id, left: c.left, top: c.top, right: c.right, bottom: c.bottom }));
   if (platformBoundary) obstacles.push({ id: 'boundary', left: platformBoundary.left, top: platformBoundary.top, right: platformBoundary.right, bottom: platformBoundary.bottom });
+
+  // Zone/container/boundary title text sits in the top-left corner of each
+  // box (see render_diagram_generated.py's own node_boxes list, built for
+  // the SAME reason but only to keep EDGE LABEL text off a title -- there
+  // was no equivalent for the connector LINE itself). A title id is never
+  // added to any edge's excludeIds (exclusionsFor only ever emits
+  // 'node:'/'zone:'/'container:'/'boundary' ids), so unlike the box's own
+  // rect -- which an edge legitimately starting/ending inside it must be
+  // allowed to sit inside -- these strips are hard obstacles for EVERY
+  // edge, including ones whose own zone/container this is. Found via
+  // direct visual review of a live render: a skip-zone bridge line
+  // legally cut straight across "Ingestion"'s title band, because the
+  // container it belonged to (an ancestor of both endpoints) excluded its
+  // whole rect from that edge's obstacle set, and nothing else stood in
+  // for just the label text.
+  //
+  // A container/boundary can ALSO carry a one-line SUBTITLE rendered just
+  // below the label (smaller font) -- found via direct visual review
+  // (2026-09-09): a connector cut straight through "Region: East US 2 -
+  // Business Critical" under a boundary label, because this obstacle only
+  // ever covered the LABEL's single line, never the subtitle's. Extend the
+  // box height (and, since a subtitle is often the longer string) width
+  // whenever one is present.
+  const charW = { zone: 7.8, container: 6.8, subtitle: 5.2 };
+  zoneRects.forEach(zr => {
+    const nameW = String(zr.name || '').length * charW.zone;
+    obstacles.push({ id: 'zonetitle:' + zr.name, left: zr.left + 8, top: zr.top + 6, right: zr.left + 8 + nameW, bottom: zr.top + 28 });
+  });
+  (containers || []).forEach(c => {
+    const nameW = String(c.label || c.id || '').length * charW.container;
+    const subW = c.subtitle ? String(c.subtitle).length * charW.subtitle : 0;
+    const w = Math.max(nameW, subW);
+    const bottom = c.subtitle ? c.top + 35 : c.top + 22;
+    obstacles.push({ id: 'containertitle:' + c.id, left: c.left + 8, top: c.top + 4, right: c.left + 8 + w, bottom });
+  });
+  if (platformBoundary) {
+    const boundaryTitle = opts.boundaryLabel || 'Snowflake Data Cloud';
+    const boundarySub = opts.boundarySubtitle || null;
+    const nameW = boundaryTitle.length * charW.container;
+    const subW = boundarySub ? String(boundarySub).length * charW.subtitle : 0;
+    const w = Math.max(nameW, subW);
+    const bottom = boundarySub ? platformBoundary.top + 40 : platformBoundary.top + 24;
+    obstacles.push({ id: 'boundarytitle', left: platformBoundary.left + 12, top: platformBoundary.top + 8, right: platformBoundary.left + 12 + w, bottom });
+  }
 
   const canvasBounds = { minX: -40, minY: -40, maxX: (width || 2000) + 40, maxY: (height || 2000) + 40 };
 
@@ -2187,6 +2561,50 @@ function assessQuality(result, opts) {
   };
 }
 
+// Semantic check, NOT purely geometric like assessQuality() above -- catches
+// the class of bug found 2026-09-09: a zone's rendered category (and
+// therefore which side of the platform boundary it lands on) is taken from
+// its FIRST member node, so mixing e.g. an onprem node and an outcome node
+// in the same zone/layer silently sweeps the second node's category to
+// wherever the first node's category happens to place it (a Streamlit
+// dashboard rendered outside the Snowflake boundary because it shared a
+// layer with an external data-share consumer). assessQuality() cannot see
+// this -- it never receives per-node category, only geometry -- so this is
+// a separate function index.mjs merges into the same result.quality.
+//
+// Only flags a mismatch that crosses the BOUNDARY SIDE (onprem = outside;
+// snow/bridge/outcome = inside, mirroring pack.mjs's own SNOW_CATEGORIES).
+// snow/bridge/outcome nodes sharing one zone is fine -- they land on the
+// same side either way (a real, benign pattern e.g. the row_wrap_stress
+// fixture's "Apps" zone mixing a 'snow'-category Cortex node with an
+// 'outcome'-category Streamlit node, both correctly inside the boundary).
+//
+// nodeCategoryById: { [nodeId]: category } for every real (non-dummy) node.
+// zones: [{ name, category, node_ids }] -- the zones actually rendered.
+function boundarySide(category) {
+  return category === 'onprem' ? 'outside' : 'inside';
+}
+
+function checkCategoryConsistency(nodeCategoryById, zones) {
+  const issues = [];
+  (zones || []).forEach(z => {
+    const ids = (z.node_ids || []).filter(id => nodeCategoryById[id] != null);
+    const zoneSide = boundarySide(z.category);
+    const mismatched = ids.filter(id => boundarySide(nodeCategoryById[id]) !== zoneSide);
+    if (mismatched.length) {
+      issues.push({
+        code: 'MIXED_CATEGORY_ZONE',
+        detail: 'zone "' + z.name + '" is rendered ' + zoneSide + ' the platform boundary (category="' + z.category +
+          '") but contains node(s) ' + JSON.stringify(mismatched) + ' whose own category places them ' +
+          boundarySide(nodeCategoryById[mismatched[0]]) + ' it instead. Put nodes that belong on different sides ' +
+          'of the boundary in separate zones/layers.',
+      });
+    }
+  });
+  return { ok: issues.length === 0, issues };
+}
+
+
 
 // ===== index.mjs =====
 // index.mjs — public API for the SnowGram layout engine.
@@ -2207,7 +2625,7 @@ function assessQuality(result, opts) {
 //
 // returns:
 //   {
-//     nodes: [{ id, label, zone, x, y, w, h }],
+//     nodes: [{ id, label, detail, zone, x, y, w, h }],
 //     edges: [{ from, to, points:[[x,y]...], d:"M...", markerId }],
 //     zones: [{ name, x, y, w, h, category }],
 //     platformBoundary: { x, y, w, h } | null,
@@ -2224,7 +2642,16 @@ function layout(input, opts = {}) {
   // nodeStyle ('wide' | null) may arrive via opts OR ride in the model JSON
   // (so the 1-arg UDF, which calls layout(input, {}), can still request wide
   // by setting model.nodeStyle). Thread it down to card measurement.
-  const effOpts = { ...opts, nodeStyle: opts.nodeStyle || model.nodeStyle || null };
+  // boundaryLabel/boundarySubtitle follow the same ride-along pattern so a
+  // Snowflake-on-<cloud> deployment can replace the generic "Snowflake Data
+  // Cloud" caption (e.g. "SNOWFLAKE ON AZURE" + "Region: East US 2") without
+  // a dedicated UDF parameter.
+  const effOpts = {
+    ...opts,
+    nodeStyle: opts.nodeStyle || model.nodeStyle || null,
+    boundaryLabel: opts.boundaryLabel || model.boundaryLabel || null,
+    boundarySubtitle: opts.boundarySubtitle || model.boundarySubtitle || null,
+  };
 
   const packed = pack(model, effOpts);
   const edges = route(model, packed, effOpts);
@@ -2234,11 +2661,25 @@ function layout(input, opts = {}) {
   const zoneCategory = {};
   packed.zones.forEach(z => { zoneCategory[z.name] = z.category; });
 
+  // Build a lookup for metadata the layout engine uses internally but that
+  // nodeRects don't carry (detail, style, category), so it can be threaded
+  // into the output / used by post-hoc checks like category consistency.
+  const nodeDetail = {};
+  const nodeStyleById = {};
+  const nodeCategoryById = {};
+  (model.nodes || []).forEach(n => {
+    if (n.detail) nodeDetail[n.id] = n.detail;
+    if (n.style) nodeStyleById[n.id] = n.style;
+    nodeCategoryById[n.id] = n.category;
+  });
+
   const result = {
     nodes: packed.nodeRects.filter(n => !n.dummy).map(n => ({
       id: n.id,
       zone: n.zoneName,
       x: n.left, y: n.top, w: n.right - n.left, h: n.bottom - n.top,
+      ...(nodeDetail[n.id] ? { detail: nodeDetail[n.id] } : {}),
+      ...(nodeStyleById[n.id] ? { style: nodeStyleById[n.id] } : {}),
     })),
     edges: edges.map(e => ({ from: e.source, to: e.target, points: e.points, d: e.d, markerId: e.markerId })),
     zones: packed.zoneRects.map(z => ({
@@ -2249,12 +2690,14 @@ function layout(input, opts = {}) {
       x: packed.platformBoundary.left, y: packed.platformBoundary.top,
       w: packed.platformBoundary.right - packed.platformBoundary.left,
       h: packed.platformBoundary.bottom - packed.platformBoundary.top,
+      label: effOpts.boundaryLabel || null,
+      subtitle: effOpts.boundarySubtitle || null,
     } : null,
     // Phase 2: nested, arbitrary-depth grouping boxes (e.g. "AWS VPC"). Each
     // entry's parentId links it to its enclosing container (null if
     // top-level), so a render engine can draw outer boxes before inner ones.
     containers: (packed.containers || []).map(c => ({
-      id: c.id, label: c.label, parentId: c.parentId,
+      id: c.id, label: c.label, subtitle: c.subtitle || null, color: c.color || null, parentId: c.parentId,
       x: c.left, y: c.top, w: c.right - c.left, h: c.bottom - c.top,
     })),
     width: packed.width, height: packed.height,
@@ -2263,7 +2706,18 @@ function layout(input, opts = {}) {
   // compute here since all the geometry already exists; lets a caller (e.g.
   // GENERATE_DIAGRAM_ARTIFACTS) inspect result.quality without an extra SVG
   // round-trip, and is the same check tests/run.mjs uses as an invariant.
-  result.quality = assessQuality(result, opts.qualityOpts);
+  const geomQuality = assessQuality(result, opts.qualityOpts);
+  // Semantic check (found 2026-09-09): a zone whose member nodes disagree on
+  // category renders on the wrong side of the platform boundary for
+  // whichever nodes didn't win the zone's category. Merged into the SAME
+  // result.quality so any caller already checking result.quality.ok catches
+  // this without a separate code path.
+  const catQuality = checkCategoryConsistency(nodeCategoryById, packed.zones);
+  result.quality = {
+    ok: geomQuality.ok && catQuality.ok,
+    issues: geomQuality.issues.concat(catQuality.issues),
+    metrics: geomQuality.metrics,
+  };
   return result;
 }
 

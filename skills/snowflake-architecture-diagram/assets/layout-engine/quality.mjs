@@ -80,3 +80,47 @@ export function assessQuality(result, opts) {
     metrics: { width, height, aspectRatio, cardCrossings, packingDensity },
   };
 }
+
+// Semantic check, NOT purely geometric like assessQuality() above -- catches
+// the class of bug found 2026-09-09: a zone's rendered category (and
+// therefore which side of the platform boundary it lands on) is taken from
+// its FIRST member node, so mixing e.g. an onprem node and an outcome node
+// in the same zone/layer silently sweeps the second node's category to
+// wherever the first node's category happens to place it (a Streamlit
+// dashboard rendered outside the Snowflake boundary because it shared a
+// layer with an external data-share consumer). assessQuality() cannot see
+// this -- it never receives per-node category, only geometry -- so this is
+// a separate function index.mjs merges into the same result.quality.
+//
+// Only flags a mismatch that crosses the BOUNDARY SIDE (onprem = outside;
+// snow/bridge/outcome = inside, mirroring pack.mjs's own SNOW_CATEGORIES).
+// snow/bridge/outcome nodes sharing one zone is fine -- they land on the
+// same side either way (a real, benign pattern e.g. the row_wrap_stress
+// fixture's "Apps" zone mixing a 'snow'-category Cortex node with an
+// 'outcome'-category Streamlit node, both correctly inside the boundary).
+//
+// nodeCategoryById: { [nodeId]: category } for every real (non-dummy) node.
+// zones: [{ name, category, node_ids }] -- the zones actually rendered.
+function boundarySide(category) {
+  return category === 'onprem' ? 'outside' : 'inside';
+}
+
+export function checkCategoryConsistency(nodeCategoryById, zones) {
+  const issues = [];
+  (zones || []).forEach(z => {
+    const ids = (z.node_ids || []).filter(id => nodeCategoryById[id] != null);
+    const zoneSide = boundarySide(z.category);
+    const mismatched = ids.filter(id => boundarySide(nodeCategoryById[id]) !== zoneSide);
+    if (mismatched.length) {
+      issues.push({
+        code: 'MIXED_CATEGORY_ZONE',
+        detail: 'zone "' + z.name + '" is rendered ' + zoneSide + ' the platform boundary (category="' + z.category +
+          '") but contains node(s) ' + JSON.stringify(mismatched) + ' whose own category places them ' +
+          boundarySide(nodeCategoryById[mismatched[0]]) + ' it instead. Put nodes that belong on different sides ' +
+          'of the boundary in separate zones/layers.',
+      });
+    }
+  });
+  return { ok: issues.length === 0, issues };
+}
+

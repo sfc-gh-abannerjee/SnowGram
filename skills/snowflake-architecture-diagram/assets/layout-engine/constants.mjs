@@ -24,13 +24,21 @@ export const CARD = {
   // .icon — clamp(28,60%,44) box + margin-bottom 6
   iconBox: 44,
   iconMarginBottom: 6,
-  // .label — font ~12.5px, line-height ~1.25, margin-bottom 2
+  // .label — font ~12.5px, line-height ~1.25
   labelFont: 12.5,
   labelLineHeight: 1.25,
-  labelMarginBottom: 2,
+  // .fn-sub — the uppercase componentType badge (e.g. "DYNAMIC TABLE"),
+  // rendered between title and detail whenever componentType is set. Card
+  // height omitted this line entirely until 2026-09-09 (found via direct
+  // DOM overflow measurement: every card with a detail line clipped its
+  // last line by 7-14px, matching this line's height almost exactly).
+  subFont: 9.5,
+  subLineHeight: 1.1,
+  subMarginTop: 2,
   // .detail — font ~10.5px, line-height 1.4
   detailFont: 10.5,
   detailLineHeight: 1.4,
+  detailMarginTop: 2,
 };
 
 // CARD_WIDE — icon-left (wide) card geometry. The icon sits BESIDE the text
@@ -49,7 +57,14 @@ export const CARD_WIDE = {
   iconGap: 10,           // horizontal gap between icon and text
   labelFont: 12.5,
   labelLineHeight: 1.2,
-  labelMarginBottom: 1,
+  // .nodes-wide .fn-sub — --sub-size:8.5px, line-height:1.2.
+  // See CARD.subFont comment: previously omitted from card height entirely.
+  subFont: 8.5,
+  subLineHeight: 1.2,
+  // .nodes-wide .fn-text{gap:var(--title-gap)} — --title-gap:1px, applied by
+  // flexbox ONCE between each pair of visible children (title/sub/detail),
+  // not once per child. See measureNodeWide's gapH comment.
+  titleGap: 1,
   detailFont: 10,
   detailLineHeight: 1.3,
 };
@@ -69,6 +84,8 @@ export const ZONE = {
 export const LAYOUT = {
   outerColGap: 72, // .arch-layout gap (between non-boundary columns)
   rankColGap: 20, // .rank-column vertical gap (multi-zone column)
+  // gap between adjacent chips in a chip-row zone (tight, connected-looking)
+  chipColGap: 6,
   // dynamic inner-grid gap inside the platform boundary
   dynGapBase: 48,
   dynGapStep: 14,

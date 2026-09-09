@@ -144,5 +144,44 @@ run('nested containers (AWS Account > AWS VPC > 2 zones)', nestedContainerGraph)
   }
 }
 
+// ── mixed-category zone detection (found 2026-09-09) ──
+// A live "showcase" diagram mixed a data-share consumer (category 'onprem',
+// via icon-search fallback) and a Streamlit dashboard (category 'outcome')
+// into the same "Consume" layer. The zone's rendered category came from
+// whichever node was declared FIRST, silently sweeping the Streamlit card
+// outside the platform boundary -- a real semantic bug assessQuality()
+// could never catch since it only sees geometry, not category. This proves
+// the new checkCategoryConsistency() check (merged into result.quality)
+// actually catches that exact shape, both when it's present AND absent.
+{
+  const mixedGraph = {
+    nodes: [
+      { id: 'share', label: 'Arcadia Health', componentType: 'data share consumer', category: 'onprem', zone: 'Consume' },
+      { id: 'dash', label: 'Executive Dashboard', componentType: 'streamlit', category: 'outcome', zone: 'Consume' },
+      { id: 'gold', label: 'Gold', componentType: 'dynamic table', zone: 'Pipeline' },
+    ],
+    edges: [{ source: 'gold', target: 'dash' }, { source: 'gold', target: 'share' }],
+  };
+  const r = layout(mixedGraph);
+  console.log('\n# mixed-category zone (regression: Streamlit swept outside boundary)');
+  check('quality gate FAILS on a mixed-category zone (discriminating power)', r.quality.ok === false);
+  check('flagged issue names the mixed zone', r.quality.issues.some(i => i.code === 'MIXED_CATEGORY_ZONE' && i.detail.includes('Consume')),
+    JSON.stringify(r.quality.issues));
+
+  // and the inverse: splitting into separate zones (the actual fix applied
+  // to the live showcase) must clear the flag -- proves the check isn't
+  // just permanently red, i.e. it has real discriminating power both ways.
+  const splitGraph = {
+    nodes: [
+      { id: 'share', label: 'Arcadia Health', componentType: 'data share consumer', category: 'onprem', zone: 'Partner Share' },
+      { id: 'dash', label: 'Executive Dashboard', componentType: 'streamlit', category: 'outcome', zone: 'Consume' },
+      { id: 'gold', label: 'Gold', componentType: 'dynamic table', zone: 'Pipeline' },
+    ],
+    edges: [{ source: 'gold', target: 'dash' }, { source: 'gold', target: 'share' }],
+  };
+  const r2 = layout(splitGraph);
+  check('quality gate PASSES once the zones are split by category', r2.quality.ok === true, JSON.stringify(r2.quality.issues));
+}
+
 console.log('\n' + (failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'));
 process.exit(failures === 0 ? 0 : 1);

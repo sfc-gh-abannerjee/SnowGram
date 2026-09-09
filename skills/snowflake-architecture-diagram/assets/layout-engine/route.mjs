@@ -52,6 +52,50 @@ export function route(model, packed, opts = {}) {
   (containers || []).forEach(c => obstacles.push({ id: 'container:' + c.id, left: c.left, top: c.top, right: c.right, bottom: c.bottom }));
   if (platformBoundary) obstacles.push({ id: 'boundary', left: platformBoundary.left, top: platformBoundary.top, right: platformBoundary.right, bottom: platformBoundary.bottom });
 
+  // Zone/container/boundary title text sits in the top-left corner of each
+  // box (see render_diagram_generated.py's own node_boxes list, built for
+  // the SAME reason but only to keep EDGE LABEL text off a title -- there
+  // was no equivalent for the connector LINE itself). A title id is never
+  // added to any edge's excludeIds (exclusionsFor only ever emits
+  // 'node:'/'zone:'/'container:'/'boundary' ids), so unlike the box's own
+  // rect -- which an edge legitimately starting/ending inside it must be
+  // allowed to sit inside -- these strips are hard obstacles for EVERY
+  // edge, including ones whose own zone/container this is. Found via
+  // direct visual review of a live render: a skip-zone bridge line
+  // legally cut straight across "Ingestion"'s title band, because the
+  // container it belonged to (an ancestor of both endpoints) excluded its
+  // whole rect from that edge's obstacle set, and nothing else stood in
+  // for just the label text.
+  //
+  // A container/boundary can ALSO carry a one-line SUBTITLE rendered just
+  // below the label (smaller font) -- found via direct visual review
+  // (2026-09-09): a connector cut straight through "Region: East US 2 -
+  // Business Critical" under a boundary label, because this obstacle only
+  // ever covered the LABEL's single line, never the subtitle's. Extend the
+  // box height (and, since a subtitle is often the longer string) width
+  // whenever one is present.
+  const charW = { zone: 7.8, container: 6.8, subtitle: 5.2 };
+  zoneRects.forEach(zr => {
+    const nameW = String(zr.name || '').length * charW.zone;
+    obstacles.push({ id: 'zonetitle:' + zr.name, left: zr.left + 8, top: zr.top + 6, right: zr.left + 8 + nameW, bottom: zr.top + 28 });
+  });
+  (containers || []).forEach(c => {
+    const nameW = String(c.label || c.id || '').length * charW.container;
+    const subW = c.subtitle ? String(c.subtitle).length * charW.subtitle : 0;
+    const w = Math.max(nameW, subW);
+    const bottom = c.subtitle ? c.top + 35 : c.top + 22;
+    obstacles.push({ id: 'containertitle:' + c.id, left: c.left + 8, top: c.top + 4, right: c.left + 8 + w, bottom });
+  });
+  if (platformBoundary) {
+    const boundaryTitle = opts.boundaryLabel || 'Snowflake Data Cloud';
+    const boundarySub = opts.boundarySubtitle || null;
+    const nameW = boundaryTitle.length * charW.container;
+    const subW = boundarySub ? String(boundarySub).length * charW.subtitle : 0;
+    const w = Math.max(nameW, subW);
+    const bottom = boundarySub ? platformBoundary.top + 40 : platformBoundary.top + 24;
+    obstacles.push({ id: 'boundarytitle', left: platformBoundary.left + 12, top: platformBoundary.top + 8, right: platformBoundary.left + 12 + w, bottom });
+  }
+
   const canvasBounds = { minX: -40, minY: -40, maxX: (width || 2000) + 40, maxY: (height || 2000) + 40 };
 
   // Every obstacle a node's own position is legitimately inside: its own

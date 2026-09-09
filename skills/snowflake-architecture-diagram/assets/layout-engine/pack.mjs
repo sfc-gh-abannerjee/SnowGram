@@ -109,6 +109,117 @@ function balancedWrapCap(items, maxWidth, colGap) {
   return lo;
 }
 
+// Refines the WITHIN-ROW order of a wrapUnits() result for zone-wrapping
+// items (each item has a `.z.name`), by directly minimizing total weighted
+// cross-row edge distance (sum, over every pair of zones in ADJACENT rows
+// connected by >=1 real edge, of |sequence-index difference| * edge count).
+// This REPLACES an earlier median/barycenter-heuristic version: verified by
+// direct cost comparison (see CHANGELOG) that the median heuristic can
+// converge to a WORSE arrangement than the simple "reverse every odd row"
+// snake pattern already baked into wrapUnits, because each zone chasing
+// its own median independently doesn't minimize the row's actual total
+// edge length when neighbors compete for the same position -- median
+// minimizes a different, per-item objective, not the sum we actually care
+// about. Exhaustively tries every permutation for a row (rows are small --
+// typically well under MAX_EXHAUSTIVE items -- so this is cheap and exact,
+// not a heuristic approximation) with a greedy adjacent-swap fallback for
+// unusually large rows. Only reorders WITHIN each row -- never moves an
+// item to a different row -- so it can't break the bucket-contiguity the
+// platform boundary depends on (see assignRanks' bucketOf comment).
+function refineZoneRowOrderByEdgeLength(innerWrap, zonesInBoundary, edges, colGap) {
+  if (innerWrap.numRows < 2) return; // nothing to align across rows
+
+  const zoneOfNode = {};
+  zonesInBoundary.forEach(item => (item.z.node_ids || []).forEach(id => { zoneOfNode[id] = item.z.name; }));
+  const edgeWeight = {}; // "zoneA\u0000zoneB" (a<b) -> count of direct edges between them
+  edges.forEach(e => {
+    const sz = zoneOfNode[e.source], tz = zoneOfNode[e.target];
+    if (!sz || !tz || sz === tz) return;
+    const key = sz < tz ? sz + '\u0000' + tz : tz + '\u0000' + sz;
+    edgeWeight[key] = (edgeWeight[key] || 0) + 1;
+  });
+  function weightBetween(a, b) {
+    const key = a < b ? a + '\u0000' + b : b + '\u0000' + a;
+    return edgeWeight[key] || 0;
+  }
+
+  const byRow = {};
+  zonesInBoundary.forEach(item => { (byRow[item.rowIdx] = byRow[item.rowIdx] || []).push(item); });
+  const rowKeys = Object.keys(byRow).map(Number).sort((a, b) => a - b);
+
+  const posOf = {}; // zoneName -> current sequence index within its row
+  rowKeys.forEach(r => byRow[r].forEach((item, i) => { posOf[item.z.name] = i; }));
+
+  // Cost of placing `order` (a candidate arrangement of row r's items) given
+  // the CURRENT (already-decided) positions of rows r-1 and r+1.
+  function rowCost(r, order) {
+    let total = 0;
+    order.forEach((item, i) => {
+      [r - 1, r + 1].forEach(nr => {
+        if (!byRow[nr]) return;
+        byRow[nr].forEach(other => {
+          const w = weightBetween(item.z.name, other.z.name);
+          if (w) total += w * Math.abs(i - posOf[other.z.name]);
+        });
+      });
+    });
+    return total;
+  }
+
+  function permutations(arr) {
+    if (arr.length <= 1) return [arr];
+    const out = [];
+    for (let i = 0; i < arr.length; i++) {
+      const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+      permutations(rest).forEach(p => out.push([arr[i]].concat(p)));
+    }
+    return out;
+  }
+
+  const MAX_EXHAUSTIVE = 7; // 7! = 5040 candidates -- negligible cost, always exact
+
+  for (let pass = 0; pass < 6; pass++) {
+    let anyChange = false;
+    const passRows = pass % 2 === 0 ? rowKeys : rowKeys.slice().reverse();
+    passRows.forEach(r => {
+      let row = byRow[r];
+      if (row.length < 2) return;
+      if (row.length <= MAX_EXHAUSTIVE) {
+        let best = row, bestCost = rowCost(r, row);
+        permutations(row).forEach(perm => {
+          const c = rowCost(r, perm);
+          if (c < bestCost) { bestCost = c; best = perm; }
+        });
+        if (best !== row) { byRow[r] = row = best; anyChange = true; }
+      } else {
+        // Greedy adjacent-swap local search: cheap, not guaranteed globally
+        // optimal, but converges quickly and only runs for unusually wide
+        // rows where exhaustive search would be too slow.
+        let improved = true;
+        while (improved) {
+          improved = false;
+          for (let i = 0; i < row.length - 1; i++) {
+            const swapped = row.slice();
+            const tmp = swapped[i]; swapped[i] = swapped[i + 1]; swapped[i + 1] = tmp;
+            if (rowCost(r, swapped) < rowCost(r, row)) { row = swapped; improved = true; anyChange = true; }
+          }
+        }
+        byRow[r] = row;
+      }
+      row.forEach((item, i) => { posOf[item.z.name] = i; });
+    });
+    if (!anyChange) break;
+  }
+
+  // Recompute xInRow per row from the refined order (row membership,
+  // heights and Y-offsets are all untouched -- only intra-row sequence
+  // changed), then re-center each row exactly as wrapUnits itself does.
+  rowKeys.forEach(r => { let x = 0; byRow[r].forEach(item => { item.xInRow = x; x += item.width + colGap; }); });
+  const rowContentWidth = [];
+  zonesInBoundary.forEach(item => { const right = item.xInRow + item.width; if (!(rowContentWidth[item.rowIdx] > right)) rowContentWidth[item.rowIdx] = right; });
+  zonesInBoundary.forEach(item => { item.xInRow += (innerWrap.totalWidth - rowContentWidth[item.rowIdx]) / 2; });
+}
+
 // ── Nested containers (Phase 2) ──────────────────────────────────────
 // A container is a generalized, USER-declared version of the ONE hardcoded
 // platform boundary above: it sweeps a contiguous rank-column RANGE into one
@@ -131,6 +242,11 @@ function balancedWrapCap(items, maxWidth, colGap) {
 // for route.mjs's crossing-avoidance) and a memoized `buildUnit(id)` that
 // recursively computes chrome + wrapUnits(children) bottom-up, mirroring the
 // platformBoundary's own zonesInBoundary/innerWrap pattern one level deeper.
+//
+// Extra header clearance reserved whenever a container/boundary has a
+// subtitle line (see chromeH/buildBoundaryUnit below) -- keeps the first
+// inner zone's own top border from landing on top of the subtitle text.
+const SUBTITLE_EXTRA_H = 16;
 function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank, zoneSize, maxCanvasWidth, hasBoundary, snowStart, snowEnd) {
   const empty = {
     defs: {}, rangeCache: {}, topLevelIds: [], boundaryAdopterId: null,
@@ -154,7 +270,7 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
     if (!c || c.id == null) return;
     const seedIds = new Set(c.node_ids || []);
     (c.zone_names || []).forEach(zn => (zoneNodeIdsPre[zn] || []).forEach(id => seedIds.add(id)));
-    defs[c.id] = { id: c.id, label: c.label || c.id, seedIds, childIds: (c.container_ids || []).filter(cid => cid !== c.id), parentId: null };
+    defs[c.id] = { id: c.id, label: c.label || c.id, subtitle: c.subtitle || null, color: c.color || null, seedIds, childIds: (c.container_ids || []).filter(cid => cid !== c.id), parentId: null };
     if (c.include_platform_boundary === true && hasBoundary && boundaryAdopterId == null) boundaryAdopterId = c.id;
   });
   // Link parents (first-declared wins), then break any cycles so the
@@ -279,11 +395,17 @@ function buildContainerLayout(rawContainers, preConsolidationZones, zones, rank,
       if (!items.length) return (unitCache[id] = null);
       items.sort((a, b) => a.rank - b.rank);
       const chromeW = 2 * (LAYOUT.containerBorder + LAYOUT.containerPadSide);
-      const chromeH = 2 * LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop + LAYOUT.containerPadBottom;
+      // A subtitle line (Step 2) renders just below the label but the
+      // reserved header height was never extended for it -- found via
+      // direct coordinate check (2026-09-09): the first inner zone's own
+      // top border landed AT the subtitle's text baseline, visually
+      // slicing through it. Extra clearance whenever a subtitle exists.
+      const chromeH = 2 * LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop + LAYOUT.containerPadBottom +
+        (defs[id].subtitle ? SUBTITLE_EXTRA_H : 0);
       const innerMaxWidth = Math.max(maxCanvasWidth - chromeW, CARD.width);
       const innerWrap = wrapUnits(items, innerMaxWidth, LAYOUT.outerColGap, LAYOUT.rowWrapGap);
       const unit = {
-        id, label: defs[id].label, parentId: defs[id].parentId,
+        id, label: defs[id].label, subtitle: defs[id].subtitle, color: defs[id].color, parentId: defs[id].parentId,
         width: chromeW + innerWrap.totalWidth, height: chromeH + innerWrap.totalHeight,
         items, innerWrap,
       };
@@ -338,7 +460,7 @@ function consolidateZones(zones, nodesById, edges, opts) {
       const allIds = [];
       subGroups.forEach(sg => sg.node_ids.forEach(id => allIds.push(id)));
       const useSub = opts.consolidate_sub_groups === true;
-      out.push({ name: prefixName, category: group[0].category, node_ids: allIds, sub_groups: useSub ? subGroups : null });
+      out.push({ name: prefixName, category: group[0].category, node_ids: allIds, sub_groups: useSub ? subGroups : null, chipRow: group.every(g => g.chipRow) });
       group.forEach(g => (g.node_ids || []).forEach(id => { if (nodesById[id]) nodesById[id].zone = prefixName; }));
     }
     i = j;
@@ -458,6 +580,14 @@ function assignRanks(zones, edges) {
 // ── Intra-zone column + row assignment (port of buildZoneEl ~1149-1227) ──
 function intraLayout(zone, edges) {
   const ids = zone.node_ids || [];
+  // chip-row zones (inline medallion-pipeline chips) are always one row,
+  // in declaration order -- no fan-out/column propagation, just a
+  // left-to-right sequence.
+  if (zone.chipRow) {
+    const col = {}, rowIdx = {};
+    ids.forEach((id, i) => { col[id] = i; rowIdx[id] = 0; });
+    return { col, rowIdx, maxCol: Math.max(0, ids.length - 1), hasFanout: false };
+  }
   const set = {}; ids.forEach(id => { set[id] = true; });
   const intra = edges.filter(e => set[e.source] && set[e.target]);
   const outDeg = {};
@@ -633,7 +763,10 @@ export function pack(model, opts = {}) {
       zoneInfo[z.name] = { col, rowIdx, maxCol: z.sub_groups.length - 1, hasFanout: true, subGroups: z.sub_groups, subColOf };
     } else {
       const il = intraLayout(z, model.edges);
-      zoneInfo[z.name] = { col: il.col, rowIdx: il.rowIdx, maxCol: il.maxCol, hasFanout: il.hasFanout, subGroups: null, subColOf: {} };
+      const chipWidth = z.chipRow
+        ? Math.max(1, ...(z.node_ids || []).map(id => (size[id] ? size[id].w : 0)))
+        : null;
+      zoneInfo[z.name] = { col: il.col, rowIdx: il.rowIdx, maxCol: il.maxCol, hasFanout: il.hasFanout, subGroups: null, subColOf: {}, chipRow: z.chipRow, chipWidth };
     }
   });
 
@@ -700,11 +833,13 @@ export function pack(model, opts = {}) {
 
   // card width per zone column: sub/fanout use narrower min width
   function cardWidth(zi) {
+    if (zi.chipRow) return zi.chipWidth || CARD.width;
     if (zi.subGroups) return Math.max(ZONE.subColMinWidth, CARD.width);
     if (zi.hasFanout && zi.maxCol >= 1) return Math.max(ZONE.fanoutColMinWidth, CARD.width);
     return CARD.width;
   }
   function colGap(zi) {
+    if (zi.chipRow) return LAYOUT.chipColGap;
     if (zi.subGroups) return ZONE.subColGap;
     if (zi.hasFanout && zi.maxCol >= 1) return ZONE.fanoutColGap;
     return 0;
@@ -783,8 +918,10 @@ export function pack(model, opts = {}) {
       columns[sci].forEach(z => { const zs = zoneSize(z); zonesInBoundary.push({ z, zs, width: zs.width, height: zs.height }); });
     }
     const innerWrap = wrapUnits(zonesInBoundary, innerMaxWidth, dynInnerGap, LAYOUT.rowWrapGap);
+    refineZoneRowOrderByEdgeLength(innerWrap, zonesInBoundary, model.edges, dynInnerGap);
     const width = boundaryChromeW + innerWrap.totalWidth;
-    const height = LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop + innerWrap.totalHeight + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
+    const boundaryPadTop = LAYOUT.boundaryPadTop + (opts.boundarySubtitle ? SUBTITLE_EXTRA_H : 0);
+    const height = LAYOUT.boundaryBorder + boundaryPadTop + innerWrap.totalHeight + LAYOUT.boundaryPadBottom + LAYOUT.boundaryBorder;
     return { width, height, zonesInBoundary, innerWrap };
   }
   const boundaryUnit = buildBoundaryUnit();
@@ -862,7 +999,7 @@ export function pack(model, opts = {}) {
     boundaryRight = x + u.width;
     boundaryBottom = y + u.height;
     const innerOriginX = x + LAYOUT.boundaryBorder + LAYOUT.boundaryPadSide;
-    const innerOriginY = y + LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop;
+    const innerOriginY = y + LAYOUT.boundaryBorder + LAYOUT.boundaryPadTop + (opts.boundarySubtitle ? SUBTITLE_EXTRA_H : 0);
     const scope = { rowYOffset: u.innerWrap.rowYOffset.map(ry => ry + innerOriginY), rowHeights: u.innerWrap.rowHeights, slots: [] };
     channels.scopes.boundary = scope;
     u.zonesInBoundary.forEach(item => {
@@ -882,7 +1019,7 @@ export function pack(model, opts = {}) {
   // containerRects entry per box.
   function placeContainerUnit(unit, x, y) {
     const innerOriginX = x + LAYOUT.containerBorder + LAYOUT.containerPadSide;
-    const innerOriginY = y + LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop;
+    const innerOriginY = y + LAYOUT.containerBorder + LAYOUT.containerHeaderH + LAYOUT.containerPadTop + (unit.subtitle ? SUBTITLE_EXTRA_H : 0);
     const scope = { rowYOffset: unit.innerWrap.rowYOffset.map(ry => ry + innerOriginY), rowHeights: unit.innerWrap.rowHeights, slots: [] };
     channels.scopes[unit.id] = scope;
     unit.items.forEach(item => {
@@ -904,7 +1041,7 @@ export function pack(model, opts = {}) {
         scope.slots.push({ rowIdx: item.rowIdx, left, right: left + item.unit.width, top, bottom: top + item.unit.height, name: item.unit.id });
       }
     });
-    containerRects.push({ id: unit.id, label: unit.label, parentId: unit.parentId, left: x, top: y, right: x + unit.width, bottom: y + unit.height });
+    containerRects.push({ id: unit.id, label: unit.label, subtitle: unit.subtitle || null, color: unit.color || null, parentId: unit.parentId, left: x, top: y, right: x + unit.width, bottom: y + unit.height });
   }
 
   units.forEach(u => {
@@ -975,6 +1112,13 @@ export function pack(model, opts = {}) {
       if (isDummy[id]) { const mid = left + cw / 2; left = mid - DUMMY_W / 2; right = mid + DUMMY_W / 2; }
       const top = rowTop[r];
       const rect = { id, zoneName: z.name, col: c, rowIdx: r, dummy: !!isDummy[id], left, right, top, bottom: top + bandH, containerChain };
+      // Real card nodes (not dummies/zones) carry the icon's absolute
+      // vertical center so the router can anchor left/right ports there
+      // instead of the raw rect midpoint -- see measure.mjs's iconCenterY.
+      if (!isDummy[id] && size[id] && size[id].iconCenterY != null) {
+        rect.iconCenterY = top + size[id].iconCenterY;
+        rect.iconHalfHeight = size[id].iconHalfHeight;
+      }
       nodeRects.push(rect);
       if (zi.subGroups) {
         const sidx = zi.subColOf[id];

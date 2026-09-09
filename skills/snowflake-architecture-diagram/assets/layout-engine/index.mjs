@@ -16,7 +16,7 @@
 //
 // returns:
 //   {
-//     nodes: [{ id, label, zone, x, y, w, h }],
+//     nodes: [{ id, label, detail, zone, x, y, w, h }],
 //     edges: [{ from, to, points:[[x,y]...], d:"M...", markerId }],
 //     zones: [{ name, x, y, w, h, category }],
 //     platformBoundary: { x, y, w, h } | null,
@@ -26,7 +26,7 @@
 import { toModel } from './model.mjs';
 import { pack } from './pack.mjs';
 import { route } from './route.mjs';
-import { assessQuality } from './quality.mjs';
+import { assessQuality, checkCategoryConsistency } from './quality.mjs';
 
 export function layout(input, opts = {}) {
   const model = toModel(input);
@@ -37,7 +37,16 @@ export function layout(input, opts = {}) {
   // nodeStyle ('wide' | null) may arrive via opts OR ride in the model JSON
   // (so the 1-arg UDF, which calls layout(input, {}), can still request wide
   // by setting model.nodeStyle). Thread it down to card measurement.
-  const effOpts = { ...opts, nodeStyle: opts.nodeStyle || model.nodeStyle || null };
+  // boundaryLabel/boundarySubtitle follow the same ride-along pattern so a
+  // Snowflake-on-<cloud> deployment can replace the generic "Snowflake Data
+  // Cloud" caption (e.g. "SNOWFLAKE ON AZURE" + "Region: East US 2") without
+  // a dedicated UDF parameter.
+  const effOpts = {
+    ...opts,
+    nodeStyle: opts.nodeStyle || model.nodeStyle || null,
+    boundaryLabel: opts.boundaryLabel || model.boundaryLabel || null,
+    boundarySubtitle: opts.boundarySubtitle || model.boundarySubtitle || null,
+  };
 
   const packed = pack(model, effOpts);
   const edges = route(model, packed, effOpts);
@@ -47,11 +56,25 @@ export function layout(input, opts = {}) {
   const zoneCategory = {};
   packed.zones.forEach(z => { zoneCategory[z.name] = z.category; });
 
+  // Build a lookup for metadata the layout engine uses internally but that
+  // nodeRects don't carry (detail, style, category), so it can be threaded
+  // into the output / used by post-hoc checks like category consistency.
+  const nodeDetail = {};
+  const nodeStyleById = {};
+  const nodeCategoryById = {};
+  (model.nodes || []).forEach(n => {
+    if (n.detail) nodeDetail[n.id] = n.detail;
+    if (n.style) nodeStyleById[n.id] = n.style;
+    nodeCategoryById[n.id] = n.category;
+  });
+
   const result = {
     nodes: packed.nodeRects.filter(n => !n.dummy).map(n => ({
       id: n.id,
       zone: n.zoneName,
       x: n.left, y: n.top, w: n.right - n.left, h: n.bottom - n.top,
+      ...(nodeDetail[n.id] ? { detail: nodeDetail[n.id] } : {}),
+      ...(nodeStyleById[n.id] ? { style: nodeStyleById[n.id] } : {}),
     })),
     edges: edges.map(e => ({ from: e.source, to: e.target, points: e.points, d: e.d, markerId: e.markerId })),
     zones: packed.zoneRects.map(z => ({
@@ -62,12 +85,14 @@ export function layout(input, opts = {}) {
       x: packed.platformBoundary.left, y: packed.platformBoundary.top,
       w: packed.platformBoundary.right - packed.platformBoundary.left,
       h: packed.platformBoundary.bottom - packed.platformBoundary.top,
+      label: effOpts.boundaryLabel || null,
+      subtitle: effOpts.boundarySubtitle || null,
     } : null,
     // Phase 2: nested, arbitrary-depth grouping boxes (e.g. "AWS VPC"). Each
     // entry's parentId links it to its enclosing container (null if
     // top-level), so a render engine can draw outer boxes before inner ones.
     containers: (packed.containers || []).map(c => ({
-      id: c.id, label: c.label, parentId: c.parentId,
+      id: c.id, label: c.label, subtitle: c.subtitle || null, color: c.color || null, parentId: c.parentId,
       x: c.left, y: c.top, w: c.right - c.left, h: c.bottom - c.top,
     })),
     width: packed.width, height: packed.height,
@@ -76,7 +101,18 @@ export function layout(input, opts = {}) {
   // compute here since all the geometry already exists; lets a caller (e.g.
   // GENERATE_DIAGRAM_ARTIFACTS) inspect result.quality without an extra SVG
   // round-trip, and is the same check tests/run.mjs uses as an invariant.
-  result.quality = assessQuality(result, opts.qualityOpts);
+  const geomQuality = assessQuality(result, opts.qualityOpts);
+  // Semantic check (found 2026-09-09): a zone whose member nodes disagree on
+  // category renders on the wrong side of the platform boundary for
+  // whichever nodes didn't win the zone's category. Merged into the SAME
+  // result.quality so any caller already checking result.quality.ok catches
+  // this without a separate code path.
+  const catQuality = checkCategoryConsistency(nodeCategoryById, packed.zones);
+  result.quality = {
+    ok: geomQuality.ok && catQuality.ok,
+    issues: geomQuality.issues.concat(catQuality.issues),
+    metrics: geomQuality.metrics,
+  };
   return result;
 }
 

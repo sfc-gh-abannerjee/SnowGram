@@ -66,6 +66,16 @@ function categoryFrom(node) {
   return 'snow';
 }
 
+// A cloud vendor's PRIVATE CONNECTIVITY construct (Azure Private Link, AWS
+// PrivateLink) is network plumbing that bridges two boundaries rather than
+// a full service living inside either one -- render it as a small
+// icon+caption chip (see measure.mjs) instead of a normal card.
+function isGatewayLike(node) {
+  const t = String(node.componentType || node.object_type || '').toLowerCase();
+  const l = String(node.label || '').toLowerCase();
+  return /private[\s_-]?link/.test(t) || /private[\s_-]?link/.test(l);
+}
+
 // Ensure zones exist and node_ids are populated (mirrors the viewer's
 // defensive backfill).
 function normalize(model) {
@@ -73,8 +83,20 @@ function normalize(model) {
     id: n.id,
     label: n.label != null ? n.label : n.id,
     detail: n.detail || '',
+    // Needed by measure.mjs to size the .fn-sub componentType badge line --
+    // dropping this field here silently zeroed that line out of every card's
+    // computed height (found 2026-09-09: cards with a detail line clipped
+    // their last line because subH always computed to 0 through the real
+    // pipeline, even though measureNode itself correctly accounts for it).
+    componentType: n.componentType || '',
     category: categoryFrom(n),
     zone: n.zone || n.boundary || 'Main',
+    // 'gateway' shrinks the card to a small icon+caption chip (see
+    // measure.mjs/measureNodeGateway) for network-plumbing nodes (Azure
+    // Private Link, AWS PrivateLink) that are a bridge/connector, not a
+    // full service -- auto-detected from componentType/label so the agent
+    // doesn't need to know about this render detail.
+    style: n.style || (isGatewayLike(n) ? 'gateway' : null),
   }));
   const edges = (model.edges || []).map(e => ({
     source: e.source != null ? e.source : e.from,
@@ -118,12 +140,27 @@ function normalize(model) {
   }
 
   const nodeIdSet = {}; nodes.forEach(n => { nodeIdSet[n.id] = true; });
+
+  // A zone whose members are ALL explicitly styled 'chip' (e.g. inline
+  // medallion pipeline stages -- Bronze/Silver/Gold) renders as a compact
+  // single-row strip of connected pills instead of stacked full-size cards.
+  // Opt-in only (no auto-detection): the agent marks each such node
+  // "style":"chip" itself, since nothing about a node's componentType alone
+  // reliably signals "this belongs in an inline pipeline chip-row".
+  const nodeStyleById = {}; nodes.forEach(n => { nodeStyleById[n.id] = n.style; });
+  zones.forEach(z => {
+    const ids = z.node_ids || [];
+    z.chipRow = ids.length > 0 && ids.every(id => nodeStyleById[id] === 'chip');
+  });
+
   const containers = Array.isArray(model.containers)
     ? model.containers
         .filter(c => c && c.id != null)
         .map(c => ({
           id: String(c.id),
           label: c.label != null ? c.label : String(c.id),
+          subtitle: c.subtitle != null ? String(c.subtitle) : null,
+          color: c.color != null ? String(c.color) : null,
           zone_names: Array.isArray(c.zone_names) ? c.zone_names.slice() : [],
           node_ids: Array.isArray(c.node_ids) ? c.node_ids.filter(id => nodeIdSet[id]) : [],
           container_ids: Array.isArray(c.container_ids) ? c.container_ids.map(String) : [],
@@ -141,6 +178,8 @@ function normalize(model) {
     consolidate: model.consolidate !== false,
     consolidate_sub_groups: model.consolidate_sub_groups === true,
     nodeStyle: model.nodeStyle || null,
+    boundaryLabel: model.boundaryLabel != null ? String(model.boundaryLabel) : null,
+    boundarySubtitle: model.boundarySubtitle != null ? String(model.boundarySubtitle) : null,
   };
 }
 
