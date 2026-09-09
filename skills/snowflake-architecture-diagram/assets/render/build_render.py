@@ -18,7 +18,7 @@ Both outputs are GENERATED - never hand-edit them. Edit render_diagram.dev.sql
 (the canonical source) and re-run this build.
 
 Source resolution order:
-  --src ARG  >  $SNOWGRAM_RENDER_SRC  >  the default snowgram-eng dev path.
+  --src ARG  >  $SNOWGRAM_RENDER_SRC  >  the in-repo default (assets/render/source/).
 
 Usage:
   python3 build_render.py                 # module + chrome
@@ -41,11 +41,12 @@ SKILL_DIR = SCRIPT_DIR.parent.parent                   # skill root
 RENDER_OUT = SCRIPT_DIR / "render_diagram_generated.py"
 CHROME_DIR = SKILL_DIR / "assets" / "diagram-interactivity" / "chrome"
 
-DEFAULT_SRC = Path(
-    os.path.expanduser(
-        "~/Documents/snowgram-eng/backend/sql/dev_temp_abannerjee/render_diagram.dev.sql"
-    )
-)
+# In-repo canonical source (2026-09-09 consolidation: was
+# ~/Documents/snowgram-eng/backend/sql/dev_temp_abannerjee/render_diagram.dev.sql,
+# a SEPARATE repo/GitHub account now kept frozen. The engineering-repo copy still
+# exists there as a historical snapshot but is no longer read by this build --
+# edit THIS file going forward.
+DEFAULT_SRC = SCRIPT_DIR / "source" / "render_diagram.dev.sql"
 
 # Feature-layer constants to surface for the viewer (Phase 3/4).
 CHROME_CONSTANTS = {
