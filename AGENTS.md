@@ -74,6 +74,19 @@ render change "done," "fixed," or "verified" from your own screenshot
 inspection alone -- the user must confirm it visually before you end the
 turn or move on to the next phase.
 
+**This gate is now ALSO enforced globally**, independent of this repo's
+`.cortex/hooks.json` (2026-09-09 fix): the project-local hooks below only
+load when a session's CWD is inside this repo tree, so a session rooted in a
+different project that still edits/deploys this repo's layout-engine or
+renderer via absolute paths (verified failure case: working from
+`~/Documents/apex_health`) never triggered them. The equivalent gate now
+also lives at `~/.snowflake/cortex/hooks/snowgram_visual_gate.py`, registered
+in `~/.snowflake/cortex/settings.json` at `PostToolUse` (matcher `*`) and
+`Stop`, session-scoped so it can never affect an unrelated session. Run
+`python3 ~/.snowflake/cortex/hooks/snowgram_visual_gate.py --self-test` to
+verify it. The project-local hooks below still apply too (redundant, not
+conflicting) when a session IS rooted here.
+
 - After any change to `assets/layout-engine/*.mjs` or the render pipeline
   (`render_diagram.dev.sql` / `render_diagram_generated.py`), regenerate the
   review package (`assets/scripts/review_harness.py`) and present the new
