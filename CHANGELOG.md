@@ -4,6 +4,69 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-09-09 (Apex Health end-to-end regression pass)
+
+### Fixed
+- **Card-height regression from a dropped `componentType` field**: `normalize()`
+  in `model.mjs` built each node as `{id, label, detail, category, zone, style}`,
+  silently dropping `componentType` before it ever reached `measureNode()`/
+  `measureNodeWide()`. The rendered `.fn-sub` category badge line was therefore
+  invisible to card-height math even though it always renders -- any card with
+  a `detail` line clipped its last line of text by 7-14px (found via Playwright
+  `scrollHeight` vs `clientHeight` measurement, not screenshots). Fixed by
+  carrying `componentType` through normalization and correcting the flex-gap
+  math in both card-measurement functions (one gap was double-counted, another
+  never counted), plus biasing the glyph-width heuristic (0.52 -> 0.58) after
+  measuring that it undercounted wrapped lines for semi-bold titles and
+  letter-spaced uppercase sub-labels.
+- **Zone category misassignment when the caller relies on the JS heuristic**:
+  `categoryFrom()`'s vendor-prefix regex and `CATEGORY_BY_TYPE` map only match
+  underscore-separated tokens (`azure_synapse`, `dynamic_table`); a caller using
+  human-readable, space-separated `componentType` strings (`"azure synapse"`)
+  gets no match and silently defaults to `'snow'` (inside the boundary). Added
+  `checkCategoryConsistency()` (`quality.mjs`) as a permanent, non-geometric
+  quality-gate check: flags a zone when a member node's own category disagrees
+  with the zone's rendered category's boundary side, naming the exact zone and
+  node so this class of bug fails loudly instead of silently misplacing a zone.
+- **Connector routing hidden/misaimed arrowheads**: `gridroute.mjs` ports now
+  anchor to a card's icon center (`iconCenterY`/`iconHalfHeight`) instead of the
+  card's raw geometric midpoint -- a fan-out offset was landing directly on
+  label text once cards could be taller than their natural content height.
+  Arrival at a port is now constrained to that port's own axis (a left/right
+  port must be reached by a horizontal final segment), since accepting the
+  perpendicular direction let a marker's triangle point along a card's edge
+  instead of into it, or spill sideways into the (opaque, painted-on-top) card
+  where it's invisible. Removed the old "stub into the rect's center" step
+  entirely, since it now does the opposite of what it was for: with opaque
+  cards, extending the path past the true port moves the arrowhead from the
+  visible gap between cards to a point hidden under the card.
+- **Boundary/container subtitle overlapping the first zone's border**: widened
+  the title-strip routing obstacles and reserved additional vertical space
+  (`pack.mjs`) for a two-line boundary or container label, so a subtitle (e.g.
+  "Region: East US 2 - HIPAA / Business Critical") no longer visually overlaps
+  the zone it sits above.
+
+### Changed
+- **RENDER_DIAGRAM/GENERATE_DIAGRAM_ARTIFACTS source moved into this repo**:
+  both function bodies previously lived only in `snowgram-eng` (a separate
+  GitHub org/account), now kept frozen as a parked reference copy while active
+  work continues here. Copied byte-identical into
+  `assets/render/source/*.dev.sql`; `build_render.py`'s default `--src` now
+  points there. A rebuild from the new location was diffed against the
+  previous build and confirmed identical (only header comments differ).
+- **Visual-verification gate promoted from project-local to global**: the
+  `.cortex/hooks.json` gate in this repo only loads when a session's CWD is
+  inside this repo tree, so a session rooted elsewhere that still edits/deploys
+  this repo's code via absolute paths never triggered it. The same enforcement
+  now also lives at `~/.snowflake/cortex/hooks/snowgram_visual_gate.py`,
+  registered globally and scoped per `session_id` so it can never affect an
+  unrelated session (proven via `--self-test`, including the specific case of
+  one session's armed gate not blocking a different session's `Stop` event).
+- `review_harness.py`'s live-agent HTML-link regex expected a specific label
+  format that didn't match the agent's actual response text, so every `--live`
+  run reported "Could not find an HTML download link" regardless of whether one
+  existed. Narrowed the regex to match the link text directly.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-01 (part 4: connector routing readability)
 
 ### Fixed
