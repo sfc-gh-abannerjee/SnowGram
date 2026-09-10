@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
 # Canonical source: /Users/abannerjee/Documents/SnowGram/skills/snowflake-architecture-diagram/assets/render/source/render_diagram.dev.sql
-# sha256(source): 78380155f7489b17547afff7018ee7c9dfff4e2d2c62c4722e4a731290545c76
-# generated: 2026-09-10T17:40:23+00:00
+# sha256(source): 8c1440dc9b8d60d727c9ddf9102f7cc1e4f3e89d32a53607de6e6cf55a2654cc
+# generated: 2026-09-10T18:26:31+00:00
 
 
 import json, base64
@@ -339,7 +339,23 @@ def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=No
         if lbl:
             mp = _edge_label_point(pts, node_boxes, placed_label_boxes, len(lbl))
             placed_label_boxes.append((mp[0] - max(20.0, len(lbl) * 3.2), mp[1] - 8.0, mp[0] + max(20.0, len(lbl) * 3.2), mp[1] + 8.0))
-            body.append("<text x=\"" + str(X(mp[0])) + "\" y=\"" + str(Y(mp[1]) - 4) + "\" font-size=\"10\" fill=\"#5b6770\" text-anchor=\"middle\" paint-order=\"stroke\" stroke=\"#ffffff\" stroke-width=\"3\" stroke-linejoin=\"round\">" + _xesc(lbl) + "</text>")
+            # Two separate <text> elements (white halo painted first, dark
+            # fill painted second/on top) instead of one element relying on
+            # paint-order="stroke" -- weasyprint (the renderer behind the
+            # PNG/PDF export path, _svg_to_pdf_png) does NOT support
+            # paint-order and falls back to the SVG default (stroke ON TOP
+            # of fill), so the white halo completely covered the dark text,
+            # leaving only a solid white blob sitting on the connector line
+            # -- exactly reading as a broken/disconnected line segment.
+            # Found 2026-09-10 (user: "text labels showing up as white on a
+            # white background, that's what makes it look like there's line
+            # breaks"). Two ordered elements are honored identically by
+            # every renderer (browsers, weasyprint, any SVG viewer) since
+            # paint order there is just DOM/document order, not a CSS
+            # feature that can be unsupported.
+            _lx, _ly = str(X(mp[0])), str(Y(mp[1]) - 4)
+            body.append("<text x=\"" + _lx + "\" y=\"" + _ly + "\" font-size=\"10\" fill=\"none\" text-anchor=\"middle\" stroke=\"#ffffff\" stroke-width=\"3\" stroke-linejoin=\"round\">" + _xesc(lbl) + "</text>")
+            body.append("<text x=\"" + _lx + "\" y=\"" + _ly + "\" font-size=\"10\" fill=\"#5b6770\" text-anchor=\"middle\">" + _xesc(lbl) + "</text>")
 
     # Node cards are drawn AFTER (i.e. visually on top of) every connector
     # path above -- an opaque card hides whatever portion of a routed line

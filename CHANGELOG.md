@@ -152,18 +152,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   verification (fresh regeneration + visual inspection of the actual
   rendered output) is the reliable signal.
 
-### Investigated, no bug found
-- **Apparent "line breaks" in connector lines**: extracted every
-  `connector-path`'s `d` attribute and confirmed zero paths contain more
-  than one `M` command (no genuinely disconnected sub-paths). A pixel-level
-  color-match scan produced widespread false positives (thin 1.3-2.2px
-  anti-aliased strokes don't reliably land pixel-perfect at hand-computed
-  sample coordinates) and was abandoned in favor of precise,
-  coordinate-transform-based crops, which showed all sampled connectors as
-  visually continuous. Likely explanation: intentional dash/dot patterns on
-  some categories (governance/legacy/dataflow use `stroke-dasharray`) read
-  as "broken" at a glance, or a screenshot/compression artifact -- not a
-  rendering defect.
+- **"Line breaks" in connector lines, PNG/PDF only**: the interactive HTML
+  never renders edge labels as visible text at all (`edge_labels` is only
+  used there to help classify connector category), so the earlier
+  "investigated, no bug found" conclusion for that surface stands. But the
+  static SVG renderer (`_svg()`, feeding the `png`/`pdf`/`svg` export
+  formats) DOES draw each edge's label as text with a white halo for
+  readability over a busy line: `<text ... fill="#5b6770" ...
+  paint-order="stroke" stroke="#ffffff" stroke-width="3">`. Chromium
+  renders this exactly as intended (dark gray text, subtle white glow) --
+  confirmed by opening the raw `.svg` output directly in a browser. But the
+  `png`/`pdf` export path runs through weasyprint (`_svg_to_pdf_png`),
+  which does not support the `paint-order` CSS property and falls back to
+  the SVG spec's default order (stroke painted AFTER/ON TOP of fill) --
+  so the white halo completely covered the dark text, leaving a solid
+  white blob sitting on top of the connector line at every labeled edge.
+  That blob is exactly what reads as a "disconnected"/"broken" line
+  segment in a PNG or PDF export. Root-caused after the user clarified
+  ("it's the text labels showing up as white on a white background") while
+  doing a side-by-side quality pass across all 6 export formats
+  (html/svg/png/pdf/drawio/mmd) -- the drawio/mermaid label mechanisms are
+  unrelated (draw.io renders its own label chrome natively) and were
+  unaffected. Fixed by replacing the single paint-order-dependent `<text>`
+  with two separate elements in document order -- a stroke-only (white,
+  `fill="none"`) halo painted first, then a fill-only (dark, no stroke)
+  copy painted second/on top -- which produces the identical visual result
+  in every renderer (browser or weasyprint) since document order, unlike
+  `paint-order`, is not an optional CSS feature. Verified via a fresh
+  regeneration against the real model: the PNG and the PDF (rasterized via
+  `pdf2image`) both now show every one of the 13 labeled edges
+  ("orchestrated load", "private ingest", "Secure Data Sharing", etc.) as
+  legible dark text with a clean white halo, no blobs.
 
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-09 (Apex Health end-to-end regression pass)
 
