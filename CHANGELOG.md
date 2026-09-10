@@ -4,6 +4,42 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Tooling] - 2026-09-10 (review harness: every output format, every run)
+
+### Added
+- **`review_harness.py` now produces every output format for every
+  fixture, not just HTML + one screenshot**: the package previously wrote
+  html/svg/drawio/mmd plus a single Playwright screenshot of the
+  interactive HTML, silently leaving PDF and the static-SVG renderer's own
+  rendering out entirely. That's a real gap, not a cosmetic one -- a bug
+  can live in one renderer and not the other (this session's card-title
+  word-wrap fix was static-SVG-only and would NOT have shown up in the
+  interactive-HTML screenshot alone). Added `svg_to_pdf_png()` to
+  `render_local.py`, a direct port of `generate_artifacts.dev.sql`'s own
+  `_svg_to_pdf_png` (weasyprint SVG->PDF, pdf2image PDF->PNG), so the
+  offline package's PDF and `<name>.static.png` go through the SAME
+  conversion path the deployed proc actually uses in production, not a
+  separate approximation. `review_harness.py` writes both sidecars and
+  links every format produced (`html`/`svg`/`drawio`/`mmd`/`pdf`/
+  `static_png`/`png`) per fixture in `REVIEW.md`, and gracefully degrades
+  (matching the existing Playwright try/except pattern) if weasyprint or
+  its system libraries aren't available rather than failing the run.
+- **macOS weasyprint gotcha, documented in the script**: `pip install
+  weasyprint` alone raises `cannot load library 'libgobject-2.0-0'` even
+  after `brew install pango` -- the dynamic linker doesn't search
+  Homebrew's lib dir by default. Needs
+  `DYLD_LIBRARY_PATH=/opt/homebrew/lib python3 review_harness.py`.
+- Synced `render_local.py`'s standalone `_category()` copy with the
+  `data share`/`secure data sharing`/etc. -> `bridge` rule added earlier
+  this session to `generate_artifacts.dev.sql` -- this offline copy had
+  drifted without it, which would have silently classified "Inbound
+  Share"-style nodes differently offline than the deployed pipeline does.
+- Added a `FIXTURE_DESCRIPTIONS` entry for `apex_health_privatelink_stub`,
+  the real 16-node/18-edge model already used by `tests/run.mjs` for every
+  regression this session, but previously undocumented in the harness
+  (still rendered by default -- it globs every fixture file -- just with
+  no description in `REVIEW.md`).
+
 ## [Track 1: Layout Engine / Renderer] - 2026-09-10 (self-card re-entry, arrowhead spacing, title overflow)
 
 ### Fixed
