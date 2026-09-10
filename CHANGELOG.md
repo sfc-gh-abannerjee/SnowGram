@@ -42,6 +42,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   it, plus a fresh live render (regenerated with the real captured model,
   bypassing agent non-determinism) showing a clean, adequately-spaced
   arrival with visible daylight from the platform boundary.
+- **`extendShortStubs()` itself relocated the hugging problem it was meant
+  to fix**: the fix above always slid a too-short stub all the way to
+  `MIN_STUB`, checking only that the shift didn't CROSS an active obstacle
+  -- but the only obstacle-free direction to slide into was, in the exact
+  live case above, a narrow ~13.5px gap between Azure Data Factory's
+  clearance zone and Snowpipe's own "Ingestion" zone boundary (excluded
+  from crossing-avoidance entirely, since it's the edge's own destination
+  zone). Reaching the full 20px landed the corridor 1.5px from that zone's
+  border -- visually indistinguishable from running along it, i.e. the same
+  "hugging a boundary" defect, just moved to a different boundary. Caught
+  by the user pointing at a fresh render, not by the (insufficiently
+  strict) regression test added for the first fix, which only checked
+  absolute stub length. Fixed by adding a second, softer `HUG_CLEARANCE`
+  (8px) check in `extendShortStubs`/`maxSafeSlide`: caps how far the slide
+  can go before it would come within 8px of ANY rect's edge -- including
+  ones excluded as active obstacles for this edge -- accepting a shorter
+  (but hug-free) stub when the available room is tighter than `MIN_STUB`
+  itself, rather than always reaching the full target at any visual cost.
+  Also fixed a bug in the first pass at this check: it computed "distance
+  to the near edge" unconditionally, which is wrong once the corridor's
+  current position is already PAST that near edge (exactly Ingestion's
+  case -- the corridor was already inside the zone's own span, so the
+  relevant edge to watch is the FAR one, not the near one); using the near
+  edge produced a large negative "available room" and collapsed the slide
+  to ~0, silently undoing the whole fix. Verified against the same real
+  16-node/18-edge model: the corridor now settles at 13.5px of stub length
+  (up from 8px, short of the full 20px target because the room genuinely
+  isn't there) while maintaining exactly `HUG_CLEARANCE` from Ingestion's
+  boundary; confirmed via a hi-DPI (3x) Playwright screenshot showing clear
+  visual daylight between the connector and the zone border where they
+  previously nearly touched, and a programmatic scan of all 18 connector
+  paths in the regenerated render finding zero remaining sub-6px/60px+
+  hugging segments against any zone or the platform boundary.
 
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-09 (Apex Health end-to-end regression pass)
 

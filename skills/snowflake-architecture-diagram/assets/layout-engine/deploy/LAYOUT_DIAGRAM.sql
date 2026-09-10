@@ -1958,6 +1958,60 @@ const CLEARANCE = 14; // px of standoff a path must keep from an unrelated obsta
 // only 8px from the target's own edge.
 const MIN_STUB = 20;
 
+// A softer clearance used ONLY by extendShortStubs' own visual check below,
+// against rects that are NOT active obstacles for this edge (typically the
+// edge's own source/target zone, which is legitimately excluded from
+// crossing-avoidance entirely). MIN_STUB's fix, extending a too-short stub
+// by sliding it toward whichever direction is obstacle-free, can slide it
+// straight toward that excluded zone's own border instead -- found
+// 2026-09-09, same session: fixing "Private Link -> Snowpipe"'s razor-thin
+// stub this way landed the corridor 1.5px from Snowpipe's own zone
+// boundary (visually indistinguishable from running along it), because the
+// only obstacle-free direction to extend into happened to be the narrow
+// 13.5px gap between an unrelated node's clearance zone and that boundary.
+// Smaller than CLEARANCE (14) on purpose: this is a "don't visually
+// overlap a box's border" minimum, not a full routing standoff, since some
+// closeness to your OWN destination zone's edge on final approach is
+// normal and expected.
+const HUG_CLEARANCE = 8;
+
+// How far a corridor at `coord` (varying along `axis`, moving in `dir`)
+// spanning [otherLo, otherHi] on the perpendicular axis can move before
+// coming within HUG_CLEARANCE of some OTHER rect's edge. Considers EVERY
+// rect regardless of whether it's an active obstacle for this edge, since
+// the visual "hugging" problem above happens precisely with rects that
+// aren't (the edge's own endpoints' zones) -- only the endpoints' own NODE
+// rects are skipped, since the path legitimately touches those.
+//
+// `coord` can already be INSIDE a given rect's span (exactly the case
+// above: the corridor sits at x=1072.5, already past Ingestion's own left
+// edge at 883, on its way toward Ingestion's right edge at 1086) -- the
+// relevant edge to keep clearance from is whichever one is AHEAD in the
+// direction of travel, which is the FAR edge once already inside, not the
+// NEAR one. Using the near edge unconditionally (as an earlier version of
+// this function did) computed a large NEGATIVE "available room" against
+// every rect the corridor already happened to be inside of, since a rect
+// behind you in the direction of travel isn't actually a constraint --
+// collapsing the slide to ~0 and defeating MIN_STUB's whole purpose.
+function maxSafeSlide(allRects, skipIds, axis, otherLo, otherHi, coord, dir) {
+  let maxDelta = Infinity;
+  for (const r of allRects) {
+    if (skipIds.has(r.id)) continue;
+    const rLo = axis === 0 ? r.top : r.left;
+    const rHi = axis === 0 ? r.bottom : r.right;
+    if (rHi <= otherLo || rLo >= otherHi) continue; // doesn't span the corridor at all
+    const nearEdge = axis === 0 ? (dir > 0 ? r.left : r.right) : (dir > 0 ? r.top : r.bottom);
+    const farEdge = axis === 0 ? (dir > 0 ? r.right : r.left) : (dir > 0 ? r.bottom : r.top);
+    const pastFar = dir > 0 ? coord >= farEdge : coord <= farEdge;
+    if (pastFar) continue; // this rect is entirely behind us already -- not a constraint
+    const beforeNear = dir > 0 ? coord < nearEdge : coord > nearEdge;
+    const relevantEdge = beforeNear ? nearEdge : farEdge; // not yet inside -> near; already inside -> far
+    const avail = dir > 0 ? (relevantEdge - coord - HUG_CLEARANCE) : (coord - relevantEdge - HUG_CLEARANCE);
+    if (avail < maxDelta) maxDelta = avail;
+  }
+  return Math.max(0, maxDelta);
+}
+
 // Slides a too-short first/last segment's shared elbow (and the segment
 // before it, so that one stays straight too) further back along the
 // corridor, re-validated against `active` so it can never introduce a new
@@ -1967,9 +2021,12 @@ const MIN_STUB = 20;
 // 3-point path is left untouched (in practice neither tends to need it --
 // the coincidental near-miss above only arises from routing around several
 // obstacles' clearance zones, which needs multiple turns to happen at all).
-function extendShortStubs(pts, active, margin) {
+// `allRects` + `srcId`/`tgtId` are only for the softer maxSafeSlide check
+// above; `active`/`margin` are the real (hard) crossing-avoidance check.
+function extendShortStubs(pts, active, margin, allRects, srcId, tgtId) {
   if (pts.length < 4) return pts;
   const out = pts.map(p => p.slice());
+  const skipIds = new Set(['node:' + srcId, 'node:' + tgtId]);
   function segOk(x1, y1, x2, y2) {
     for (let i = 0; i < active.length; i++) {
       if (segmentBlockedByRect(x1, y1, x2, y2, active[i], margin)) return false;
@@ -1985,7 +2042,12 @@ function extendShortStubs(pts, active, margin) {
     if (len >= MIN_STUB) return;
     const axis = Math.abs(port[1] - elbow[1]) < 0.5 ? 0 : 1; // the short segment's own varying axis
     const dir = elbow[axis] > port[axis] ? 1 : -1;
-    const delta = dir * (MIN_STUB - len);
+    const otherAxis = 1 - axis;
+    const otherLo = Math.min(corridorFar[otherAxis], elbow[otherAxis]);
+    const otherHi = Math.max(corridorFar[otherAxis], elbow[otherAxis]);
+    const safeSlide = maxSafeSlide(allRects, skipIds, axis, otherLo, otherHi, elbow[axis], dir);
+    const delta = dir * Math.min(MIN_STUB - len, safeSlide);
+    if (Math.abs(delta) < 0.5) return; // no room to improve without hugging something else
     const newElbow = elbow.slice(); newElbow[axis] += delta;
     const newCorridorFar = corridorFar.slice(); newCorridorFar[axis] += delta;
     if (segOk(anchor[0], anchor[1], newCorridorFar[0], newCorridorFar[1]) &&
@@ -2195,7 +2257,7 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
     if (Math.abs(p[0] - out[out.length - 1][0]) < 0.5 && Math.abs(p[1] - out[out.length - 1][1]) < 0.5) continue;
     out.push(p);
   }
-  const stubbed = extendShortStubs(out, active, margin);
+  const stubbed = extendShortStubs(out, active, margin, obstacles, srcRect.id, tgtRect.id);
   // Attach which side of each rect the winning path actually used, so a
   // caller routing several edges that share this src/tgt can bias
   // subsequent calls (via portBias) toward the same side -- keeps a fan-
