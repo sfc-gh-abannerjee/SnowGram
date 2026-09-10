@@ -53,6 +53,19 @@ export function assessQuality(result, opts) {
     issues.push({ code: 'ASPECT_RATIO', detail: 'aspect=' + aspectRatio.toFixed(2) + ' exceeds ' + cfg.maxAspectRatio + ' (canvas is growing unboundedly in one dimension)' });
   }
 
+  // NOTE (2026-09-09): tried tightening this to only exempt the segment
+  // immediately adjacent to e.from/e.to (rather than all segments), hoping
+  // to catch a routing bug where a forced port choice sent a path back
+  // through its own source's card. Reverted: a legitimate 2-segment
+  // departure/arrival "elbow" (leave via one side, short jog still inside
+  // the box's own footprint, then turn toward the target) is geometrically
+  // IDENTICAL to that bug at the segment level -- tightening it flagged 3
+  // pre-existing, visually-correct fixtures (medallion WIDE, fan-in/fan-out,
+  // row-wrap stress) as false positives. This bug class is only reliably
+  // distinguishable at the ROUTING level (is the chosen port side
+  // consistent with the target's actual zone-relative direction?), not by
+  // pattern-matching rendered segment geometry after the fact -- see
+  // route.mjs's roughDirection()-scoped port bias and its dedicated tests.
   let cardCrossings = 0;
   edges.forEach(e => {
     const pts = e.points || [];

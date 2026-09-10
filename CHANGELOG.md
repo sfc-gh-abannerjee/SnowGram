@@ -45,6 +45,67 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (`pack.mjs`) for a two-line boundary or container label, so a subtitle (e.g.
   "Region: East US 2 - HIPAA / Business Critical") no longer visually overlaps
   the zone it sits above.
+- **Fan-out port bias forced onto an incompatible direction**: the
+  `srcSideUsed`/`tgtSideUsed` hard-constraint mechanism (see 2026-09-01 entry
+  below) was keyed by node ID only, so once ANY edge from a node claimed a
+  side, ALL of that node's other edges were forced onto the SAME side
+  regardless of where their actual target sat. Found via a live render:
+  "Azure Private Link"'s edge to a far-away Snowpipe claimed its bottom side;
+  its second edge, to an adjacent Power BI card, was then forced onto that
+  same bottom side too, routing it back up through its own card's interior to
+  reach a height it never needed to leave from. Fixed in `route.mjs` by
+  adding `roughDirection()` -- buckets each edge into one of 4 compass
+  directions using ZONE bounding-box comparison (clean axis-aligned
+  non-overlap first, zone-center dx/dy fallback, node-center dx/dy fallback
+  only for same-zone edges) -- and re-keying the bias maps by `nodeId +
+  '|' + direction` instead of bare `nodeId`, so consistency is only forced
+  within a compatible direction bucket. Zone-level (not node-center)
+  comparison was a deliberate, validated choice: checked against the ORIGINAL
+  motivating fan-in case (Synapse/SQL/Blob -> dbt) and found individual
+  node-center dx/dy ratios there as fragile as 1.27x for one of the three
+  edges, whereas the zones themselves have a clean, stable 72px gap. Verified
+  three ways: (1) a hand-built `packed` object using the REAL coordinates
+  pulled from the live render that showed the bug now routes
+  privatelink->powerbi as a direct 2-point line that never re-enters its own
+  card; (2) two new permanent regression tests in `tests/run.mjs` -- one
+  reproducing this exact scenario (asserts the two edges now use different
+  exit sides), one re-asserting the original fan-in case's same-side
+  consistency still holds (checked by `git stash`-ing the fix and confirming
+  both fail/pass appropriately); (3) a fresh live-agent re-render showing no
+  recurrence of the pattern anywhere in the diagram. A tightened
+  `quality.mjs` `CARD_CROSSING` check (only exempting the segment immediately
+  adjacent to an edge's own endpoint, not every segment) was tried as an
+  independent detection mechanism for this bug class, but reverted: a
+  legitimate 2-segment departure/arrival "elbow" (leave one side, short jog
+  still inside the box's own footprint, turn toward the target) is
+  geometrically IDENTICAL to this bug at the segment level, and the tightened
+  check false-positived on 3 pre-existing, visually-correct fixtures. This bug
+  class is only reliably distinguishable at the routing level (is the chosen
+  side consistent with the target's actual direction?), not by pattern-
+  matching rendered segment geometry after the fact.
+
+### Fixed (deployment tooling)
+- **`snow sql -f` silently corrupts `&&` to `&` in JS/Python UDF bodies**:
+  already documented 2026-08-28 in `deploy/AGENT_INTEGRATION_RUNBOOK.md`, and
+  re-triggered 2026-09-09 by a `LAYOUT_DIAGRAM` deploy that forgot the
+  documented flag -- `snow sql -f`/`-q` performs client-side legacy SnowSQL
+  variable substitution by default (`--enable-templating` defaults to
+  `LEGACY,STANDARD`), which treats `&&` as an *escaped single ampersand* and
+  collapses it to `&` (bitwise AND, non-short-circuiting) before the statement
+  reaches Snowflake. `CREATE OR REPLACE FUNCTION` still succeeds with no
+  error; the corruption only surfaces at CALL time as `TypeError: Cannot read
+  properties of undefined (reading 'length')` on the first `x && x.length`-
+  shaped guard evaluated, for ANY input including trivial ones -- which
+  briefly looked exactly like a regression from the route.mjs fix above until
+  isolated by comparing the pre-fix and post-fix bundles side by side (both
+  failed identically) and diffing `&&`/`&` counts between the local source and
+  `GET_DDL` output (86 `&&` locally vs. 0 `&&`/86 `&` deployed). Fixed by
+  redeploying with `--enable-templating NONE`. Added
+  `deploy/deploy_layout_diagram.sh` -- the only supported way to deploy this
+  function via the CLI going forward -- which always passes the flag and
+  self-verifies via a post-deploy `GET_DDL` `&&`-count check, so this can't
+  silently recur just because a human forgot a flag documented in a file they
+  didn't happen to read that session.
 
 ### Changed
 - **RENDER_DIAGRAM/GENERATE_DIAGRAM_ARTIFACTS source moved into this repo**:

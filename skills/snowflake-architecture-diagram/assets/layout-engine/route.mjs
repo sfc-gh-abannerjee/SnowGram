@@ -25,6 +25,57 @@ export function route(model, packed, opts = {}) {
 
   // ── helpers reading packed rects ──
   const cy = (nr) => (nr.top + nr.bottom) / 2;
+  const zoneRectByName = {};
+  zoneRects.forEach(zr => { zoneRectByName[zr.name] = zr; });
+
+  function oppositeDirection(dir) {
+    return dir === 'right' ? 'left' : dir === 'left' ? 'right' : dir === 'top' ? 'bottom' : 'top';
+  }
+
+  // Buckets an edge into one of 4 rough compass directions (relative to the
+  // SOURCE -- "which way does this edge roughly head") so the fan-in/
+  // fan-out port-consistency mechanism below only forces a shared side on
+  // edges that actually want to leave/arrive in a COMPATIBLE direction.
+  // Before this, consistency was global-per-node: a node's edges going in
+  // genuinely incompatible directions (e.g. an immediate right neighbor vs.
+  // a target on the far side of the diagram) got forced onto the same
+  // side, and the "far" edge's already-established side dragged the
+  // "near" edge's path back across its own card to reach it (found
+  // 2026-09-09: "Azure Private Link"'s edge to an adjacent Power BI card
+  // was forced onto the side its unrelated Snowpipe edge had already
+  // claimed, because both share the same source node).
+  //
+  // Scoped to ZONES, not node centers: checked against the original
+  // motivating case for the *global* version of this mechanism (three
+  // sources fanning into one dbt node, commit 981bbd4) -- individual
+  // node-center dx/dy ratios there were as fragile as 1.27x for one of the
+  // three edges, meaning a small layout change could flip which axis
+  // "wins" and split a fan-in that should stay together. Zone bounding
+  // boxes give a much larger, more stable separation (that fan-in case has
+  // a clean 72px zone-to-zone gap) and directly encode the "rough
+  // quadrant" a human reads off the diagram, rather than a specific node's
+  // exact position within it.
+  function roughDirection(srcZoneRect, tgtZoneRect, srcNodeRect, tgtNodeRect, sameZone) {
+    const useNode = sameZone || !srcZoneRect || !tgtZoneRect;
+    const sr = useNode ? srcNodeRect : srcZoneRect;
+    const tr = useNode ? tgtNodeRect : tgtZoneRect;
+    const noXOverlap = sr.right <= tr.left || tr.right <= sr.left;
+    const noYOverlap = sr.bottom <= tr.top || tr.bottom <= sr.top;
+    // Clean axis-aligned non-overlap wins outright when only ONE axis is
+    // separated -- this is the common, unambiguous case (e.g. the fan-in's
+    // zones sit side by side with a real gap between them).
+    if (noXOverlap && !noYOverlap) return tr.left >= sr.right ? 'right' : 'left';
+    if (noYOverlap && !noXOverlap) return tr.top >= sr.bottom ? 'bottom' : 'top';
+    // Either both axes are cleanly separated (a genuinely diagonal
+    // relationship) or neither is (overlapping/nested zones, or a
+    // same-zone edge) -- fall back to center-to-center magnitude, same
+    // rule the viewer's own dx/dy heuristics use elsewhere.
+    const scx = (sr.left + sr.right) / 2, scy = (sr.top + sr.bottom) / 2;
+    const tcx = (tr.left + tr.right) / 2, tcy = (tr.top + tr.bottom) / 2;
+    const dx = tcx - scx, dy = tcy - scy;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+    return dy >= 0 ? 'bottom' : 'top';
+  }
 
   // ── Obstacle-based shortest-path routing ────────────────────────
   // gridroute.mjs finds the actual shortest orthogonal path between two
@@ -174,12 +225,17 @@ export function route(model, packed, opts = {}) {
   });
 
   // Fan-in/fan-out port consistency: once one edge picks a side to
-  // exit/enter a given node, later edges sharing that SAME node (as
-  // source, or as target, tracked separately since a node's fan-out side
-  // and fan-in side are independent) are biased toward the same side
-  // instead of each independently landing on whichever port ties on
-  // cost -- e.g. 3 sources feeding one node should all enter through
-  // that node's one side, not split across two different sides.
+  // exit/enter a given node, later edges sharing that SAME node AND the
+  // same rough direction bucket (as source, or as target, tracked
+  // independently) are biased toward the same side instead of each
+  // independently landing on whichever port ties on cost -- e.g. 3 sources
+  // feeding one node from roughly the same direction should all enter
+  // through that node's one side, not split across two different sides.
+  // Keyed by nodeId + '|' + direction (see roughDirection() above), NOT
+  // just nodeId -- a bare-nodeId key would (and did) force an edge headed
+  // one way to share a side with a sibling edge headed a completely
+  // different way, dragging the near edge's path back across its own card
+  // to reach the far side (2026-09-09, "Azure Private Link" -> Power BI).
   const srcSideUsed = {};
   const tgtSideUsed = {};
   // Same-side siblings still need DISTINCT port points, or their final
@@ -229,9 +285,12 @@ export function route(model, packed, opts = {}) {
       ...exclusionsFor(s.id, s.zoneName),
       ...exclusionsFor(t.id, t.zoneName),
     ]);
-    const portBias = { srcSide: srcSideUsed[s.id] || null, tgtSide: tgtSideUsed[t.id] || null };
-    if (portBias.srcSide) portBias.srcOffset = nextSlotOffset(srcSideSlot, s.id);
-    if (portBias.tgtSide) portBias.tgtOffset = nextSlotOffset(tgtSideSlot, t.id);
+    const dir = roughDirection(zoneRectByName[s.zoneName], zoneRectByName[t.zoneName], s, t, sameZone);
+    const srcKey = s.id + '|' + dir;
+    const tgtKey = t.id + '|' + oppositeDirection(dir);
+    const portBias = { srcSide: srcSideUsed[srcKey] || null, tgtSide: tgtSideUsed[tgtKey] || null };
+    if (portBias.srcSide) portBias.srcOffset = nextSlotOffset(srcSideSlot, srcKey);
+    if (portBias.tgtSide) portBias.tgtOffset = nextSlotOffset(tgtSideSlot, tgtKey);
     let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds, 3, pathUsage, portBias);
     if (!path) {
       // Should only happen if a diagram genuinely has no clear route (e.g.
@@ -239,8 +298,8 @@ export function route(model, packed, opts = {}) {
       // than dropping the edge.
       path = [[(s.left + s.right) / 2, cy(s)], [(t.left + t.right) / 2, cy(t)]];
     }
-    if (path.srcSide && !srcSideUsed[s.id]) srcSideUsed[s.id] = path.srcSide;
-    if (path.tgtSide && !tgtSideUsed[t.id]) tgtSideUsed[t.id] = path.tgtSide;
+    if (path.srcSide && !srcSideUsed[srcKey]) srcSideUsed[srcKey] = path.srcSide;
+    if (path.tgtSide && !tgtSideUsed[tgtKey]) tgtSideUsed[tgtKey] = path.tgtSide;
     registerPathUsage(pathUsage, path);
     const d = pointsToD(path);
     const markerId = 'arrowhead';

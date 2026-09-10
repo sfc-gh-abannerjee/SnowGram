@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { layout } from '../index.mjs';
 import { assessQuality } from '../quality.mjs';
+import { route } from '../route.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES = join(__dirname, 'fixtures');
@@ -181,6 +182,88 @@ run('nested containers (AWS Account > AWS VPC > 2 zones)', nestedContainerGraph)
   };
   const r2 = layout(splitGraph);
   check('quality gate PASSES once the zones are split by category', r2.quality.ok === true, JSON.stringify(r2.quality.issues));
+}
+
+// ── fan-in port-CONSISTENCY invariant (the original motivating case,
+// commit 981bbd4: "Make fan-in/fan-out portBias a hard constraint") ──
+// Explicitly asserts the actual invariant the hard-constraint mechanism
+// exists for, not just "quality gate passes": proc1 and proc2 both feed
+// sink1 from the same rough direction (Processing -> Serving, a clean
+// left-to-right zone gap) and must arrive on the SAME side of sink1 (same
+// final x-coordinate), not split across two sides with overlapping
+// arrowheads. This is the regression the 2026-09-09 direction-scoping fix
+// (below) must NOT break.
+{
+  console.log('\n# fan-in port consistency (regression: must still hold post direction-scoping)');
+  const r = layout(fixture('fanout_finin'));
+  const toSink1 = r.edges.filter(e => e.to === 'sink1');
+  check('sink1 has exactly 2 incoming edges in this fixture', toSink1.length === 2, JSON.stringify(toSink1.map(e => e.from)));
+  if (toSink1.length === 2) {
+    const lastX = e => e.points[e.points.length - 1][0];
+    check('proc1->sink1 and proc2->sink1 arrive on the same side (same entry x)',
+      Math.abs(lastX(toSink1[0]) - lastX(toSink1[1])) < 0.5,
+      JSON.stringify(toSink1.map(e => ({ from: e.from, points: e.points }))));
+  }
+}
+
+// ── direction-scoped port bias (found 2026-09-09 via a live Apex Health
+// render) ──
+// "Azure Private Link" has two OUTGOING edges: one to Snowpipe, positioned
+// far down-and-left (a genuinely different rough direction), and one to
+// Power BI, its immediate right-side neighbor in the same row. The
+// (pre-fix) global-per-node port-consistency mechanism forced BOTH onto
+// whichever side Snowpipe's edge claimed first, dragging the Power BI
+// edge's path back through Private Link's own card to reach a side it
+// never needed. Verified directly against route.mjs with the REAL
+// coordinates pulled from the live-agent render that showed the bug
+// (review-runs/20260909-170927), bypassing pack.mjs's automatic
+// zone/column placement so this test can never silently stop exercising
+// the bug just because some unrelated future layout change repositions
+// these nodes differently.
+{
+  console.log('\n# direction-scoped port bias (regression: gateway node with incompatible-direction fan-out)');
+  const rectsById = {
+    adf:         { id: 'adf', left: 20.5, top: 147.5, right: 180.5, bottom: 246.5, zoneName: 'z_adf', rowIdx: 0 },
+    privatelink: { id: 'privatelink', left: 928.5, top: 147.5, right: 1088.5, bottom: 246.5, zoneName: 'z_pl', rowIdx: 0 },
+    powerbi:     { id: 'powerbi', left: 1203.5, top: 147.5, right: 1363.5, bottom: 246.5, zoneName: 'z_pbi', rowIdx: 0 },
+    pipe:        { id: 'pipe', left: 360.5, top: 676.0, right: 520.5, bottom: 775.0, zoneName: 'z_pipe', rowIdx: 3 },
+    gold:        { id: 'gold', left: 946.5, top: 895.0, right: 1106.5, bottom: 989.0, zoneName: 'z_gold', rowIdx: 4 },
+  };
+  const nodeRects = Object.values(rectsById);
+  const zoneRects = nodeRects.map(n => ({ name: n.zoneName, left: n.left - 10, top: n.top - 30, right: n.right + 10, bottom: n.bottom + 10 }));
+  const zoneScope = {}; nodeRects.forEach(n => { zoneScope[n.zoneName] = 'outer'; });
+  const packed = {
+    nodeRects, nodeRectsById: rectsById, zoneRects,
+    platformBoundary: null, containers: [],
+    width: 1500, height: 1100,
+    zoneScope, containerScope: {},
+  };
+  const model = {
+    edges: [
+      { source: 'adf', target: 'privatelink' },
+      { source: 'privatelink', target: 'pipe' },
+      { source: 'gold', target: 'privatelink' },
+      { source: 'privatelink', target: 'powerbi' },
+    ],
+  };
+  const edges = route(model, packed);
+  const toPipe = edges.find(e => e.source === 'privatelink' && e.target === 'pipe');
+  const toPowerbi = edges.find(e => e.source === 'privatelink' && e.target === 'powerbi');
+  check('both edges resolved', !!toPipe && !!toPowerbi);
+  if (toPipe && toPowerbi) {
+    check('privatelink->powerbi is a direct 2-point path (no forced detour)',
+      toPowerbi.points.length === 2, JSON.stringify(toPowerbi.points));
+    check('privatelink->powerbi never re-enters its own source card (all points at/outside its right edge)',
+      toPowerbi.points.every(p => p[0] >= rectsById.privatelink.right - 0.5), JSON.stringify(toPowerbi.points));
+    // The two edges must NOT share an exit side -- that sharing is
+    // precisely what caused the bug (both forced onto Snowpipe's side).
+    const exitSide = pts => Math.abs(pts[0][0] - rectsById.privatelink.left) < 1 ? 'left'
+      : Math.abs(pts[0][0] - rectsById.privatelink.right) < 1 ? 'right'
+      : Math.abs(pts[0][1] - rectsById.privatelink.top) < 1 ? 'top' : 'bottom';
+    check('privatelink->pipe and privatelink->powerbi use DIFFERENT exit sides',
+      exitSide(toPipe.points) !== exitSide(toPowerbi.points),
+      'pipe exit=' + exitSide(toPipe.points) + ' powerbi exit=' + exitSide(toPowerbi.points));
+  }
 }
 
 console.log('\n' + (failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'));
