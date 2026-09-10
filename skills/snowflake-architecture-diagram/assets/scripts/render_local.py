@@ -43,6 +43,7 @@ ASSETS = SKILL_DIR / "assets"
 LAYOUT_ENGINE_DIR = ASSETS / "layout-engine"
 LAYOUT_CLI = LAYOUT_ENGINE_DIR / "layout_cli.mjs"
 RENDER_MODULE = ASSETS / "render" / "render_diagram_generated.py"
+SHARED_RULES_MODULE = ASSETS / "render" / "shared_rules.py"
 RENDER_STATIC = ASSETS / "scripts" / "render_static.py"
 ICON_RESOLVER = ASSETS / "scripts" / "icon_resolver.py"
 
@@ -89,66 +90,39 @@ def svg_to_pdf_png(svg_text: str, dpi: int = 150):
     return pdf_bytes, buf.getvalue()
 
 
-# Port of GENERATE_DIAGRAM_ARTIFACTS._category so local categories match the
-# agent's intent (drives boundary membership + the node subhead styling).
-def _category(ctype: str, label: str, path: str | None) -> str:
-    c = (ctype or "").lower()
-    l = (label or "").lower()
-    pth = path or ""
-    if any(k in c for k in ("snowpipe", "openflow", "kafka connector", "connector for kafka")):
-        return "bridge"
-    # An inbound/outbound Secure Data Share object is the same kind of
-    # boundary-straddling construct as Snowpipe/Openflow above -- kept in
-    # sync with the SAME rule in generate_artifacts.dev.sql's _category()
-    # (added 2026-09-10, see CHANGELOG). This local copy had drifted
-    # without it, which would have silently classified "Inbound Share" as
-    # onprem/snow here while the deployed pipeline said bridge.
-    if any(k in c or k in l for k in ("data share", "secure data sharing", "data sharing", "inbound share", "outbound share", "secure share")):
-        return "bridge"
-    # A cloud vendor's PRIVATE CONNECTIVITY construct (Azure Private Link,
-    # AWS PrivateLink) is network plumbing, not a Snowflake object -- it
-    # does not belong inside the account boundary. Deliberately NOT
-    # returning 'bridge' here (that's reserved for actual Snowflake-native
-    # ingestion services like Snowpipe); let the vendor-prefix rule below
-    # classify it as onprem like any other cloud-vendor-owned service.
-    # Third-party BI/reporting tools are external consumers -- NOT the same
-    # as a native Snowflake-served surface (Streamlit, Cortex agent), which
-    # is what "outcome" otherwise means (boundary-triggering, i.e. inside
-    # the account). Power BI/Tableau/etc. sit outside it.
-    if any(k in c or k in l for k in (
-        "tableau", "power bi", "powerbi", "looker",
-        "superset", "sigma", "metabase", "quicksight",
-    )):
-        return "onprem"
-    if any(k in c or k in l for k in ("streamlit", "dashboard", "notebook")):
-        return "outcome"
-    if c == "user" or "analyst" in c or "analyst" in l:
-        return "outcome"
-    if pth and not pth.startswith("sno-icon"):
-        return "onprem"
-    # A DIFFERENT/external Snowflake account (e.g. an inbound share
-    # provider) is not part of THIS account's boundary either.
-    if "snowflake_account" in c or "snowflake account" in l:
-        return "onprem"
-    if any(k in c for k in (
-        "s3", "kafka", "kinesis", "blob", "gcs", "event hub", "eventhub",
-        "postgres", "mysql", "oracle", "mongo", "redis", "external", "data lake",
-        "databricks", "spark", "bigquery", "synapse", "redshift", "pub/sub", "pubsub",
-        "dbt", "airflow", "fivetran", "matillion", "informatica", "talend",
-        # Azure-specific services the agent sends as space-separated names
-        "data factory", "private link", "privatelink", "service bus",
-        "event hub", "azure sql", "azure blob", "azure function",
-        # AWS equivalents
-        "glue", "lambda", "kinesis", "sqs", "sns",
-    )):
-        return "onprem"
-    # Generic vendor-prefix heuristic: handles BOTH underscore-separated
-    # (azure_data_factory) AND space-separated (azure data factory) forms,
-    # since the agent sends the latter style and startswith("azure_") alone
-    # silently fell through to "snow" for all space-separated Azure names.
-    if any(c.startswith(p) for p in ("azure_", "azure ", "aws_", "aws ", "gcp_", "gcp ", "google_", "google ")):
-        return "onprem"
-    return "snow"
+# _category() and edge-label/style/bidirectional extraction used to be
+# hand-copied here, parallel to generate_artifacts.dev.sql's own copies --
+# they silently drifted (missing the 'data share' -> 'bridge' rule for a
+# full session, found 2026-09-10) with nothing to catch it. build() below
+# now imports both directly from shared_rules.py, a verbatim extraction of
+# generate_artifacts.dev.sql's SHARED_MODEL_RULES block (see
+# extract_shared_rules.py) -- there is exactly one copy of this logic now.
+#
+# review_harness.py re-runs the extraction automatically every run, but
+# render_local.py can also be invoked directly (its own CLI, or another
+# caller) -- this catches the case where shared_rules.py exists but is
+# STALE relative to the current generate_artifacts.dev.sql (banner sha256
+# mismatch), so a bypassed sync degrades to a loud warning instead of a
+# silent wrong render.
+GENERATE_ARTIFACTS_SOURCE = ASSETS / "render" / "source" / "generate_artifacts.dev.sql"
+
+
+def _warn_if_shared_rules_stale() -> None:
+    import hashlib
+    import re as _re
+    banner = SHARED_RULES_MODULE.read_text(encoding="utf-8")
+    m = _re.search(r"sha256\(source\):\s*([0-9a-f]{64})", banner)
+    if not m or not GENERATE_ARTIFACTS_SOURCE.exists():
+        return
+    current_sha = hashlib.sha256(GENERATE_ARTIFACTS_SOURCE.read_bytes()).hexdigest()
+    if m.group(1) != current_sha:
+        print(
+            f"WARNING: {SHARED_RULES_MODULE.name} was extracted from a DIFFERENT "
+            f"version of {GENERATE_ARTIFACTS_SOURCE.name} than what's on disk now "
+            "-- re-run assets/render/extract_shared_rules.py before trusting this "
+            "render's category/edge-label output.",
+            file=sys.stderr,
+        )
 
 
 def _run_layout(graph_json: str, wide: bool) -> dict:
@@ -198,9 +172,24 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
         ir = _load_module("icon_resolver", ICON_RESOLVER)
     except Exception:
         ir = None
+    if not SHARED_RULES_MODULE.exists():
+        raise RuntimeError(
+            f"{SHARED_RULES_MODULE} missing -- run assets/render/extract_shared_rules.py "
+            "(review_harness.py does this automatically)"
+        )
+    _warn_if_shared_rules_stale()
+    shared = _load_module("shared_rules", SHARED_RULES_MODULE)
 
     nodes = [dict(n) for n in (model.get("nodes") or [])]
     edges = [dict(e) for e in (model.get("edges") or [])]
+    # Local test fixtures (tests/fixtures/*.json) predate this model's
+    # "source"/"target" convention and still use "from"/"to" -- normalize
+    # here so shared._build_edges() (which only recognizes "source"/
+    # "target", matching the deployed proc exactly) works for both without
+    # needing its own, separately-drifting leniency logic.
+    for e in edges:
+        e.setdefault("source", e.get("from"))
+        e.setdefault("target", e.get("to"))
 
     id_to_label: dict = {}
     id_to_type: dict = {}
@@ -237,7 +226,7 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
             cats[nid] = n["category"]
         else:
             resolved = rs._resolve_icon_for_object_type(ctype, manifest)
-            cats[nid] = (resolved[1] if resolved else None) or _category(ctype, label, icon_path)
+            cats[nid] = (resolved[1] if resolved else None) or shared._category(ctype, label, icon_path)
 
     g_nodes = [
         {
@@ -251,26 +240,7 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
         }
         for n in nodes
     ]
-    g_edges = [
-        {"from": e.get("source") or e.get("from"), "to": e.get("target") or e.get("to")}
-        for e in edges
-        if (e.get("source") or e.get("from")) and (e.get("target") or e.get("to"))
-    ]
-    edge_labels = {}
-    edge_bidirectional = {}
-    edge_styles = {}
-    _valid_styles = {"dataflow", "governance", "legacy", "private_link", "data_share"}
-    for e in edges:
-        s = e.get("source") or e.get("from")
-        t = e.get("target") or e.get("to")
-        if s and t:
-            key = f"{s}|{t}"
-            if e.get("label"):
-                edge_labels[key] = e["label"]
-            if e.get("bidirectional"):
-                edge_bidirectional[key] = True
-            if e.get("style") in _valid_styles:
-                edge_styles[key] = e["style"]
+    g_edges, edge_labels, edge_bidirectional, edge_styles = shared._build_edges(edges)
 
     base_graph = {"nodes": g_nodes, "edges": g_edges}
     if model.get("containers"):

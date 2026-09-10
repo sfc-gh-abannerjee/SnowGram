@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
 # Canonical source: /Users/abannerjee/Documents/SnowGram/skills/snowflake-architecture-diagram/assets/render/source/render_diagram.dev.sql
 # sha256(source): c61fe87cca5ed57029ed33e40fc8f320cb0930cff0d3c63ea74f1f9ea3bba81c
-# generated: 2026-09-10T19:46:05+00:00
+# generated: 2026-09-10T22:22:17+00:00
 
 
 import json, base64

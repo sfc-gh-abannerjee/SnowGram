@@ -61,6 +61,7 @@ LAYOUT_ENGINE_DIR = ASSETS_DIR / "layout-engine"
 FIXTURES_DIR = LAYOUT_ENGINE_DIR / "tests" / "fixtures"
 RENDER_LOCAL = SCRIPTS_DIR / "render_local.py"
 BUILD_RENDER = ASSETS_DIR / "render" / "build_render.py"
+EXTRACT_SHARED_RULES = ASSETS_DIR / "render" / "extract_shared_rules.py"
 RUNS_DIR = SKILL_DIR / "review-runs"
 SNOWGRAM_ENG_REPO = Path.home() / "Documents" / "snowgram-eng"  # sibling checkout; matches build_render.py's DEFAULT_SRC
 
@@ -103,6 +104,23 @@ def sync_render_module() -> str:
     return out.strip()
 
 
+def sync_shared_rules() -> str:
+    # Re-extracts shared_rules.py from generate_artifacts.dev.sql's
+    # SHARED_MODEL_RULES block (category classification + edge label/
+    # style/bidirectional extraction) EVERY run, the same way
+    # sync_render_module() above always re-syncs render_diagram_generated.py
+    # -- this is the whole point: the offline pipeline can never render
+    # against a stale or hand-copied version of this logic. Its own smoke
+    # test (inside the script) fails loudly if the source's marked block
+    # has been restructured in a way extraction can't follow.
+    proc = subprocess.run([sys.executable, str(EXTRACT_SHARED_RULES)], capture_output=True, text=True)
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        print(out, file=sys.stderr)
+        raise SystemExit("extract_shared_rules.py failed -- see output above")
+    return out.strip()
+
+
 def run_test_suite() -> tuple[bool, str]:
     proc = subprocess.run(["node", "tests/run.mjs"], cwd=str(LAYOUT_ENGINE_DIR), capture_output=True, text=True)
     text = (proc.stdout or "") + (proc.stderr or "")
@@ -128,6 +146,9 @@ def screenshot(html_path: Path, png_path: Path, viewport=(1600, 1000)) -> str | 
 
 
 def render_fixture(name: str, out_dir: Path) -> dict:
+    # `out_dir` here is the run's offline/ subfolder (see main()) -- every
+    # path returned is relative to IT, so write_review_md() must prefix
+    # with "offline/" when linking from the top-level REVIEW.md.
     render_local = _load_module("render_local", RENDER_LOCAL)
     model_path = FIXTURES_DIR / f"{name}.json"
     model = json.loads(model_path.read_text(encoding="utf-8"))
@@ -195,25 +216,60 @@ def live_agent_check(agent_fqn: str, connection: str, out_dir: Path) -> dict | N
     (out_dir / "live_agent_response.txt").write_text(response, encoding="utf-8")
 
     import re
-    # Actual format (verified 2026-09-09 against a live response): the label is
-    # PLAIN TEXT before the link, not inside the brackets --
-    # "- HTML (interactive) \u2014 [apex_health_snowflake_azure.html](https://...)".
-    # An earlier version of this regex assumed the label was itself the link
-    # text and never matched, so every --live run reported no HTML link found
-    # regardless of whether one existed.
-    m = re.search(r"HTML \(interactive\)[^\[\n]*\[[^\]]+\]\((https://[^)]+)\)", response)
-    if not m:
-        return {"response_file": "live_agent_response.txt", "warning": "Could not find an HTML download link in the response."}
-    html_path = out_dir / "live_agent_apex_health.html"
-    curl = subprocess.run(["curl", "-s", m.group(1), "-o", str(html_path)], capture_output=True, text=True)
-    if curl.returncode != 0:
-        return {"response_file": "live_agent_response.txt", "warning": "Downloaded HTML failed: " + curl.stderr}
-    png_path = out_dir / "live_agent_apex_health.png"
-    warning = screenshot(html_path, png_path, viewport=(1700, 1100))
+    # Extension-based extraction (not label-text-based, not markdown-link-
+    # syntax-based) so EVERY format the agent's response links -- not just
+    # HTML -- gets downloaded, matching the same "every output format,
+    # every run" bar the offline fixtures are held to. Verified against a
+    # real response (2026-09-10): the actual format is a plain-text bullet
+    # ("- HTML (interactive) \u2014 https://...&X-Amz-Signature=..."), NOT a
+    # markdown link -- an earlier version of this regex assumed markdown
+    # syntax and matched nothing. A bare URL's PATH component (before any
+    # "?" query string) reliably ends in the real file extension regardless
+    # of surrounding prose/punctuation, so match on that alone.
+    links: dict[str, str] = {}
+    for m in re.finditer(r"https://\S+", response):
+        url = m.group(0).rstrip(".,;)")  # trim trailing prose punctuation
+        path = url.split("?", 1)[0]
+        for ext in ("html", "svg", "drawio.xml", "mmd", "pdf", "png"):
+            if path.endswith("." + ext):
+                # Normalize keys to match the offline package's naming:
+                # the agent's own "png" link is the deployed static-SVG
+                # renderer's weasyprint output (same code path as offline's
+                # static_png, NOT the interactive-HTML screenshot the
+                # offline "png" key means).
+                key = {"drawio.xml": "drawio", "png": "static_png"}.get(ext, ext)
+                links.setdefault(key, (url, ext))  # first match per format wins
+                break
+    if not links:
+        return {"response_file": "live_agent_response.txt",
+                "warning": "Could not find any format download link in the response."}
+
+    written: dict[str, str] = {}
+    for key, (url, ext) in links.items():
+        # Use the FILE extension for the on-disk name (so it still opens
+        # correctly), but the KEY for anything renamed above (static_png),
+        # or it would collide with the interactive screenshot's own
+        # live_agent_apex_health.png written just below.
+        suffix = "static.png" if key == "static_png" else ext
+        dest = out_dir / f"live_agent_apex_health.{suffix}"
+        curl = subprocess.run(["curl", "-s", url, "-o", str(dest)], capture_output=True, text=True)
+        if curl.returncode == 0:
+            written[key] = dest.name
+        else:
+            print(f"WARNING: download failed for .{ext}: {curl.stderr}", file=sys.stderr)
+
+    warning = None
+    if written.get("html"):
+        # Screenshots the actual downloaded INTERACTIVE html -- matching
+        # the offline package's "png" key/purpose exactly now that the
+        # agent-provided static render is normalized to "static_png" above.
+        png_path = out_dir / "live_agent_apex_health.png"
+        warning = screenshot(out_dir / written["html"], png_path, viewport=(1700, 1100))
+        if warning is None:
+            written["png"] = png_path.name
     return {
         "response_file": "live_agent_response.txt",
-        "html": html_path.name,
-        "png": png_path.name if warning is None else None,
+        **written,
         "warning": warning,
     }
 
@@ -254,7 +310,7 @@ def write_review_md(out_dir: Path, meta: dict, test_ok: bool, test_output: str,
         "```",
         "</details>",
         "",
-        "## Fixture renders (offline, no Snowflake)",
+        "## Fixture renders (offline/, no Snowflake)",
         "",
     ]
     for f in fixtures:
@@ -271,12 +327,12 @@ def write_review_md(out_dir: Path, meta: dict, test_ok: bool, test_output: str,
         # both; the card-title word-wrap fix was static-SVG-only and would
         # NOT have shown in the interactive screenshot alone).
         if f.get("png"):
-            lines.append(f"**Interactive HTML (Playwright screenshot):**\n![{f['name']} interactive]({f['png']})")
+            lines.append(f"**Interactive HTML (Playwright screenshot):**\n![{f['name']} interactive](offline/{f['png']})")
         elif f.get("warning"):
             lines.append(f"_Interactive screenshot: {f['warning']}_")
         lines.append("")
         if f.get("static_png"):
-            lines.append(f"**Static SVG/PDF renderer (weasyprint screenshot):**\n![{f['name']} static]({f['static_png']})")
+            lines.append(f"**Static SVG/PDF renderer (weasyprint screenshot):**\n![{f['name']} static](offline/{f['static_png']})")
         elif f.get("pdf_error"):
             lines.append(f"_Static PDF/PNG skipped: {f['pdf_error']}_")
         lines.append("")
@@ -289,21 +345,32 @@ def write_review_md(out_dir: Path, meta: dict, test_ok: bool, test_output: str,
                             ("mmd", "Mermaid"), ("pdf", "PDF"), ("static_png", "static PNG"),
                             ("png", "interactive PNG")):
             if f.get(key):
-                fmt_links.append(f"[{label}]({f[key]})")
+                fmt_links.append(f"[{label}](offline/{f[key]})")
         lines.append("Formats: " + " · ".join(fmt_links))
         lines.append("")
 
     if live:
         lines += [
-            "## Live agent real-world check (Apex Health)",
+            "## Live agent real-world check (online/, Apex Health)",
             "",
-            "Full response: [live_agent_response.txt](live_agent_response.txt)",
+            "Full response: [live_agent_response.txt](online/live_agent_response.txt)",
             "",
         ]
         if live.get("png"):
-            lines.append(f"![live agent apex health]({live['png']})")
-        elif live.get("warning"):
+            lines.append(f"**Interactive HTML (Playwright screenshot):**\n![live agent apex health interactive](online/{live['png']})")
+        if live.get("static_png"):
+            lines.append(f"**Static SVG/PDF renderer (agent-provided PNG):**\n![live agent apex health static](online/{live['static_png']})")
+        if live.get("warning"):
             lines.append(f"_{live['warning']}_")
+        lines.append("")
+        fmt_links = []
+        for key, label in (("html", "HTML"), ("svg", "SVG"), ("drawio", "drawio XML"),
+                            ("mmd", "Mermaid"), ("pdf", "PDF"), ("static_png", "static PNG"),
+                            ("png", "interactive PNG")):
+            if live.get(key):
+                fmt_links.append(f"[{label}](online/{live[key]})")
+        if fmt_links:
+            lines.append("Formats: " + " · ".join(fmt_links))
         lines.append("")
 
     (out_dir / "REVIEW.md").write_text("\n".join(lines), encoding="utf-8")
@@ -323,11 +390,19 @@ def main() -> int:
     if not args.skip_render_sync:
         print("Syncing render_diagram_generated.py from assets/render/source/...")
         print(sync_render_module())
+        print("Syncing shared_rules.py from generate_artifacts.dev.sql's SHARED_MODEL_RULES block...")
+        print(sync_shared_rules())
 
     ts = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     run_id = args.run_id or ts
     out_dir = RUNS_DIR / run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
+    # offline/ (render_local.py fixtures, no Snowflake) and online/ (a real
+    # --live agent call's downloaded artifacts) are kept in separate
+    # subfolders of the SAME run -- both are dated/versioned together, but
+    # a reviewer should never have to guess which pipeline produced which
+    # file sitting side by side in one flat directory.
+    offline_dir = out_dir / "offline"
+    offline_dir.mkdir(parents=True, exist_ok=True)
     print(f"Output: {out_dir}")
 
     test_ok, test_output = (True, "(skipped)") if args.skip_tests else run_test_suite()
@@ -339,12 +414,14 @@ def main() -> int:
     fixtures = []
     for name in names:
         print(f"Rendering fixture: {name}")
-        fixtures.append(render_fixture(name, out_dir))
+        fixtures.append(render_fixture(name, offline_dir))
 
     live_result = None
     if args.live:
+        online_dir = out_dir / "online"
+        online_dir.mkdir(parents=True, exist_ok=True)
         print(f"Running live agent check against {args.agent} ...")
-        live_result = live_agent_check(args.agent, args.connection, out_dir)
+        live_result = live_agent_check(args.agent, args.connection, online_dir)
 
     meta = {
         "timestamp": _dt.datetime.now().isoformat(timespec="seconds"),

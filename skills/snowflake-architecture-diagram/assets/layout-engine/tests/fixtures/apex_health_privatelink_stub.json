@@ -124,75 +124,101 @@
   "edges": [
     {
       "source": "synapse",
-      "target": "dbt"
+      "target": "dbt",
+      "label": "extract"
     },
     {
       "source": "azsql",
-      "target": "dbt"
+      "target": "dbt",
+      "label": "extract"
     },
     {
       "source": "blob",
-      "target": "dbt"
+      "target": "dbt",
+      "label": "extract"
     },
     {
       "source": "dbt",
-      "target": "adf"
+      "target": "adf",
+      "label": "models"
     },
     {
       "source": "adf",
-      "target": "privatelink"
+      "target": "privatelink",
+      "label": "orchestrated load"
     },
     {
       "source": "privatelink",
-      "target": "snowpipe"
+      "target": "snowpipe",
+      "label": "private ingest",
+      "style": "private_link"
     },
     {
       "source": "arcadia",
-      "target": "share_in"
+      "target": "share_in",
+      "label": "Secure Data Sharing",
+      "style": "data_share"
     },
     {
       "source": "snowpipe",
-      "target": "bronze"
+      "target": "bronze",
+      "label": "COPY INTO"
     },
     {
       "source": "share_in",
-      "target": "silver"
+      "target": "silver",
+      "label": "zero-copy",
+      "style": "data_share"
     },
     {
       "source": "bronze",
-      "target": "silver"
+      "target": "silver",
+      "label": "declarative refresh"
     },
     {
       "source": "silver",
-      "target": "gold"
+      "target": "gold",
+      "label": "declarative refresh"
     },
     {
       "source": "horizon",
-      "target": "bronze"
+      "target": "bronze",
+      "label": "governs",
+      "style": "governance"
     },
     {
       "source": "horizon",
-      "target": "silver"
+      "target": "silver",
+      "label": "governs",
+      "style": "governance"
     },
     {
       "source": "horizon",
-      "target": "gold"
+      "target": "gold",
+      "label": "governs",
+      "style": "governance"
     },
     {
       "source": "gold",
-      "target": "cortex"
+      "target": "cortex",
+      "label": "grounded context"
     },
     {
       "source": "gold",
-      "target": "streamlit"
+      "target": "streamlit",
+      "label": "serves"
     },
     {
       "source": "gold",
-      "target": "powerbi"
+      "target": "powerbi",
+      "label": "legacy queries",
+      "style": "legacy"
     },
     {
       "source": "powerbi",
-      "target": "privatelink"
+      "target": "privatelink",
+      "label": "private connect",
+      "style": "private_link"
     }
   ],
   "nodeStyle": "wide",

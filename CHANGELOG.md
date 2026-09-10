@@ -4,6 +4,78 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Tooling] - 2026-09-10 (single-source-of-truth model rules, online/offline review packages)
+
+### Added
+- **`shared_rules.py` -- eliminated a real, confirmed drift between the
+  offline and online pipelines.** `render_local.py` carried its own
+  hand-copied `_category()` and edge-label/style/bidirectional extraction,
+  parallel to `generate_artifacts.dev.sql`'s own copies. Checking this
+  session's earlier `data share` -> `bridge` boundary-classification fix
+  proved the concern wasn't hypothetical: the offline copy was missing it
+  for a full session, with nothing to catch it -- offline renders would
+  have silently placed "Inbound Share"-style nodes on the wrong side of
+  the account boundary while the deployed proc got it right. Root-fixed
+  architecturally, not patched: marked the shared logic in
+  `generate_artifacts.dev.sql` with `SHARED_MODEL_RULES_BEGIN`/`_END`
+  comments around `_category()` and a newly-extracted `_build_edges()`
+  (previously inlined in `run()`), added `extract_shared_rules.py` (mirrors
+  the existing `build_render.py` pattern) to vendor that block verbatim
+  into `assets/render/shared_rules.py`, which `render_local.py` now
+  imports directly -- there is exactly one copy of this logic now, not
+  two drifting independently.
+- **Drift can't go unnoticed even if a build step is skipped.**
+  `extract_shared_rules.py` stamps a `sha256(source)` banner into the
+  generated `shared_rules.py` and runs an in-process smoke test (known
+  input/output pairs for both `_category()` and `_build_edges()`) before
+  writing, so a future rename/restructure of the marked block fails LOUDLY
+  at extraction time, not silently at render time. `render_local.py`
+  independently re-checks that same sha256 against the CURRENT
+  `generate_artifacts.dev.sql` on every `build()` call and prints a
+  warning if they don't match -- defense-in-depth for anyone invoking
+  `render_local.py` directly and bypassing `review_harness.py`'s automatic
+  re-extraction. `review_harness.py` now re-runs the extraction every run,
+  exactly like it already does for `render_diagram_generated.py`.
+- **Offline fixture edge labels were a data gap, not a code bug.**
+  `tests/fixtures/apex_health_privatelink_stub.json`'s 18 edges had no
+  `label`/`style` fields, so the offline renders never exercised the
+  labeled/colored-by-style connector styling the real model uses -- added
+  the exact labels/styles from the live-agent model used throughout this
+  session (`extract`, `models`, `orchestrated load`, `private ingest` /
+  `private_link`, `Secure Data Sharing` / `data_share`, `COPY INTO`,
+  `zero-copy` / `data_share`, `declarative refresh` x2, `governs` /
+  `governance` x3, `grounded context`, `serves`, `legacy queries` /
+  `legacy`, `private connect` / `private_link`). Also normalized
+  `render_local.py`'s edge loading to backfill `source`/`target` from
+  `from`/`to` (some older fixtures use the latter convention) before
+  calling the shared `_build_edges()`, which -- matching the deployed
+  proc exactly -- only recognizes `source`/`target`.
+- **`review-runs/<run-id>/` now splits into `offline/` and `online/`
+  subfolders** instead of mixing both pipelines' output in one flat
+  directory -- a reviewer should never have to guess which pipeline
+  produced which file sitting side by side. `render_fixture()` writes into
+  `offline/`, `--live`'s `live_agent_check()` writes into `online/`, and
+  `REVIEW.md`'s links are prefixed accordingly.
+- **Generalized `--live`'s link extraction to every format, not just
+  HTML, and fixed it to actually work.** The previous version searched for
+  the literal string `"HTML (interactive)"` before a markdown-link
+  pattern -- fragile to wording changes, and (found while testing this
+  session) didn't even match the agent's REAL response format at all,
+  which turned out to be a plain-text bullet (`- HTML (interactive) —
+  https://...`), not a markdown link. Replaced with an extension-based
+  scan over bare `https://` URLs in the response (checking the URL's path
+  before any `?query`), so `svg`/`drawio.xml`/`mmd`/`pdf`/`png` download
+  alongside `html` -- full format parity with the offline package -- and
+  it actually finds them now. Verified against a real `--live` run: all 6
+  formats downloaded, both the agent's own static PNG and a fresh
+  Playwright screenshot of the interactive HTML captured, all correctly
+  landing under `online/`.
+- Redeployed the corrected `generate_artifacts.dev.sql` (with
+  `_build_edges()` now a real function, not inlined) to
+  `TEMP.ABANNERJEE.GENERATE_DIAGRAM_ARTIFACTS` and confirmed against a
+  live agent run that edge labels/styles still render correctly in
+  production.
+
 ## [Tooling] - 2026-09-10 (review harness: every output format, every run)
 
 ### Added

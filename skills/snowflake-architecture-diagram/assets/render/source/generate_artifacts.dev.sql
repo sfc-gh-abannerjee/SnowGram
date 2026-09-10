@@ -39,6 +39,24 @@ def _resolve(session, label, ctype):
         return rr[0]['P'], 'search', rr[0]['U']
     return None, None, None
 
+# === SHARED_MODEL_RULES_BEGIN ===
+# Everything between this marker and SHARED_MODEL_RULES_END is the single
+# source of truth for how a raw agent-submitted model becomes the layout
+# engine's graph input (boundary-category classification, edge label/
+# style/bidirectional extraction). extract_shared_rules.py (in
+# assets/render/, alongside its sibling build_render.py) extracts this
+# block VERBATIM into a vendored
+# assets/render/shared_rules.py, which render_local.py -- the offline
+# review-harness pipeline -- imports directly instead of hand-maintaining
+# a parallel copy. render_local.py used to carry its own hand-copied
+# _category(), which silently drifted out of sync with this one (missing
+# the 'data share' -> 'bridge' rule for a full session, found 2026-09-10)
+# with nothing to catch it. `python3 review_harness.py` re-runs the
+# extraction automatically before every render, so this file staying the
+# edited/deployed original (no build-step change to ITS OWN deploy flow)
+# is enough to keep the offline copy honest -- just don't rename these
+# markers or the functions between them without updating
+# extract_shared_rules.py to match.
 def _category(ctype, label, path):
     c = (ctype or '').lower()
     l = (label or '').lower()
@@ -105,6 +123,29 @@ def _category(ctype, label, path):
         return 'onprem'
     return 'snow'
 
+def _build_edges(edges):
+    # Converts raw agent-submitted edges into the layout engine's g_edges
+    # plus the renderer's edgeLabels/edgeBidirectional/edgeStyles maps.
+    # Kept as its own function (rather than inline in run()) specifically
+    # so it has a clean, independently-extractable boundary for
+    # extract_shared_rules.py -- see SHARED_MODEL_RULES_BEGIN above.
+    g_edges = [{'from': e.get('source'), 'to': e.get('target')} for e in edges if e.get('source') and e.get('target')]
+    edge_labels = {}
+    edge_bidirectional = {}
+    edge_styles = {}
+    _valid_styles = {'dataflow', 'governance', 'legacy', 'private_link', 'data_share'}
+    for e in edges:
+        if e.get('source') and e.get('target'):
+            key = str(e.get('source')) + '|' + str(e.get('target'))
+            if e.get('label'):
+                edge_labels[key] = e.get('label')
+            if e.get('bidirectional'):
+                edge_bidirectional[key] = True
+            if e.get('style') in _valid_styles:
+                edge_styles[key] = e.get('style')
+    return g_edges, edge_labels, edge_bidirectional, edge_styles
+# === SHARED_MODEL_RULES_END ===
+
 def _svg_to_pdf_png(svg_text, dpi=150):
     # Reuse the SVG deliverable to produce PDF/PNG rather than a separate
     # render path -- wrap it in a minimal HTML shell with an @page rule
@@ -157,20 +198,7 @@ def run(session, nodes, edges, title, export_name, doc_json, containers=None, bo
                 'componentType': n.get('component_type') or '',
                 'zone': n.get('layer') or 'Main', 'category': cats.get(n.get('id')),
                 'detail': n.get('detail') or '', 'style': n.get('style')} for n in nodes]
-    g_edges = [{'from': e.get('source'), 'to': e.get('target')} for e in edges if e.get('source') and e.get('target')]
-    edge_labels = {}
-    edge_bidirectional = {}
-    edge_styles = {}
-    _valid_styles = {'dataflow', 'governance', 'legacy', 'private_link', 'data_share'}
-    for e in edges:
-        if e.get('source') and e.get('target'):
-            key = str(e.get('source')) + '|' + str(e.get('target'))
-            if e.get('label'):
-                edge_labels[key] = e.get('label')
-            if e.get('bidirectional'):
-                edge_bidirectional[key] = True
-            if e.get('style') in _valid_styles:
-                edge_styles[key] = e.get('style')
+    g_edges, edge_labels, edge_bidirectional, edge_styles = _build_edges(edges)
     g_containers = [dict(c) for c in _coerce(containers)]
     graph_extra = {}
     if boundary_label:
