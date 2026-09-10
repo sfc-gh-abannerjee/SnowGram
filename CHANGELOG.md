@@ -4,6 +4,25 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Governance] - 2026-09-10 (per-author session handoff convention)
+
+### Added
+- **`docs/HANDOFF_<author>.md` convention**, since this repo is GitHub-synced and
+  worked on by multiple people -- a single shared status doc would let two
+  contributors' agents race on the same filename. Each contributor keeps their own
+  fast-orientation pointer (current state, what just shipped, gotchas, next step),
+  well under 200 lines, distinct from `CHANGELOG.md`. Read every `docs/HANDOFF_*.md`
+  at session start; only ever write your own; never edit/delete another author's.
+  Documented in `AGENTS.md` under "Session Handoff", and enforced (not just
+  documented) by extending the existing Commit Wrap-Up Gate hooks
+  (`.cortex/hooks/commit_wrapup_clear_docs.sh` and friends) to treat an updated
+  `docs/HANDOFF_*.md` as satisfying that gate's living-docs half, same as
+  `CHANGELOG.md`/`docs/STATUS.md`/`docs/decisions/`. Also added a project-scoped
+  `cortex memory` rule recording the same convention.
+- Created `docs/HANDOFF_abannerjee.md` (first instance) and archived the old,
+  non-conforming `docs/HANDOFF_DIAGRAM_QUALITY.md` (2026-05-14, Track 2/frontend
+  scope, stale relative to current work) to `docs/archive/` rather than deleting it.
+
 ## [Tooling] - 2026-09-10 (single-source-of-truth model rules, online/offline review packages)
 
 ### Added

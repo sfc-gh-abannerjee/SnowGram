@@ -1,9 +1,9 @@
 #!/bin/bash
 # PostToolUse(Bash) hook: clears PENDING_LIVING_DOCS when EITHER (a) a git
 # commit's changed-file list includes CHANGELOG.md / docs/STATUS.md /
-# docs/decisions/* (whichever exist), or (b) the agent explicitly
-# acknowledges none apply via the ACK file. (b) can't verify the reasoning
-# behind the acknowledgment -- no hook can -- but it does force a
+# docs/decisions/* / docs/HANDOFF_*.md (whichever exist), or (b) the agent
+# explicitly acknowledges none apply via the ACK file. (b) can't verify the
+# reasoning behind the acknowledgment -- no hook can -- but it does force a
 # deliberate, visible, auditable action instead of silent skipping.
 REPO="$HOME/Documents/SnowGram"
 DOCS_MARKER="$REPO/.cortex/PENDING_LIVING_DOCS"
@@ -19,7 +19,7 @@ except Exception:
 
 if echo "$CMD" | grep -qE '\bgit\s+commit\b' && ! echo "$CMD" | grep -q -- "--dry-run"; then
   CHANGED="$(git -C "$REPO" show --stat --name-only HEAD 2>/dev/null)"
-  if echo "$CHANGED" | grep -qE '^(CHANGELOG\.md|docs/STATUS\.md|docs/decisions/)'; then
+  if echo "$CHANGED" | grep -qE '^(CHANGELOG\.md|docs/STATUS\.md|docs/decisions/|docs/HANDOFF_[^/]+\.md)'; then
     rm -f "$DOCS_MARKER"
     echo "Commit wrap-up gate: living-docs half cleared (commit touched living docs)."
   fi
@@ -30,3 +30,4 @@ if [ -f "$ACK_FILE" ]; then
   echo "Commit wrap-up gate: living-docs half cleared (explicit ACK -- none applicable)."
 fi
 exit 0
+

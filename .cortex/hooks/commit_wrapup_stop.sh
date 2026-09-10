@@ -9,7 +9,7 @@ DOCS_MARKER="$REPO/.cortex/PENDING_LIVING_DOCS"
 
 PENDING=""
 [ -f "$CTX_MARKER" ] && PENDING="${PENDING}ctx tracker (run cortex ctx step/task done for the just-committed work); "
-[ -f "$DOCS_MARKER" ] && PENDING="${PENDING}living docs (update CHANGELOG.md/docs/STATUS.md/docs/decisions in a follow-up commit, OR run 'touch $REPO/.cortex/ACK_NO_DOCS_NEEDED' if genuinely none apply); "
+[ -f "$DOCS_MARKER" ] && PENDING="${PENDING}living docs (update CHANGELOG.md/docs/STATUS.md/docs/decisions/your docs/HANDOFF_<author>.md in a follow-up commit, OR run 'touch $REPO/.cortex/ACK_NO_DOCS_NEEDED' if genuinely none apply); "
 
 if [ -n "$PENDING" ]; then
   PENDING="$PENDING" python3 -c "

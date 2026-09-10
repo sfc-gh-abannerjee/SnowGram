@@ -99,19 +99,42 @@ conflicting) when a session IS rooted here.
   while `.cortex/PENDING_VISUAL_REVIEW` exists); this rule is the
   human-readable backup for sessions where hooks aren't active.
 
+## Session Handoff
+
+This repo is GitHub-synced and worked on by multiple people (`sfc-gh-abannerjee/SnowGram`),
+so session state is tracked per-author, not in one shared file:
+
+- Each contributor keeps their own `docs/HANDOFF_<abbreviated-first-name+last-name>.md`
+  (e.g. `docs/HANDOFF_abannerjee.md`) — a **fast-orientation pointer**, not a duplicate of
+  `CHANGELOG.md`: current repo/deploy state, what just shipped, gotchas specific to the
+  area just touched, and the immediate next step (or "none pending").
+- **At the start of any session in this repo, read every `docs/HANDOFF_*.md` present** —
+  not just your own author's — for context on what other contributors left in flight.
+- **Only ever write or rewrite YOUR OWN handoff file.** Never edit or delete another
+  author's `docs/HANDOFF_*.md`, even to "clean up" or merge — two contributors' agents
+  must never race on the same filename.
+- Keep it well under a full `AGENTS.md`'s length — target under ~200 lines. It's a
+  pointer, not documentation; if something needs more than that, it belongs in
+  `CHANGELOG.md`, `docs/decisions/`, or a proper doc, with the handoff linking to it.
+- Superseded/retired handoffs move to `docs/archive/` (dated), never deleted — see
+  `docs/archive/HANDOFF_DIAGRAM_QUALITY_2026-05-14.md` for precedent.
+- **Enforced, not just documented**: the Commit Wrap-Up Gate below treats an updated
+  `docs/HANDOFF_*.md` the same as touching `CHANGELOG.md`/`docs/STATUS.md`/
+  `docs/decisions/` — any one of them satisfies the living-docs half of that gate.
+
 ## Commit Wrap-Up Gate
 
 The global `ctx-tracker-reminder.sh` hook reminds you after every
 `git commit` to reconcile `cortex ctx` (step/task) and update living docs
-(`CHANGELOG.md`/`docs/STATUS.md`/`docs/decisions/`) -- but it is
-deliberately non-blocking (informational only). This repo adds actual
-enforcement on top of it:
+(`CHANGELOG.md`/`docs/STATUS.md`/`docs/decisions/`/your `docs/HANDOFF_*.md`)
+-- but it is deliberately non-blocking (informational only). This repo adds
+actual enforcement on top of it:
 
 - After any `git commit` in this repo, a `Stop` hook refuses to end the
   turn until BOTH halves are addressed: (a) `cortex ctx step`/`task` has
   been run for that commit's work, and (b) either a later commit touches
-  `CHANGELOG.md`/`docs/STATUS.md`/`docs/decisions/`, or you explicitly run
-  `touch .cortex/ACK_NO_DOCS_NEEDED` when none genuinely apply.
+  `CHANGELOG.md`/`docs/STATUS.md`/`docs/decisions/`/your `docs/HANDOFF_*.md`,
+  or you explicitly run `touch .cortex/ACK_NO_DOCS_NEEDED` when none genuinely apply.
 - The ACK path exists because not every commit warrants a docs update, and
   no hook can judge that -- but it forces a deliberate, visible action
   instead of silently skipping the reminder (which is what happened across

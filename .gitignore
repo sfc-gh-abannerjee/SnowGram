@@ -79,6 +79,9 @@ tmp/
 
 # Archive files (local history)
 archive/
+# ...except docs/archive/ -- the deliberate, committed home for retired/
+# superseded docs (handoffs, plans) per this repo's living-docs convention.
+!docs/archive/
 
 # Logs (generated during development)
 logs/*.log
