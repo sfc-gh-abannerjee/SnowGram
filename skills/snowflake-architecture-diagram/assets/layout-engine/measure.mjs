@@ -167,5 +167,12 @@ function measureNodeWide(node, opts, measureText) {
   // own vertical center coincides with that band's center -- see the narrow
   // measureNode's iconCenterY comment for why routing needs this.
   const iconCenterY = C.padTop + Math.max(C.iconBox, textH) / 2;
-  return { w, h: Math.round(h), iconCenterY, iconHalfHeight: C.iconBox / 2 };
+  // `wide: true` lets gridroute.mjs's offsetPortOn use a much more generous
+  // left/right-port fan-out range than iconHalfHeight alone allows -- that
+  // tight clamp exists to stop a fanned-out port from sliding onto label
+  // text sitting BELOW the icon in the narrow (stacked) card layout, but a
+  // wide (icon-left) card's text column sits BESIDE the icon, not below
+  // it, so the entire icon column is text-free top-to-bottom and a much
+  // taller fan-out range is safe there.
+  return { w, h: Math.round(h), iconCenterY, iconHalfHeight: C.iconBox / 2, wide: true };
 }

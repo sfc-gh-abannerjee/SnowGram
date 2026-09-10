@@ -321,7 +321,14 @@ function measureNodeWide(node, opts, measureText) {
   // own vertical center coincides with that band's center -- see the narrow
   // measureNode's iconCenterY comment for why routing needs this.
   const iconCenterY = C.padTop + Math.max(C.iconBox, textH) / 2;
-  return { w, h: Math.round(h), iconCenterY, iconHalfHeight: C.iconBox / 2 };
+  // `wide: true` lets gridroute.mjs's offsetPortOn use a much more generous
+  // left/right-port fan-out range than iconHalfHeight alone allows -- that
+  // tight clamp exists to stop a fanned-out port from sliding onto label
+  // text sitting BELOW the icon in the narrow (stacked) card layout, but a
+  // wide (icon-left) card's text column sits BESIDE the icon, not below
+  // it, so the entire icon column is text-free top-to-bottom and a much
+  // taller fan-out range is safe there.
+  return { w, h: Math.round(h), iconCenterY, iconHalfHeight: C.iconBox / 2, wide: true };
 }
 
 
@@ -1742,6 +1749,7 @@ function pack(model, opts = {}) {
       if (!isDummy[id] && size[id] && size[id].iconCenterY != null) {
         rect.iconCenterY = top + size[id].iconCenterY;
         rect.iconHalfHeight = size[id].iconHalfHeight;
+        rect.wide = !!size[id].wide;
       }
       nodeRects.push(rect);
       if (zi.subGroups) {
@@ -1935,10 +1943,23 @@ function offsetPortOn(rect, side, offset) {
   // visibly striking through it). Clamping to the icon's own half-height
   // (instead of half the card's full height) keeps every fanned-out port on
   // the icon's graphic, where it can never collide with text.
+  //
+  // That clamp is specific to the NARROW (stacked icon/title/detail) card
+  // shape the original bug was found on -- a WIDE (icon-left) card's text
+  // column sits BESIDE the icon, not below it, so nothing along the whole
+  // left/right edge risks hitting text, and the tight icon-only range was
+  // needlessly cramped there: 3 fan-in siblings clamped to as little as
+  // +/-15px apart had their arrowhead markers (up to 9*2.2=19.8px tall,
+  // see PORT_SLOT_SPACING's comment in route.mjs) physically overlap into
+  // one merged blob right at the card edge (found via a zoomed screenshot,
+  // 2026-09-10). Wide cards use the same card-half-height-minus-margin
+  // range top/bottom ports already get.
   const ICON_MARGIN = 4;
-  const halfRange = rect.iconHalfHeight != null
-    ? Math.max(0, rect.iconHalfHeight - ICON_MARGIN)
-    : Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN);
+  const halfRange = rect.wide
+    ? Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN)
+    : rect.iconHalfHeight != null
+      ? Math.max(0, rect.iconHalfHeight - ICON_MARGIN)
+      : Math.max(0, (rect.bottom - rect.top) / 2 - CORNER_MARGIN);
   const dy = Math.max(-halfRange, Math.min(halfRange, offset));
   const midY = rect.iconCenterY != null ? rect.iconCenterY : (rect.top + rect.bottom) / 2;
   return { x: side === 'left' ? rect.left : rect.right, y: midY + dy, dir: 0, side };
@@ -2117,6 +2138,28 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
     for (let i = 0; i < active.length; i++) {
       if (segmentBlockedByRect(x1, y1, x2, y2, active[i], margin)) return true;
     }
+    // The endpoints' own rects are deliberately excluded from `active`
+    // (via excludeIds) so a path can legitimately start/end ON its own
+    // boundary -- but that exclusion has no notion of "how far past the
+    // boundary", so nothing stopped a move from continuing straight INTO
+    // the rect's own interior once past the port. Found via exact-geometry
+    // debugging (2026-09-10): Azure Data Factory -> Azure Private Link
+    // exited from ADF's TOP port, then its very next move traveled 24px
+    // DOWN -- back into ADF's own footprint (both axes still inside its
+    // bounds) -- before finally turning right, because a straight run
+    // down the vertical axis costs nothing extra in THIS search beyond the
+    // segment length, while the alternative (exiting 'right' then jogging
+    // to reconcile a ~23px icon-anchor mismatch with the target's port)
+    // needs two turns instead of one and loses on raw cost despite being
+    // the visually sane choice. The exact same segmentBlockedByRect check
+    // used for every other obstacle handles this correctly for free once
+    // applied here too: grazing along the rect's own boundary (within
+    // `margin`) stays legal (a port sits exactly on it), but a segment
+    // that continues past the boundary into the interior is blocked, so
+    // the search is forced to move away from its own card immediately
+    // instead of "through" it.
+    if (segmentBlockedByRect(x1, y1, x2, y2, srcRect, margin)) return true;
+    if (segmentBlockedByRect(x1, y1, x2, y2, tgtRect, margin)) return true;
     return false;
   }
 
@@ -2146,6 +2189,7 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
     prevPoint.set(k, [s.x, s.y]);
     push(s.cost, s.xI, s.yI, s.dir);
   });
+
 
   // Only accept arrival at a port moving along ITS OWN natural axis (a
   // top/bottom port, dir:1, must be reached by a vertical move; a
@@ -2529,7 +2573,18 @@ function route(model, packed, opts = {}) {
   // render all ended at the identical (x,y) with the same trailing
   // segment). Each additional edge sharing a (node, side) gets the next
   // slot in an alternating fan-out sequence around the side's midpoint.
-  const PORT_SLOT_SPACING = 14; // px between adjacent fanned-out ports
+  //
+  // 14px of separation stops the LINES from overlapping, but not the
+  // ARROWHEAD MARKERS drawn at their ends: render_diagram.dev.sql sizes
+  // every marker markerHeight=9 with markerUnits="strokeWidth", so a
+  // marker's rendered footprint (perpendicular to the line) is
+  // 9 * strokeWidth -- up to 9*2.2=19.8px for the widest connector
+  // category (data_share). Three 14px-spaced siblings' markers physically
+  // overlapped into one merged zigzag blob right at the target card
+  // (found via a zoomed screenshot of the Azure Synapse/SQL/Blob -> dbt
+  // fan-in, 2026-09-10). Widened to clear the worst case across every
+  // category with a visible margin, rather than just the line width.
+  const PORT_SLOT_SPACING = 22; // px between adjacent fanned-out ports
   const srcSideSlot = {};
   const tgtSideSlot = {};
   function nextSlotOffset(slotMap, key) {

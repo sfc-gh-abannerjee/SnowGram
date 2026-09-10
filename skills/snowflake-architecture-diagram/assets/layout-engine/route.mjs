@@ -245,7 +245,18 @@ export function route(model, packed, opts = {}) {
   // render all ended at the identical (x,y) with the same trailing
   // segment). Each additional edge sharing a (node, side) gets the next
   // slot in an alternating fan-out sequence around the side's midpoint.
-  const PORT_SLOT_SPACING = 14; // px between adjacent fanned-out ports
+  //
+  // 14px of separation stops the LINES from overlapping, but not the
+  // ARROWHEAD MARKERS drawn at their ends: render_diagram.dev.sql sizes
+  // every marker markerHeight=9 with markerUnits="strokeWidth", so a
+  // marker's rendered footprint (perpendicular to the line) is
+  // 9 * strokeWidth -- up to 9*2.2=19.8px for the widest connector
+  // category (data_share). Three 14px-spaced siblings' markers physically
+  // overlapped into one merged zigzag blob right at the target card
+  // (found via a zoomed screenshot of the Azure Synapse/SQL/Blob -> dbt
+  // fan-in, 2026-09-10). Widened to clear the worst case across every
+  // category with a visible margin, rather than just the line width.
+  const PORT_SLOT_SPACING = 22; // px between adjacent fanned-out ports
   const srcSideSlot = {};
   const tgtSideSlot = {};
   function nextSlotOffset(slotMap, key) {

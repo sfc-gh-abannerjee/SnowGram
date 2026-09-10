@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
 # Canonical source: /Users/abannerjee/Documents/SnowGram/skills/snowflake-architecture-diagram/assets/render/source/render_diagram.dev.sql
-# sha256(source): 8c1440dc9b8d60d727c9ddf9102f7cc1e4f3e89d32a53607de6e6cf55a2654cc
-# generated: 2026-09-10T18:26:31+00:00
+# sha256(source): c61fe87cca5ed57029ed33e40fc8f320cb0930cff0d3c63ea74f1f9ea3bba81c
+# generated: 2026-09-10T19:46:05+00:00
 
 
 import json, base64
@@ -433,7 +433,16 @@ def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=No
         else:
             text_x = rx + pad
         avail_w = (rx + w - pad) - text_x
-        cpl = max(6, int(avail_w / 5.8))
+        # 5.8px/char (~0.50 of the 11.5px font size) undercounted this BOLD
+        # title font's true glyph width -- "Bronze Dynamic" (14 chars)
+        # measured as fitting a 91px-wide slot at that ratio but visibly
+        # overran the card's own rounded border in the rendered PNG (found
+        # via a zoomed screenshot, 2026-09-10). measure.mjs's JS-side line
+        # COUNT heuristic (a different estimate, used only to size the
+        # card's height) was bumped from 0.52 to 0.58 for this exact same
+        # under-count failure mode against bold/uppercase text; use the
+        # same 0.58 ratio here for the WIDTH used to decide where to break.
+        cpl = max(6, int(avail_w / (11.5 * 0.58)))
         lines = _wrap(label, cpl)
         text_h = len(lines) * 13 + (5 if sub else 0)
         ty = ry + h / 2 - text_h / 2 + 10

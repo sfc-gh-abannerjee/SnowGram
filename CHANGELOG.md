@@ -4,6 +4,90 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / Renderer] - 2026-09-10 (self-card re-entry, arrowhead spacing, title overflow)
+
+### Fixed
+- **A connector re-entered its own source card past the exit port**: Azure
+  Data Factory -> Azure Private Link exited ADF from its TOP port, then its
+  very next move traveled 24px straight back DOWN -- both axes still
+  inside ADF's own card bounds -- before finally turning right. Root cause,
+  found via exact-geometry debugging (temporary cost-instrumentation on the
+  real fixture, not a screenshot guess): `routeShortestOrthogonal`'s port
+  search seeds each candidate port's cost from its Manhattan distance to
+  the card's own CENTER, which favors a 'top' exit (49.5) over 'right'
+  (82.3) for this asymmetric wide card regardless of what happens next --
+  and reconciling ADF's icon-anchored right-port Y against Private Link's
+  icon-anchored left-port Y (a ~23px mismatch between two differently
+  shaped cards) needed 2 turns either way, so the cost model genuinely
+  preferred the 1-turn 'top' path even though it doubles back through the
+  source's own footprint. Visually this meant half the connector's stroke
+  width poked through the card's own top border as a small tick mark (95%
+  of the segment was correctly hidden behind the opaque card, drawn after
+  the connector layer -- only the exact starting pixel, sitting ON the
+  border, spilled a hairline above it). Fixed in `gridroute.mjs`'s
+  `segBlocked`: block any move segment that continues past either
+  endpoint's own port into that rect's interior, using the same
+  `segmentBlockedByRect` check already used for every other obstacle
+  (grazing the boundary, where a port legitimately sits, stays legal; a
+  move that goes further in does not). The search now exits ADF from its
+  right edge directly and reconciles the Y-mismatch in the open gap between
+  the two cards instead of through either one.
+- **Fan-in arrowhead markers merged into one blob**: 3 sibling edges
+  sharing a target side (Azure Synapse/SQL/Blob -> dbt) were spaced only
+  14px apart (`PORT_SLOT_SPACING`) -- enough to keep the LINES from
+  overlapping, but not their ARROWHEAD MARKERS, whose rendered footprint
+  (`markerHeight=9` with `markerUnits="strokeWidth"`) is up to
+  `9*2.2=19.8px` for the widest connector category. The 3 markers visually
+  merged into a single zigzag blob right at dbt's card edge (found via a
+  zoomed screenshot). Two compounding causes, both fixed: (1) widened
+  `PORT_SLOT_SPACING` from 14 to 22px in `route.mjs`. (2) That alone wasn't
+  enough -- `offsetPortOn`'s left/right-port clamp capped the *achievable*
+  offset at just ~15px regardless, because it anchors fan-out range to the
+  icon's own half-height (a deliberate guard, added earlier, against a
+  fanned-out port sliding onto label text sitting BELOW the icon on a
+  NARROW/stacked card). That guard doesn't apply to WIDE (icon-left) cards,
+  whose text column sits BESIDE the icon, not below it -- the entire icon
+  edge is text-free top-to-bottom there. Added a `wide` flag (set by
+  `measureNodeWide` in `measure.mjs`, threaded through `pack.mjs`'s node
+  rects) so wide cards get the same generous card-half-height-based range
+  top/bottom ports already use, while narrow cards keep the tighter
+  icon-only clamp. Verified the achieved spacing is now the full requested
+  22px (was silently clamped to ~15px before), clearing the worst-case
+  19.8px marker footprint with margin.
+- **Card title text overflowing its own card border**: "Bronze Dynamic
+  Table" (and similarly "Silver Dynamic Table", "Arcadia Health
+  (Snowflake)") rendered with "Bronze Dynamic" on one line visibly
+  spilling past the card's own rounded border in the static SVG/PNG/PDF
+  export. Root cause: the Python word-wrap heuristic in `_svg()`
+  (`render_diagram.dev.sql`) assumed 5.8px/char at the 11.5px bold title
+  font (~0.50 of font size) to decide where to break lines -- narrower
+  than `measure.mjs`'s own already-tuned 0.58 ratio, which was bumped up
+  from 0.52 for this exact same under-count failure mode against
+  bold/uppercase text (see the 2026-09-09 entry). "Bronze Dynamic" (14
+  chars) measured as fitting a 91px slot at the old ratio but didn't at the
+  real rendered width. Fixed by using the same 0.58 ratio for the width
+  used to decide line breaks (`avail_w / (11.5 * 0.58)`); "Bronze Dynamic
+  Table" now correctly wraps to 3 lines ("Bronze"/"Dynamic"/"Table")
+  instead of 2, fitting cleanly within the card. Verified across every
+  card in the real 16-node model via a fresh render (no other card came
+  close to overflowing at the corrected ratio).
+- Added 2 new regression tests to `tests/run.mjs` for the self-card
+  re-entry and fan-in arrowhead spacing fixes, using the same real
+  16-node/18-edge `apex_health_privatelink_stub` fixture as the existing
+  min-stub/hug-clearance tests.
+
+### Investigated, not reproduced
+- **"Private Link has no background/container"**: checked the "Private
+  Connectivity" zone (containing the `Azure Private Link` gateway node)
+  across the static SVG, PNG, and interactive HTML outputs for the real
+  16-node model, both before and after this session's fixes -- all three
+  show a normal zone background box (`_pal()`'s `onprem` fill `#EEF1F5`
+  with a visible `#9AA4B2` border), matching every sibling zone
+  (`Azure Sources`, `Legacy BI`, etc.). Did not reproduce with this
+  fixture; may be specific to a different model/category combination not
+  covered here -- flagged back to the user rather than guessing at a fix
+  without a reproducible case.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-10 (minimum port-approach stub)
 
 ### Fixed

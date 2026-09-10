@@ -1118,6 +1118,7 @@ export function pack(model, opts = {}) {
       if (!isDummy[id] && size[id] && size[id].iconCenterY != null) {
         rect.iconCenterY = top + size[id].iconCenterY;
         rect.iconHalfHeight = size[id].iconHalfHeight;
+        rect.wide = !!size[id].wide;
       }
       nodeRects.push(rect);
       if (zi.subGroups) {

@@ -325,5 +325,68 @@ run('nested containers (AWS Account > AWS VPC > 2 zones)', nestedContainerGraph)
   }
 }
 
+// Regression (2026-09-10): Azure Data Factory -> Azure Private Link exited
+// ADF from its TOP port, then its immediate next move traveled back DOWN
+// into ADF's own card footprint (both axes still inside its bounds) before
+// finally turning right -- a straight run down the vertical axis cost
+// nothing extra in the search beyond segment length, while exiting 'right'
+// then jogging to reconcile a small icon-anchor mismatch with the target's
+// port needed two turns instead of one and lost on raw cost despite being
+// the visually sane choice. Found via exact-geometry debugging (temporary
+// console.error instrumentation on the real seed/target costs), not a
+// screenshot guess. Fixed by blocking any move segment that continues past
+// either endpoint's own port into that rect's interior (gridroute.mjs's
+// segBlocked), mirroring the same segmentBlockedByRect check already used
+// for every other obstacle.
+{
+  console.log('\n# no re-entry into own source card past the exit port (regression: ADF -> Private Link top-then-down detour)');
+  const model = fixture('apex_health_privatelink_stub');
+  const r = layout(model);
+  const e = r.edges.find(x => x.from === 'adf' && x.to === 'privatelink');
+  check('adf->privatelink resolved', !!e);
+  if (e) {
+    const adf = r.nodes.find(n => n.id === 'adf');
+    const pts = e.points;
+    // Every point after the very first must sit AT OR PAST adf's right edge
+    // (own the first point is the port itself, legitimately on the boundary) --
+    // if any interior point falls back inside adf's own x-span, the path is
+    // doubling back through its own source card.
+    const insideOwnCard = pts.slice(1).some(([x, y]) => x < adf.x + adf.w - 0.01 && x > adf.x + 0.01 && y > adf.y + 0.01 && y < adf.y + adf.h - 0.01);
+    check('adf->privatelink never re-enters its own source card', !insideOwnCard, 'points=' + JSON.stringify(pts) + ' adfRect=' + JSON.stringify(adf));
+  }
+}
+
+// Regression (2026-09-10): 3 fan-in siblings (Azure Synapse/SQL/Blob ->
+// dbt) shared a target side with only 14px between adjacent ports --
+// enough to keep the LINES from overlapping, but not their ARROWHEAD
+// MARKERS, whose rendered footprint (render_diagram.dev.sql sizes every
+// marker markerHeight=9 with markerUnits="strokeWidth") is up to
+// 9*2.2=19.8px for the widest connector category. The 3 markers physically
+// merged into one zigzag blob right at dbt's card edge (found via a zoomed
+// screenshot). Fixed two compounding causes: PORT_SLOT_SPACING raised
+// 14->22px (route.mjs), and offsetPortOn's left/right-port clamp -- meant
+// to keep a fanned-out port on a NARROW card's icon graphic so it can't
+// slide onto label text below -- was needlessly capping WIDE (icon-left)
+// cards to the same tight range even though their text sits BESIDE the
+// icon, not below it, so the full card-half-height range is safe there.
+{
+  console.log('\n# fan-in arrowhead spacing clears the marker footprint (regression: Azure Synapse/SQL/Blob -> dbt overlapping arrowheads)');
+  const model = fixture('apex_health_privatelink_stub');
+  const r = layout(model);
+  const ys = ['synapse', 'azsql', 'blob'].map(src => {
+    const e = r.edges.find(x => x.from === src && x.to === 'dbt');
+    return e ? e.points[e.points.length - 1][1] : null;
+  });
+  check('all 3 dbt fan-in edges resolved', ys.every(y => y != null), 'ys=' + JSON.stringify(ys));
+  if (ys.every(y => y != null)) {
+    const sorted = [...ys].sort((a, b) => a - b);
+    const gap1 = sorted[1] - sorted[0], gap2 = sorted[2] - sorted[1];
+    // 19.8px is the widest marker footprint across every connector category
+    // (9 * 2.2 stroke-width) -- adjacent ports must clear it with margin.
+    check('adjacent fan-in ports are spaced wider than the largest marker footprint (19.8px)',
+      gap1 > 19.8 && gap2 > 19.8, 'sortedY=' + JSON.stringify(sorted) + ' gap1=' + gap1 + ' gap2=' + gap2);
+  }
+}
+
 console.log('\n' + (failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'));
 process.exit(failures === 0 ? 0 : 1);
