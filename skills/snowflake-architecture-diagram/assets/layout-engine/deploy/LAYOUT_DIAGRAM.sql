@@ -1947,6 +1947,61 @@ function offsetPortOn(rect, side, offset) {
 const CLEARANCE = 14; // px of standoff a path must keep from an unrelated obstacle's edge
 // (inter-zone dynGapBase=48, so 2*14=28px inflated width still leaves a 20px corridor)
 
+// Minimum length for the segment directly touching a port, so the final
+// approach reads as a clean, perpendicular run into the arrowhead instead
+// of an awkward last-instant hook. Found 2026-09-09: the visibility grid's
+// lines come purely from OBSTACLE edges (plus the ports themselves), so
+// nothing stops two unrelated obstacles' clearance zones from coincidentally
+// landing a turn just a few px from a port -- the search only knows total
+// path cost, not "how far is the last hop." Real case: a path threading
+// around an unrelated node's clearance zone happened to land its elbow
+// only 8px from the target's own edge.
+const MIN_STUB = 20;
+
+// Slides a too-short first/last segment's shared elbow (and the segment
+// before it, so that one stays straight too) further back along the
+// corridor, re-validated against `active` so it can never introduce a new
+// crossing -- see MIN_STUB above. Only safe when there are at least 3
+// segments on that end (4 points) to absorb the shift without moving the
+// FIXED source/target port itself; a direct 2-point line or a single-elbow
+// 3-point path is left untouched (in practice neither tends to need it --
+// the coincidental near-miss above only arises from routing around several
+// obstacles' clearance zones, which needs multiple turns to happen at all).
+function extendShortStubs(pts, active, margin) {
+  if (pts.length < 4) return pts;
+  const out = pts.map(p => p.slice());
+  function segOk(x1, y1, x2, y2) {
+    for (let i = 0; i < active.length; i++) {
+      if (segmentBlockedByRect(x1, y1, x2, y2, active[i], margin)) return false;
+    }
+    return true;
+  }
+  function tryExtend(at, toward) {
+    const port = out[at];
+    const elbow = out[at + toward];
+    const corridorFar = out[at + 2 * toward];
+    const anchor = out[at + 3 * toward];
+    const len = Math.abs(port[0] - elbow[0]) + Math.abs(port[1] - elbow[1]);
+    if (len >= MIN_STUB) return;
+    const axis = Math.abs(port[1] - elbow[1]) < 0.5 ? 0 : 1; // the short segment's own varying axis
+    const dir = elbow[axis] > port[axis] ? 1 : -1;
+    const delta = dir * (MIN_STUB - len);
+    const newElbow = elbow.slice(); newElbow[axis] += delta;
+    const newCorridorFar = corridorFar.slice(); newCorridorFar[axis] += delta;
+    if (segOk(anchor[0], anchor[1], newCorridorFar[0], newCorridorFar[1]) &&
+        segOk(newCorridorFar[0], newCorridorFar[1], newElbow[0], newElbow[1]) &&
+        segOk(newElbow[0], newElbow[1], port[0], port[1])) {
+      out[at + toward] = newElbow;
+      out[at + 2 * toward] = newCorridorFar;
+    }
+    // else: no safe extension here -- leave the short stub as-is rather
+    // than risk a crossing. Still geometrically valid, just not ideal.
+  }
+  tryExtend(0, 1);
+  tryExtend(out.length - 1, -1);
+  return out;
+}
+
 /**
  * @param {{left,top,right,bottom,id}[]} obstacles - every rect that could block a path
  * @param {{left,top,right,bottom}} srcRect - the source node's own rect
@@ -2140,6 +2195,7 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
     if (Math.abs(p[0] - out[out.length - 1][0]) < 0.5 && Math.abs(p[1] - out[out.length - 1][1]) < 0.5) continue;
     out.push(p);
   }
+  const stubbed = extendShortStubs(out, active, margin);
   // Attach which side of each rect the winning path actually used, so a
   // caller routing several edges that share this src/tgt can bias
   // subsequent calls (via portBias) toward the same side -- keeps a fan-
@@ -2149,9 +2205,9 @@ function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds, bounds
   // type for existing callers that only index into it.
   const firstPort = pts.length ? pts[0] : null;
   const lastPort = pts.length ? pts[pts.length - 1] : null;
-  out.srcSide = sideOf(srcRect, firstPort);
-  out.tgtSide = sideOf(tgtRect, lastPort);
-  return out;
+  stubbed.srcSide = sideOf(srcRect, firstPort);
+  stubbed.tgtSide = sideOf(tgtRect, lastPort);
+  return stubbed;
 }
 
 function sideOf(rect, point) {
@@ -2191,6 +2247,57 @@ function route(model, packed, opts = {}) {
 
   // ── helpers reading packed rects ──
   const cy = (nr) => (nr.top + nr.bottom) / 2;
+  const zoneRectByName = {};
+  zoneRects.forEach(zr => { zoneRectByName[zr.name] = zr; });
+
+  function oppositeDirection(dir) {
+    return dir === 'right' ? 'left' : dir === 'left' ? 'right' : dir === 'top' ? 'bottom' : 'top';
+  }
+
+  // Buckets an edge into one of 4 rough compass directions (relative to the
+  // SOURCE -- "which way does this edge roughly head") so the fan-in/
+  // fan-out port-consistency mechanism below only forces a shared side on
+  // edges that actually want to leave/arrive in a COMPATIBLE direction.
+  // Before this, consistency was global-per-node: a node's edges going in
+  // genuinely incompatible directions (e.g. an immediate right neighbor vs.
+  // a target on the far side of the diagram) got forced onto the same
+  // side, and the "far" edge's already-established side dragged the
+  // "near" edge's path back across its own card to reach it (found
+  // 2026-09-09: "Azure Private Link"'s edge to an adjacent Power BI card
+  // was forced onto the side its unrelated Snowpipe edge had already
+  // claimed, because both share the same source node).
+  //
+  // Scoped to ZONES, not node centers: checked against the original
+  // motivating case for the *global* version of this mechanism (three
+  // sources fanning into one dbt node, commit 981bbd4) -- individual
+  // node-center dx/dy ratios there were as fragile as 1.27x for one of the
+  // three edges, meaning a small layout change could flip which axis
+  // "wins" and split a fan-in that should stay together. Zone bounding
+  // boxes give a much larger, more stable separation (that fan-in case has
+  // a clean 72px zone-to-zone gap) and directly encode the "rough
+  // quadrant" a human reads off the diagram, rather than a specific node's
+  // exact position within it.
+  function roughDirection(srcZoneRect, tgtZoneRect, srcNodeRect, tgtNodeRect, sameZone) {
+    const useNode = sameZone || !srcZoneRect || !tgtZoneRect;
+    const sr = useNode ? srcNodeRect : srcZoneRect;
+    const tr = useNode ? tgtNodeRect : tgtZoneRect;
+    const noXOverlap = sr.right <= tr.left || tr.right <= sr.left;
+    const noYOverlap = sr.bottom <= tr.top || tr.bottom <= sr.top;
+    // Clean axis-aligned non-overlap wins outright when only ONE axis is
+    // separated -- this is the common, unambiguous case (e.g. the fan-in's
+    // zones sit side by side with a real gap between them).
+    if (noXOverlap && !noYOverlap) return tr.left >= sr.right ? 'right' : 'left';
+    if (noYOverlap && !noXOverlap) return tr.top >= sr.bottom ? 'bottom' : 'top';
+    // Either both axes are cleanly separated (a genuinely diagonal
+    // relationship) or neither is (overlapping/nested zones, or a
+    // same-zone edge) -- fall back to center-to-center magnitude, same
+    // rule the viewer's own dx/dy heuristics use elsewhere.
+    const scx = (sr.left + sr.right) / 2, scy = (sr.top + sr.bottom) / 2;
+    const tcx = (tr.left + tr.right) / 2, tcy = (tr.top + tr.bottom) / 2;
+    const dx = tcx - scx, dy = tcy - scy;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+    return dy >= 0 ? 'bottom' : 'top';
+  }
 
   // ── Obstacle-based shortest-path routing ────────────────────────
   // gridroute.mjs finds the actual shortest orthogonal path between two
@@ -2340,12 +2447,17 @@ function route(model, packed, opts = {}) {
   });
 
   // Fan-in/fan-out port consistency: once one edge picks a side to
-  // exit/enter a given node, later edges sharing that SAME node (as
-  // source, or as target, tracked separately since a node's fan-out side
-  // and fan-in side are independent) are biased toward the same side
-  // instead of each independently landing on whichever port ties on
-  // cost -- e.g. 3 sources feeding one node should all enter through
-  // that node's one side, not split across two different sides.
+  // exit/enter a given node, later edges sharing that SAME node AND the
+  // same rough direction bucket (as source, or as target, tracked
+  // independently) are biased toward the same side instead of each
+  // independently landing on whichever port ties on cost -- e.g. 3 sources
+  // feeding one node from roughly the same direction should all enter
+  // through that node's one side, not split across two different sides.
+  // Keyed by nodeId + '|' + direction (see roughDirection() above), NOT
+  // just nodeId -- a bare-nodeId key would (and did) force an edge headed
+  // one way to share a side with a sibling edge headed a completely
+  // different way, dragging the near edge's path back across its own card
+  // to reach the far side (2026-09-09, "Azure Private Link" -> Power BI).
   const srcSideUsed = {};
   const tgtSideUsed = {};
   // Same-side siblings still need DISTINCT port points, or their final
@@ -2395,9 +2507,12 @@ function route(model, packed, opts = {}) {
       ...exclusionsFor(s.id, s.zoneName),
       ...exclusionsFor(t.id, t.zoneName),
     ]);
-    const portBias = { srcSide: srcSideUsed[s.id] || null, tgtSide: tgtSideUsed[t.id] || null };
-    if (portBias.srcSide) portBias.srcOffset = nextSlotOffset(srcSideSlot, s.id);
-    if (portBias.tgtSide) portBias.tgtOffset = nextSlotOffset(tgtSideSlot, t.id);
+    const dir = roughDirection(zoneRectByName[s.zoneName], zoneRectByName[t.zoneName], s, t, sameZone);
+    const srcKey = s.id + '|' + dir;
+    const tgtKey = t.id + '|' + oppositeDirection(dir);
+    const portBias = { srcSide: srcSideUsed[srcKey] || null, tgtSide: tgtSideUsed[tgtKey] || null };
+    if (portBias.srcSide) portBias.srcOffset = nextSlotOffset(srcSideSlot, srcKey);
+    if (portBias.tgtSide) portBias.tgtOffset = nextSlotOffset(tgtSideSlot, tgtKey);
     let path = routeShortestOrthogonal(obstacles, s, t, excludeIds, canvasBounds, 3, pathUsage, portBias);
     if (!path) {
       // Should only happen if a diagram genuinely has no clear route (e.g.
@@ -2405,8 +2520,8 @@ function route(model, packed, opts = {}) {
       // than dropping the edge.
       path = [[(s.left + s.right) / 2, cy(s)], [(t.left + t.right) / 2, cy(t)]];
     }
-    if (path.srcSide && !srcSideUsed[s.id]) srcSideUsed[s.id] = path.srcSide;
-    if (path.tgtSide && !tgtSideUsed[t.id]) tgtSideUsed[t.id] = path.tgtSide;
+    if (path.srcSide && !srcSideUsed[srcKey]) srcSideUsed[srcKey] = path.srcSide;
+    if (path.tgtSide && !tgtSideUsed[tgtKey]) tgtSideUsed[tgtKey] = path.tgtSide;
     registerPathUsage(pathUsage, path);
     const d = pointsToD(path);
     const markerId = 'arrowhead';

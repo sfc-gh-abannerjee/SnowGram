@@ -266,5 +266,43 @@ run('nested containers (AWS Account > AWS VPC > 2 zones)', nestedContainerGraph)
   }
 }
 
+// ── minimum port-approach stub (found 2026-09-09 via a live Apex Health
+// render, same session as the direction-scoped fix above) ──
+// The SAME "Azure Private Link" -> "Snowpipe" edge had a razor-thin ~8px
+// final segment: the visibility grid's lines come purely from obstacle
+// edges (here, Azure Data Factory's own clearance-inflated right edge
+// landed by pure coincidence just 8px from Snowpipe's own port), and the
+// search has no concept of "how far is the last hop" -- only total path
+// cost. Visually this reads as an awkward last-instant hook right at the
+// arrowhead, and forces the path into a needlessly tight corridor
+// alongside other structure (here, close beside the platform boundary) for
+// longer than necessary. gridroute.mjs's extendShortStubs() post-processes
+// the found path to guarantee >= MIN_STUB (20px) on the segment directly
+// touching a port, re-validated against the same obstacle list so it can
+// never introduce a new crossing.
+//
+// Uses the REAL 16-node/18-edge model pulled from the live-agent trace that
+// showed the bug (review-runs/20260909-185536), run through the actual
+// layout() pipeline (not a hand-built packed object) -- a reduced repro
+// with only the 2-3 edges directly involved was tried first and did NOT
+// reproduce the bug at all (found a completely different, already-fine
+// 3-point path), because this specific corridor only forms as a side
+// effect of ALL 18 edges' combined obstacle/lane pressure. Fidelity to the
+// real scenario mattered more than a minimal repro here.
+{
+  console.log('\n# minimum port-approach stub (regression: razor-thin final segment into a port)');
+  const model = fixture('apex_health_privatelink_stub');
+  const r = layout(model);
+  const e = r.edges.find(x => x.from === 'privatelink' && x.to === 'snowpipe');
+  check('privatelink->snowpipe resolved', !!e);
+  if (e) {
+    const pts = e.points;
+    const last = pts.length - 1;
+    const finalLen = Math.abs(pts[last][0] - pts[last - 1][0]) + Math.abs(pts[last][1] - pts[last - 1][1]);
+    check('final approach segment into snowpipe is >= 20px (not a razor-thin stub)',
+      finalLen >= 19.5, 'finalLen=' + finalLen + ' points=' + JSON.stringify(pts));
+  }
+}
+
 console.log('\n' + (failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'));
 process.exit(failures === 0 ? 0 : 1);

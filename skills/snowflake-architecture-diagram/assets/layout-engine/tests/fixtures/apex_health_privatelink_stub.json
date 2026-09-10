@@ -1,0 +1,218 @@
+{
+  "nodes": [
+    {
+      "id": "synapse",
+      "label": "Azure Synapse",
+      "componentType": "azure synapse",
+      "zone": "Azure Sources",
+      "detail": "Enterprise DW extract",
+      "category": "onprem"
+    },
+    {
+      "id": "azsql",
+      "label": "Azure SQL",
+      "componentType": "azure sql",
+      "zone": "Azure Sources",
+      "detail": "OLTP source system",
+      "category": "onprem"
+    },
+    {
+      "id": "blob",
+      "label": "Azure Blob Storage",
+      "componentType": "azure blob storage",
+      "zone": "Azure Sources",
+      "detail": "Landing zone for files",
+      "category": "onprem"
+    },
+    {
+      "id": "dbt",
+      "label": "dbt",
+      "componentType": "dbt",
+      "zone": "Azure Transform",
+      "detail": "SQL transformations",
+      "category": "onprem"
+    },
+    {
+      "id": "adf",
+      "label": "Azure Data Factory",
+      "componentType": "azure data factory",
+      "zone": "Azure Orchestration",
+      "detail": "Pipeline orchestration",
+      "category": "onprem"
+    },
+    {
+      "id": "privatelink",
+      "label": "Azure Private Link",
+      "componentType": "private link",
+      "zone": "Private Connectivity",
+      "detail": "Private inbound to Snowflake",
+      "category": "onprem"
+    },
+    {
+      "id": "arcadia",
+      "label": "Arcadia Health (Snowflake)",
+      "componentType": "snowflake",
+      "zone": "Data Sharing Provider",
+      "detail": "External provider account"
+    },
+    {
+      "id": "snowpipe",
+      "label": "Snowpipe",
+      "componentType": "snowpipe",
+      "zone": "Ingestion",
+      "detail": "Auto-ingest from Blob"
+    },
+    {
+      "id": "share_in",
+      "label": "Inbound Share",
+      "componentType": "data share",
+      "zone": "Inbound Sharing",
+      "detail": "Zero-copy from Arcadia",
+      "category": "onprem"
+    },
+    {
+      "id": "bronze",
+      "label": "Bronze Dynamic Table",
+      "componentType": "dynamic table",
+      "zone": "Medallion \u2014 Bronze",
+      "detail": "Raw landed data"
+    },
+    {
+      "id": "silver",
+      "label": "Silver Dynamic Table",
+      "componentType": "dynamic table",
+      "zone": "Medallion \u2014 Silver",
+      "detail": "Cleansed & conformed"
+    },
+    {
+      "id": "gold",
+      "label": "Gold Dynamic Table",
+      "componentType": "dynamic table",
+      "zone": "Medallion \u2014 Gold",
+      "detail": "Curated analytics marts"
+    },
+    {
+      "id": "horizon",
+      "label": "Snowflake Horizon",
+      "componentType": "governance",
+      "zone": "Governance",
+      "detail": "RBAC, masking, lineage, PHI"
+    },
+    {
+      "id": "cortex",
+      "label": "Cortex Cowork",
+      "componentType": "cortex",
+      "zone": "Serve",
+      "detail": "AI copilot for analysts"
+    },
+    {
+      "id": "streamlit",
+      "label": "Streamlit / React App",
+      "componentType": "streamlit",
+      "zone": "Serve",
+      "detail": "Custom analyst UI"
+    },
+    {
+      "id": "powerbi",
+      "label": "Power BI (Legacy)",
+      "componentType": "power bi",
+      "zone": "Legacy BI",
+      "detail": "Transitional dashboards",
+      "category": "onprem"
+    }
+  ],
+  "edges": [
+    {
+      "source": "synapse",
+      "target": "dbt"
+    },
+    {
+      "source": "azsql",
+      "target": "dbt"
+    },
+    {
+      "source": "blob",
+      "target": "dbt"
+    },
+    {
+      "source": "dbt",
+      "target": "adf"
+    },
+    {
+      "source": "adf",
+      "target": "privatelink"
+    },
+    {
+      "source": "privatelink",
+      "target": "snowpipe"
+    },
+    {
+      "source": "arcadia",
+      "target": "share_in"
+    },
+    {
+      "source": "snowpipe",
+      "target": "bronze"
+    },
+    {
+      "source": "share_in",
+      "target": "silver"
+    },
+    {
+      "source": "bronze",
+      "target": "silver"
+    },
+    {
+      "source": "silver",
+      "target": "gold"
+    },
+    {
+      "source": "horizon",
+      "target": "bronze"
+    },
+    {
+      "source": "horizon",
+      "target": "silver"
+    },
+    {
+      "source": "horizon",
+      "target": "gold"
+    },
+    {
+      "source": "gold",
+      "target": "cortex"
+    },
+    {
+      "source": "gold",
+      "target": "streamlit"
+    },
+    {
+      "source": "gold",
+      "target": "powerbi"
+    },
+    {
+      "source": "powerbi",
+      "target": "privatelink"
+    }
+  ],
+  "nodeStyle": "wide",
+  "boundaryLabel": "SNOWFLAKE ON AZURE",
+  "boundarySubtitle": "Apex Health account \u2014 HIPAA / Business Critical",
+  "containers": [
+    {
+      "id": "azure",
+      "label": "Microsoft Azure",
+      "zone_names": [
+        "Azure Sources",
+        "Azure Transform",
+        "Azure Orchestration",
+        "Private Connectivity",
+        "Legacy BI",
+        "Data Sharing Provider"
+      ],
+      "include_platform_boundary": true,
+      "color": "#0078D4",
+      "subtitle": "Apex Health tenant \u2014 Private Link enabled"
+    }
+  ]
+}

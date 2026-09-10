@@ -143,6 +143,61 @@ function offsetPortOn(rect, side, offset) {
 const CLEARANCE = 14; // px of standoff a path must keep from an unrelated obstacle's edge
 // (inter-zone dynGapBase=48, so 2*14=28px inflated width still leaves a 20px corridor)
 
+// Minimum length for the segment directly touching a port, so the final
+// approach reads as a clean, perpendicular run into the arrowhead instead
+// of an awkward last-instant hook. Found 2026-09-09: the visibility grid's
+// lines come purely from OBSTACLE edges (plus the ports themselves), so
+// nothing stops two unrelated obstacles' clearance zones from coincidentally
+// landing a turn just a few px from a port -- the search only knows total
+// path cost, not "how far is the last hop." Real case: a path threading
+// around an unrelated node's clearance zone happened to land its elbow
+// only 8px from the target's own edge.
+const MIN_STUB = 20;
+
+// Slides a too-short first/last segment's shared elbow (and the segment
+// before it, so that one stays straight too) further back along the
+// corridor, re-validated against `active` so it can never introduce a new
+// crossing -- see MIN_STUB above. Only safe when there are at least 3
+// segments on that end (4 points) to absorb the shift without moving the
+// FIXED source/target port itself; a direct 2-point line or a single-elbow
+// 3-point path is left untouched (in practice neither tends to need it --
+// the coincidental near-miss above only arises from routing around several
+// obstacles' clearance zones, which needs multiple turns to happen at all).
+function extendShortStubs(pts, active, margin) {
+  if (pts.length < 4) return pts;
+  const out = pts.map(p => p.slice());
+  function segOk(x1, y1, x2, y2) {
+    for (let i = 0; i < active.length; i++) {
+      if (segmentBlockedByRect(x1, y1, x2, y2, active[i], margin)) return false;
+    }
+    return true;
+  }
+  function tryExtend(at, toward) {
+    const port = out[at];
+    const elbow = out[at + toward];
+    const corridorFar = out[at + 2 * toward];
+    const anchor = out[at + 3 * toward];
+    const len = Math.abs(port[0] - elbow[0]) + Math.abs(port[1] - elbow[1]);
+    if (len >= MIN_STUB) return;
+    const axis = Math.abs(port[1] - elbow[1]) < 0.5 ? 0 : 1; // the short segment's own varying axis
+    const dir = elbow[axis] > port[axis] ? 1 : -1;
+    const delta = dir * (MIN_STUB - len);
+    const newElbow = elbow.slice(); newElbow[axis] += delta;
+    const newCorridorFar = corridorFar.slice(); newCorridorFar[axis] += delta;
+    if (segOk(anchor[0], anchor[1], newCorridorFar[0], newCorridorFar[1]) &&
+        segOk(newCorridorFar[0], newCorridorFar[1], newElbow[0], newElbow[1]) &&
+        segOk(newElbow[0], newElbow[1], port[0], port[1])) {
+      out[at + toward] = newElbow;
+      out[at + 2 * toward] = newCorridorFar;
+    }
+    // else: no safe extension here -- leave the short stub as-is rather
+    // than risk a crossing. Still geometrically valid, just not ideal.
+  }
+  tryExtend(0, 1);
+  tryExtend(out.length - 1, -1);
+  return out;
+}
+
 /**
  * @param {{left,top,right,bottom,id}[]} obstacles - every rect that could block a path
  * @param {{left,top,right,bottom}} srcRect - the source node's own rect
@@ -336,6 +391,7 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
     if (Math.abs(p[0] - out[out.length - 1][0]) < 0.5 && Math.abs(p[1] - out[out.length - 1][1]) < 0.5) continue;
     out.push(p);
   }
+  const stubbed = extendShortStubs(out, active, margin);
   // Attach which side of each rect the winning path actually used, so a
   // caller routing several edges that share this src/tgt can bias
   // subsequent calls (via portBias) toward the same side -- keeps a fan-
@@ -345,9 +401,9 @@ export function routeShortestOrthogonal(obstacles, srcRect, tgtRect, excludeIds,
   // type for existing callers that only index into it.
   const firstPort = pts.length ? pts[0] : null;
   const lastPort = pts.length ? pts[pts.length - 1] : null;
-  out.srcSide = sideOf(srcRect, firstPort);
-  out.tgtSide = sideOf(tgtRect, lastPort);
-  return out;
+  stubbed.srcSide = sideOf(srcRect, firstPort);
+  stubbed.tgtSide = sideOf(tgtRect, lastPort);
+  return stubbed;
 }
 
 function sideOf(rect, point) {

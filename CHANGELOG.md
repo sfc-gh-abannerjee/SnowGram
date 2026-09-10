@@ -4,6 +4,45 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1: Layout Engine / CoCo Skill] - 2026-09-10 (minimum port-approach stub)
+
+### Fixed
+- **Razor-thin final approach segment into a port**: gridroute.mjs's
+  visibility grid only ever contains lines derived from obstacle edges (plus
+  the ports themselves), so nothing stops two unrelated obstacles' clearance
+  zones from coincidentally landing a path's last turn just a few px from a
+  port -- the Dijkstra search only knows total path cost, never "how far is
+  the last hop." Found via a live render (same Private Link -> Snowpipe edge
+  as the 2026-09-09 direction-scoping fix): a path threading around Azure
+  Data Factory's own clearance-inflated edge happened to land its elbow only
+  8px from Snowpipe's own port, visually reading as an awkward last-instant
+  hook right at the arrowhead, and forcing the path into a needlessly tight
+  corridor alongside the platform boundary for longer than necessary. Fixed
+  with `extendShortStubs()` in `gridroute.mjs`: a post-process step that,
+  when a path's first or last segment is under `MIN_STUB` (20px), slides the
+  shared elbow (and the segment before it, so that one stays straight too)
+  further back along the corridor -- re-validated against the same obstacle
+  list so it can never introduce a new crossing. Only applies when there are
+  at least 3 segments on that end (4 points) to absorb the shift without
+  moving the FIXED source/target port itself; a direct 2-point line or a
+  single-elbow 3-point path is left untouched.
+  Considered and rejected a soft cost-penalty alternative (discouraging, in
+  the Dijkstra search itself, any move landing too close to a port) --
+  correct in spirit with the existing TURN_PENALTY/REUSE_PENALTY cost model,
+  but riskier: modifying the shared cost function could ripple into OTHER
+  edges' routing decisions across the whole diagram (costs and `pathUsage`
+  are shared/global), whereas a post-process geometric nudge only ever
+  touches the one already-completed, already-obstacle-free path it's
+  applied to. Verified against the REAL 16-node/18-edge model pulled from
+  the live-agent trace that showed the bug (not a reduced repro -- a
+  minimal 2-3 edge version was tried first and didn't reproduce the bug at
+  all, since this specific corridor only forms as a side effect of all 18
+  edges' combined obstacle/lane pressure): final segment goes from 8px to
+  exactly 20px, `git stash`-verified to fail without the fix and pass with
+  it, plus a fresh live render (regenerated with the real captured model,
+  bypassing agent non-determinism) showing a clean, adequately-spaced
+  arrival with visible daylight from the platform boundary.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-09 (Apex Health end-to-end regression pass)
 
 ### Fixed
