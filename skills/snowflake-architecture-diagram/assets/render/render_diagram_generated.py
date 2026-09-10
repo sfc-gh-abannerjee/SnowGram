@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
 # Canonical source: /Users/abannerjee/Documents/SnowGram/skills/snowflake-architecture-diagram/assets/render/source/render_diagram.dev.sql
-# sha256(source): f3485e432557852b4ec527599cede75a580504b1234ec65d383633fc2e6786e9
-# generated: 2026-09-09T21:34:59+00:00
+# sha256(source): 78380155f7489b17547afff7018ee7c9dfff4e2d2c62c4722e4a731290545c76
+# generated: 2026-09-10T17:40:23+00:00
 
 
 import json, base64
@@ -460,7 +460,7 @@ def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=No
                 "<marker id=\"ah-governance\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#7C5CFC\"/></marker>"
                 "<marker id=\"ah-legacy\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#C08A3E\"/></marker>"
                 "<marker id=\"ah-private_link\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#2E9E4F\"/></marker>"
-                "<marker id=\"ah-data_share\" markerWidth=\"10\" markerHeight=\"10\" refX=\"8\" refY=\"3.5\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L8,3.5 L0,7 Z\" fill=\"#1763c6\"/></marker>"
+                "<marker id=\"ah-data_share\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#1763c6\"/></marker>"
                 # Mirrored (tip pointing the opposite way) counterparts for
                 # marker-start on a bidirectional edge -- orient="auto" at
                 # the path START uses the same forward tangent as the END
@@ -473,7 +473,7 @@ def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=No
                 "<marker id=\"ah-governance-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#7C5CFC\"/></marker>"
                 "<marker id=\"ah-legacy-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#C08A3E\"/></marker>"
                 "<marker id=\"ah-private_link-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#2E9E4F\"/></marker>"
-                "<marker id=\"ah-data_share-start\" markerWidth=\"10\" markerHeight=\"10\" refX=\"2\" refY=\"3.5\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M8,0 L0,3.5 L8,7 Z\" fill=\"#1763c6\"/></marker>"
+                "<marker id=\"ah-data_share-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#1763c6\"/></marker>"
                 "</defs>")
     return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + "".join(head + body + ["</svg>"])
 
@@ -1350,12 +1350,12 @@ def _html(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=N
              '<marker id="ah-gov" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-gov" d="M0,0 L7,3 L0,6 Z"/></marker>'
              '<marker id="ah-leg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-leg" d="M0,0 L7,3 L0,6 Z"/></marker>'
              '<marker id="ah-plink" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-plink" d="M0,0 L7,3 L0,6 Z"/></marker>'
-             '<marker id="ah-dshare" markerWidth="10" markerHeight="10" refX="8" refY="3.5" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-dshare" d="M0,0 L8,3.5 L0,7 Z"/></marker>'
+             '<marker id="ah-dshare" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-dshare" d="M0,0 L7,3 L0,6 Z"/></marker>'
              '<marker id="ah-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow" d="M7,0 L0,3 L7,6 Z"/></marker>'
              '<marker id="ah-gov-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-gov" d="M7,0 L0,3 L7,6 Z"/></marker>'
              '<marker id="ah-leg-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-leg" d="M7,0 L0,3 L7,6 Z"/></marker>'
              '<marker id="ah-plink-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-plink" d="M7,0 L0,3 L7,6 Z"/></marker>'
-             '<marker id="ah-dshare-start" markerWidth="10" markerHeight="10" refX="2" refY="3.5" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-dshare" d="M8,0 L0,3.5 L8,7 Z"/></marker>'
+             '<marker id="ah-dshare-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-dshare" d="M7,0 L0,3 L7,6 Z"/></marker>'
              '</defs>')
     b = layout.get('platformBoundary')
     if b:

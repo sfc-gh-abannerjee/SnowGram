@@ -76,6 +76,95 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   paths in the regenerated render finding zero remaining sub-6px/60px+
   hugging segments against any zone or the platform boundary.
 
+## [Track 2: Renderer / Icon Resolution] - 2026-09-10 (data-share icon, marker size, render_diagram.dev.sql escaping fragility)
+
+### Fixed
+- **"Data share"/"Inbound Share" resolved to the wrong (Azure) icon**:
+  `MAP_ICON_PATH('data share', 'Inbound Share')` returned NULL -- no curated
+  `COMPONENT`/`COMPONENT_SYNONYM` entry existed for "data share" under either
+  key -- so `_resolve()` fell through to `SNOWFLAKE.CORTEX.SEARCH_PREVIEW`
+  against `ICON_SEARCH`, which matched and returned an Azure icon
+  (`azure/storage/data-share-invitations.svg`) for a native Snowflake Secure
+  Data Sharing object. Fixed by inserting a canonical `COMPONENT` row
+  (`component_type='data share'` -> `sno-icon-sharing-collaboration-blue.svg`)
+  plus 7 `COMPONENT_SYNONYM` rows (`secure data sharing`, `data sharing`,
+  `inbound share`, `outbound share`, `secure share`, `share`, `zero-copy
+  share`). Verified `MAP_ICON_PATH` now resolves deterministically without
+  reaching Cortex Search, and a fresh render shows the correct Snowflake
+  icon.
+- **Disproportionately large arrowhead on `data_share` connectors**: that
+  category's marker was uniquely sized 10x10 with `refX=8` against a
+  `stroke-width: 2.2` line (reach-back = `refX * strokeWidth` = 17.6px),
+  vs every other category's 9x9/`refX=7`/1.3px-stroke standard (9.1px
+  reach-back). Combined with the `HUG_CLEARANCE` fix above capping some
+  approach stubs to as little as 13.5px, a 17.6px marker necessarily spilled
+  back past the elbow, reading as oversized/disconnected from the line it
+  terminates. Fixed by standardizing `data_share`'s marker geometry
+  (`ah-data_share`/`ah-data_share-start` in the static SVG renderer,
+  `ah-dshare`/`ah-dshare-start` in the interactive HTML renderer) to the same
+  9x9/`refX=7` shape used everywhere else, while deliberately leaving the
+  thicker 2.2px stroke-width unchanged (a legitimate emphasis choice,
+  independent of the marker's own proportion bug).
+- **Icon-path fix silently changed `share_in`'s account-boundary category**:
+  `_category()` in `generate_artifacts.dev.sql` had a fallback rule
+  (`if pth and not pth.startswith('sno-icon'): return 'onprem'`) that used a
+  node's *resolved icon path* as an implicit signal for boundary placement.
+  Fixing the icon (Azure path -> `sno-icon-*` path) would have silently
+  changed `share_in`'s category from `onprem` to the unrelated default
+  `snow`, with nothing to signal the change. Added an explicit rule instead:
+  `data share`/`secure data sharing`/`inbound share`/`outbound share`/
+  `secure share` -> `bridge`, matching the same semantic pattern already
+  used for Snowpipe/Openflow (a construct that straddles the account
+  boundary rather than sitting purely inside or outside it). Verified via a
+  fresh regeneration that this produced no adverse layout change (the
+  platform-boundary rectangle's position/size and all quality metrics were
+  identical before/after) while making the classification correct on its own
+  terms, independent of which icon happens to resolve.
+- **`render_diagram.dev.sql` not directly re-deployable, with a latent
+  pre-existing bug**: the file's legacy convention -- the whole Python UDF
+  body wrapped in a single-quote-delimited SQL string (`AS '...'`), with
+  every internal Python `'` doubled (`''`) for SQL purposes -- is extremely
+  fragile: it silently breaks the moment any future edit adds an
+  unescaped English contraction/apostrophe to a comment or string. Found
+  the file already contained exactly this bug in a pre-existing comment
+  ("...offset from the box's own top..."), confirmed via testing the *exact
+  unmodified git-committed original* through both `snow sql -f` and the
+  `sql_execute` tool and getting the identical `unexpected 's'` compilation
+  error -- i.e. this function had been undeployable-as-committed for some
+  time, never caught because it was never redeployed since that comment was
+  added. Fixed durably by converting the file to `$$...$$` delimiting
+  (needs zero internal escaping, matching the robust convention already
+  used by `LAYOUT_DIAGRAM.sql`/`build_udf.mjs`): unescaped only the
+  SQL-level `''` -> `'` doubling (left every Python-level `\"` untouched --
+  those are genuine Python string escapes, e.g. for double-quoted strings
+  building HTML attributes, not an SQL artifact), validated the result via
+  `ast.parse()`, and deployed successfully. `build_render.py`'s
+  `_extract_body()` was updated in lockstep to extract from the new `AS
+  $$...$$` convention; `render_diagram_generated.py` and the
+  `diagram-interactivity/chrome/*` assets were rebuilt from the corrected
+  source and pass `node tests/run.mjs` with no regressions. Note:
+  byte-comparing `GET_DDL`'s echo of the deployed function against the
+  local source is NOT a reliable verification method here -- confirmed via
+  an isolated test that `GET_DDL` always re-escapes backslashes for its own
+  single-quote-based redisplay convention regardless of how the function
+  was actually created (a `$$`-created function with one literal `\` in a
+  Python string echoes back with 4 backslashes, not 1) -- functional
+  verification (fresh regeneration + visual inspection of the actual
+  rendered output) is the reliable signal.
+
+### Investigated, no bug found
+- **Apparent "line breaks" in connector lines**: extracted every
+  `connector-path`'s `d` attribute and confirmed zero paths contain more
+  than one `M` command (no genuinely disconnected sub-paths). A pixel-level
+  color-match scan produced widespread false positives (thin 1.3-2.2px
+  anti-aliased strokes don't reliably land pixel-perfect at hand-computed
+  sample coordinates) and was abandoned in favor of precise,
+  coordinate-transform-based crops, which showed all sampled connectors as
+  visually continuous. Likely explanation: intentional dash/dot patterns on
+  some categories (governance/legacy/dataflow use `stroke-dasharray`) read
+  as "broken" at a glance, or a screenshot/compression artifact -- not a
+  rendering defect.
+
 ## [Track 1: Layout Engine / CoCo Skill] - 2026-09-09 (Apex Health end-to-end regression pass)
 
 ### Fixed

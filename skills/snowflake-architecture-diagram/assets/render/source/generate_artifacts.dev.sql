@@ -45,6 +45,23 @@ def _category(ctype, label, path):
     pth = path or ''
     if any(k in c for k in ('snowpipe', 'openflow', 'kafka connector', 'connector for kafka')):
         return 'bridge'
+    # An inbound/outbound Secure Data Share object is the same kind of
+    # boundary-straddling construct as Snowpipe/Openflow above: data
+    # crosses in from outside, but the SHARE OBJECT ITSELF is created and
+    # queried inside the consuming account. Explicit rule, not left to fall
+    # through to the icon-path heuristic below (pth.startswith('sno-icon'))
+    # -- found 2026-09-10: that heuristic accidentally decided this node's
+    # placement (inside vs outside the boundary) as a side effect of which
+    # icon it happened to resolve to, so fixing an unrelated icon bug (the
+    # WRONG, external Azure icon for "data share" silently forced 'onprem'
+    # via this same fallback) would have silently relocated every data-share
+    # node's boundary side too, with nothing to signal that had happened.
+    # NOTE: this is specifically the SHARE OBJECT (e.g. "Inbound Share"),
+    # not the external provider/consumer ACCOUNT on the other end of it --
+    # that's covered separately below ("snowflake_account"/"snowflake
+    # account" -> onprem).
+    if any(k in c or k in l for k in ('data share', 'secure data sharing', 'data sharing', 'inbound share', 'outbound share', 'secure share')):
+        return 'bridge'
     # A cloud vendor's PRIVATE CONNECTIVITY construct (Azure Private Link,
     # AWS PrivateLink) is network plumbing, not a Snowflake object -- it
     # does not belong inside the account boundary. Deliberately NOT

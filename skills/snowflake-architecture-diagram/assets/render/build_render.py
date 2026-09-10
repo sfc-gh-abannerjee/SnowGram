@@ -75,15 +75,21 @@ def _resolve_src(arg: str | None) -> Path:
 
 
 def _extract_body(sql_text: str) -> str:
-    """Unwrap the Python body from CREATE FUNCTION ... AS '<body>';"""
-    marker = "\nAS '"
+    """Unwrap the Python body from CREATE FUNCTION ... AS $$<body>$$;
+
+    2026-09-10: converted from the legacy single-quote-delimited convention
+    (AS '<body>'; with every internal ' doubled to '') to $$-delimiting,
+    which needs NO internal escaping at all -- eliminating a whole class of
+    silent-corruption risk (any future edit adding an unescaped apostrophe
+    in a comment/string, e.g. "box's", broke re-deployability with no
+    warning short of an actual redeploy attempt; see CHANGELOG).
+    """
+    marker = "\nAS $$"
     i = sql_text.index(marker) + len(marker)
-    j = sql_text.rstrip().rfind("';")
+    j = sql_text.rstrip().rfind("\n$$;")
     if j <= i:
-        raise ValueError("could not locate the AS '...' body bounds")
-    body_sql = sql_text[i:j]
-    # SQL single-quote unescaping: '' -> '
-    return body_sql.replace("''", "'")
+        raise ValueError("could not locate the AS $$...$$ body bounds")
+    return sql_text[i:j]
 
 
 def _exec_body(body: str) -> dict:
