@@ -54,6 +54,41 @@ def _load_module(name: str, path: Path):
     return mod
 
 
+# Ported verbatim from generate_artifacts.dev.sql's _svg_to_pdf_png, so the
+# offline review package's PDF/PNG go through the SAME conversion path
+# (weasyprint SVG->PDF, pdf2image PDF->PNG) as the deployed
+# GENERATE_DIAGRAM_ARTIFACTS proc actually uses in production -- not a
+# separate Playwright-screenshot-of-the-HTML approximation (that's a
+# different code path, kept as its own sidecar since it's useful for
+# reviewing the INTERACTIVE experience specifically).
+#
+# On macOS, weasyprint needs Pango/GObject (`brew install pango`) AND
+# DYLD_LIBRARY_PATH pointing at Homebrew's lib dir for the dynamic linker
+# to find them -- a plain `pip install weasyprint` alone raises
+# "cannot load library 'libgobject-2.0-0'" even with the brew package
+# installed. Run this script (or review_harness.py) with:
+#   DYLD_LIBRARY_PATH=/opt/homebrew/lib python3 review_harness.py
+# Gracefully degrades (same pattern as the Playwright screenshot below) if
+# weasyprint isn't importable at all.
+def svg_to_pdf_png(svg_text: str, dpi: int = 150):
+    import re as _re
+    m = _re.search(r'<svg[^>]*\bwidth="(\d+(?:\.\d+)?)"[^>]*\bheight="(\d+(?:\.\d+)?)"', svg_text)
+    w = float(m.group(1)) if m else 1200.0
+    h = float(m.group(2)) if m else 800.0
+    html_wrapped = (
+        '<html><head><style>@page { size: ' + str(w) + 'px ' + str(h) + 'px; margin: 0; } '
+        'html,body { margin:0; padding:0; }</style></head><body>' + svg_text + '</body></html>'
+    )
+    from weasyprint import HTML
+    pdf_bytes = HTML(string=html_wrapped).write_pdf()
+    from pdf2image import convert_from_bytes
+    images = convert_from_bytes(pdf_bytes, dpi=dpi)
+    import io as _io
+    buf = _io.BytesIO()
+    images[0].save(buf, format="PNG")
+    return pdf_bytes, buf.getvalue()
+
+
 # Port of GENERATE_DIAGRAM_ARTIFACTS._category so local categories match the
 # agent's intent (drives boundary membership + the node subhead styling).
 def _category(ctype: str, label: str, path: str | None) -> str:
@@ -61,6 +96,14 @@ def _category(ctype: str, label: str, path: str | None) -> str:
     l = (label or "").lower()
     pth = path or ""
     if any(k in c for k in ("snowpipe", "openflow", "kafka connector", "connector for kafka")):
+        return "bridge"
+    # An inbound/outbound Secure Data Share object is the same kind of
+    # boundary-straddling construct as Snowpipe/Openflow above -- kept in
+    # sync with the SAME rule in generate_artifacts.dev.sql's _category()
+    # (added 2026-09-10, see CHANGELOG). This local copy had drifted
+    # without it, which would have silently classified "Inbound Share" as
+    # onprem/snow here while the deployed pipeline said bridge.
+    if any(k in c or k in l for k in ("data share", "secure data sharing", "data sharing", "inbound share", "outbound share", "secure share")):
         return "bridge"
     # A cloud vendor's PRIVATE CONNECTIVITY construct (Azure Private Link,
     # AWS PrivateLink) is network plumbing, not a Snowflake object -- it
@@ -264,6 +307,19 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
     )
     if isinstance(result, str):
         result = json.loads(result)
+
+    # PDF + a PDF-rasterized PNG via the SAME weasyprint/pdf2image path the
+    # deployed GENERATE_DIAGRAM_ARTIFACTS proc uses (see svg_to_pdf_png's
+    # docstring above) -- gracefully degrades (matching the Playwright
+    # screenshot's own try/except pattern in review_harness.py) rather than
+    # failing the whole build when weasyprint/its system libs are missing.
+    try:
+        pdf_bytes, png_bytes = svg_to_pdf_png(result.get("svg") or "")
+        result["pdf"] = pdf_bytes
+        result["static_png"] = png_bytes
+    except Exception as e:
+        result["pdf_error"] = str(e)
+
     return result
 
 
@@ -306,6 +362,16 @@ def main() -> int:
             if content:
                 path.write_text(content, encoding="utf-8")
                 print(f"wrote {path}  ({len(content)} bytes)")
+        if result.get("pdf"):
+            pdf_path = out.with_suffix(".pdf")
+            pdf_path.write_bytes(result["pdf"])
+            print(f"wrote {pdf_path}  ({len(result['pdf'])} bytes)")
+        if result.get("static_png"):
+            png_path = out.parent / (out.stem + ".static.png")
+            png_path.write_bytes(result["static_png"])
+            print(f"wrote {png_path}  ({len(result['static_png'])} bytes)")
+        if result.get("pdf_error"):
+            print(f"WARNING: PDF/static PNG skipped -- {result['pdf_error']}", file=sys.stderr)
     return 0
 
 

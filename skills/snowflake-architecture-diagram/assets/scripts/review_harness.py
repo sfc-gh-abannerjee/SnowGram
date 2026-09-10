@@ -19,8 +19,18 @@ Pipeline per fixture:
                                 render_diagram_generated.py -- full parity
                                 with the live agent's rendering)
     -> <name>.html (+ .svg/.drawio.xml/.mmd sidecars)
-    -> <name>.png  (Playwright screenshot, skipped gracefully if Playwright
-                     isn't installed)
+    -> <name>.png          (interactive-HTML Playwright screenshot,
+                             skipped gracefully if Playwright isn't installed)
+    -> <name>.pdf + <name>.static.png  (static-SVG renderer, via the SAME
+                             weasyprint/pdf2image path the deployed
+                             GENERATE_DIAGRAM_ARTIFACTS proc uses -- skipped
+                             gracefully if weasyprint/its system libs are
+                             missing. On macOS: `brew install pango` AND
+                             run with DYLD_LIBRARY_PATH=/opt/homebrew/lib,
+                             or a plain pip install still fails to load
+                             libgobject-2.0-0.)
+EVERY format is part of the package every run -- a reviewer should never
+need to regenerate a specific format separately to see it.
 
 Also runs `node tests/run.mjs` and folds its output into REVIEW.md.
 
@@ -61,6 +71,12 @@ FIXTURE_DESCRIPTIONS = {
                         "unbounded ~16:1 layout before row-wrapping (Phase 1).",
     "nested_containers": "'AWS Account' (pure wrapper) nesting 'AWS VPC' (wraps 2 zones) — Phase 2/3 "
                           "recursive nested containers, geometry + rendering.",
+    "apex_health_privatelink_stub": "The REAL 16-node/18-edge Apex Health model pulled from an actual "
+                                     "live-agent trace — used for every port-approach-stub/hug-clearance/ "
+                                     "self-card-re-entry/fan-in-spacing/title-overflow regression this "
+                                     "session, since reduced minimal repros repeatedly failed to reproduce "
+                                     "bugs that only emerge from all 18 edges' combined obstacle/lane "
+                                     "pressure. The most representative fixture for a general visual pass.",
 }
 
 
@@ -120,19 +136,44 @@ def render_fixture(name: str, out_dir: Path) -> dict:
 
     html_path = out_dir / f"{name}.html"
     html_path.write_text(result.get("html") or "", encoding="utf-8")
+    written = {"html": html_path.name}
     for key, ext in (("svg", "svg"), ("drawio", "drawio.xml"), ("mmd", "mmd")):
         content = result.get(key) or ""
         if content:
-            (out_dir / f"{name}.{ext}").write_text(content, encoding="utf-8")
+            path = out_dir / f"{name}.{ext}"
+            path.write_text(content, encoding="utf-8")
+            written[key] = path.name
 
+    # Interactive-HTML screenshot (Playwright) -- reviews the INTERACTIVE
+    # experience specifically (hover, customize panel, wide icon-left cards).
     png_path = out_dir / f"{name}.png"
     warning = screenshot(html_path, png_path)
+    if warning is None:
+        written["png"] = png_path.name
+
+    # PDF + a separately-named static.png, both via the SAME weasyprint/
+    # pdf2image conversion the deployed GENERATE_DIAGRAM_ARTIFACTS proc
+    # uses (render_local.svg_to_pdf_png) -- a DIFFERENT code path from the
+    # Playwright screenshot above (that one exercises the interactive HTML
+    # renderer; this one exercises the static SVG renderer), so both need
+    # their own artifact rather than one standing in for the other. See
+    # that function's docstring for the DYLD_LIBRARY_PATH gotcha on macOS.
+    pdf_error = result.get("pdf_error")
+    if result.get("pdf"):
+        pdf_path = out_dir / f"{name}.pdf"
+        pdf_path.write_bytes(result["pdf"])
+        written["pdf"] = pdf_path.name
+    if result.get("static_png"):
+        static_png_path = out_dir / f"{name}.static.png"
+        static_png_path.write_bytes(result["static_png"])
+        written["static_png"] = static_png_path.name
+
     return {
         "name": name,
         "description": FIXTURE_DESCRIPTIONS.get(name, ""),
-        "html": html_path.name,
-        "png": png_path.name if warning is None else None,
+        **written,
         "warning": warning,
+        "pdf_error": pdf_error,
     }
 
 
@@ -154,7 +195,13 @@ def live_agent_check(agent_fqn: str, connection: str, out_dir: Path) -> dict | N
     (out_dir / "live_agent_response.txt").write_text(response, encoding="utf-8")
 
     import re
-    m = re.search(r"\[HTML \(interactive\)\]\((https://[^)]+)\)", response)
+    # Actual format (verified 2026-09-09 against a live response): the label is
+    # PLAIN TEXT before the link, not inside the brackets --
+    # "- HTML (interactive) \u2014 [apex_health_snowflake_azure.html](https://...)".
+    # An earlier version of this regex assumed the label was itself the link
+    # text and never matched, so every --live run reported no HTML link found
+    # regardless of whether one existed.
+    m = re.search(r"HTML \(interactive\)[^\[\n]*\[[^\]]+\]\((https://[^)]+)\)", response)
     if not m:
         return {"response_file": "live_agent_response.txt", "warning": "Could not find an HTML download link in the response."}
     html_path = out_dir / "live_agent_apex_health.html"
@@ -215,11 +262,35 @@ def write_review_md(out_dir: Path, meta: dict, test_ok: bool, test_output: str,
         if f["description"]:
             lines.append(f["description"])
         lines.append("")
+        # Two independent screenshots: the interactive-HTML one (Playwright)
+        # shows what a real user opening the .html sees; the static one
+        # (weasyprint SVG->PDF->PNG) shows the SAME code path the PDF/PNG
+        # export formats actually use -- they are not interchangeable, a
+        # bug can live in one renderer and not the other (this session's
+        # segBlocked/PORT_SLOT_SPACING fixes were layout-side and show in
+        # both; the card-title word-wrap fix was static-SVG-only and would
+        # NOT have shown in the interactive screenshot alone).
         if f.get("png"):
-            lines.append(f"![{f['name']}]({f['png']})")
+            lines.append(f"**Interactive HTML (Playwright screenshot):**\n![{f['name']} interactive]({f['png']})")
         elif f.get("warning"):
-            lines.append(f"_{f['warning']}_")
-        lines.append(f"\nFull HTML: [{f['html']}]({f['html']})")
+            lines.append(f"_Interactive screenshot: {f['warning']}_")
+        lines.append("")
+        if f.get("static_png"):
+            lines.append(f"**Static SVG/PDF renderer (weasyprint screenshot):**\n![{f['name']} static]({f['static_png']})")
+        elif f.get("pdf_error"):
+            lines.append(f"_Static PDF/PNG skipped: {f['pdf_error']}_")
+        lines.append("")
+        # Every format produced for this fixture, so a reviewer never has
+        # to go hunting in the run directory for one -- this is the actual
+        # ask ("I need to see each of the outputs... part of the review
+        # run package each time"), not just an html+png pair.
+        fmt_links = []
+        for key, label in (("html", "HTML"), ("svg", "SVG"), ("drawio", "drawio XML"),
+                            ("mmd", "Mermaid"), ("pdf", "PDF"), ("static_png", "static PNG"),
+                            ("png", "interactive PNG")):
+            if f.get(key):
+                fmt_links.append(f"[{label}]({f[key]})")
+        lines.append("Formats: " + " · ".join(fmt_links))
         lines.append("")
 
     if live:
@@ -250,7 +321,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if not args.skip_render_sync:
-        print("Syncing render_diagram_generated.py from snowgram-eng...")
+        print("Syncing render_diagram_generated.py from assets/render/source/...")
         print(sync_render_module())
 
     ts = _dt.datetime.now().strftime("%Y%m%d-%H%M%S")
