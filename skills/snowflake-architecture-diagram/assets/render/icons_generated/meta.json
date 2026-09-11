@@ -1,17 +1,18 @@
 {
   "source_account": "SFCOGSOPS-SNOWHOUSE_AWS_US_WEST_2",
   "connection": "snowhouse",
-  "generated": "2026-06-29T22:40:35+00:00",
+  "generated": "2026-09-11T19:03:14+00:00",
   "providers": [
     "sno-icon",
     "generic"
   ],
-  "map_entries": 156,
-  "catalog_paths": 345,
-  "unique_blobs": 345,
+  "map_entries": 167,
+  "catalog_paths": 359,
+  "unique_blobs": 359,
   "intra_catalog_dups_collapsed": 0,
   "cross_set_overlap_with_skill_icons": 40,
   "undecodable_skipped": 0,
   "brand_icons_merged": 1,
-  "blobs_json_mb": 2.03
+  "blobs_json_mb": 2.51,
+  "note": "Lean baseline = providers [sno-icon, generic] + brand_sources + all catalog_map-referenced paths. 2026-09-11: curated Azure SQL / Azure Private Link / AWS PrivateLink / sharing-provider mappings added to COMPONENT_ICON_MAP and their 3 gap-fill blobs vendored (icons already in ICON_CATALOG)."
 }

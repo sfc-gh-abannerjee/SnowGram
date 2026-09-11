@@ -39,11 +39,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   Silver, no intermediate node) and added a `tests/run.mjs` regression asserting it.
 
 ### Known follow-up
-- Icon accuracy: some components (Azure SQL, Azure Private Link, data sharing) resolve
-  to wrong icons because they are missing from the curated `COMPONENT_ICON_MAP` (and, for
-  Azure SQL / Private Link, missing from the icon catalog entirely). Root fix in
-  progress: curate the map + source the genuinely-missing vendor icons + add a
-  curation-coverage safeguard.
+- (none open from this thread)
+
+### Fixed (icon accuracy — root fix)
+- **Wrong icons for Azure SQL, Azure Private Link, and the data-share provider.**
+  Root cause was NOT a missing library (`ICON_CATALOG` has 2,752 icons; the correct
+  `azure/databases/azure-sql.svg` and `azure/networking/private-link.svg` were always
+  there). Two real causes: (1) those components were absent from the single-source
+  curated map `COMPONENT_ICON_MAP`, so both pipelines silently fell through to semantic
+  ICON_SEARCH/fuzzy and picked a plausible-but-wrong icon; (2) separator mismatch —
+  callers emit `azure_sql` while map keys are `azure sql`, and `MAP_ICON_PATH`'s exact
+  match missed them. Fixes: curated the missing components in base `COMPONENT`
+  (azure sql, azure/aws private link, snowflake account / data share / provider →
+  existing catalog icons); made key matching separator-insensitive (`azure_sql` =
+  `azure sql` = `azure-sql`) in both `MAP_ICON_PATH` (online) and `icon_resolver.py`
+  (offline); re-exported the offline `catalog_map.json` and vendored only the 3
+  genuinely-new blobs (kept the lean 2.5 MB baseline, not the 35 MB full catalog).
+- **Curation-coverage safeguard** (`assets/render/test_icon_coverage.py`): fails loudly
+  if any component type used by a reference fixture (or the core Snowflake-on-cloud
+  vocabulary) is not covered by the curated map — so a silent-wrong-icon gap can't recur.
 
 ## [Governance] - 2026-09-10 (per-author session handoff convention)
 

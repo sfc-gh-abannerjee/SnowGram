@@ -31,20 +31,23 @@
    the classifier a `snowflake account` provider → `onprem`, enriched the `SECURE_DATA_SHARING`
    row in `PATTERN_CATALOG`, corrected the reference fixture + added a `tests/run.mjs` regression.
 
-## Immediate next step (IN PROGRESS — icon root fix)
-Icons are wrong for **Azure SQL**, **Azure Private Link**, and **data sharing / provider**.
-Root cause (confirmed): the single-source curated map `TEMP.ABANNERJEE.COMPONENT_ICON_MAP`
-(exported verbatim to `assets/render/icons_generated/catalog_map.json` by `build_icons.py`)
-is MISSING entries for these → both pipelines fall to semantic `ICON_SEARCH`/fuzzy, which
-silently pick wrong icons. TWO gap types: (A) icon exists but uncurated (data sharing →
-`sno-icon-sharing-collaboration-blue.svg` / `sno-icon-industry-provider-blue.svg`);
-(B) icon absent from the 356-icon vendored catalog entirely (Azure SQL, Azure Private Link —
-`azure/network/` is empty, `azure/database/` has only data-factory+oracle).
-Plan (approved): (1) FIRST check `ICON_CATALOG` table + the `snowgram-eng` repo for a larger
-icon set before external sourcing (user says we sourced thousands originally — the 356 is a
-"lean baseline"); (2) curate `COMPONENT_ICON_MAP` for the missing components; (3) re-export via
-`build_icons.py`; (4) add a curation-coverage safeguard test (every template/fixture
-component_type must resolve via the curated map, fail loudly); (5) verify offline+online.
+## Immediate next step (icon root fix — DONE)
+Icons for **Azure SQL**, **Azure Private Link**, and **data sharing / provider** were
+wrong. Root cause was NOT a missing library (`ICON_CATALOG` has **2,752** icons; the
+correct Azure icons were always there) — it was (1) those components missing from the
+single-source curated map `COMPONENT_ICON_MAP` → both pipelines fell to semantic search
+→ wrong icons; (2) separator mismatch (`azure_sql` vs `azure sql`). Fixed: curated the
+missing components in base `COMPONENT` (icons already in `ICON_CATALOG`), made key
+matching separator-insensitive in `MAP_ICON_PATH` (online, redeployed) + `icon_resolver.py`
+(offline), re-exported `catalog_map.json` keeping the vendored blobs LEAN (2.5 MB — only
+3 new blobs added, NOT the 35 MB full catalog the default `build_icons.py` rebuild pulls),
+and added `assets/render/test_icon_coverage.py` (fails loudly on any uncurated
+fixture/core component type). All verified offline + online.
+- Icon layers to remember: full library = `ICON_CATALOG` (2,752, searched live online);
+  vendorable default providers = 1,991; offline vendored subset = **359** (lean, git-tracked).
+  Rebuild lean baseline with `build_icons.py --providers sno-icon,generic` (NOT the default
+  7 providers, which bloats blobs.json ~15x). To add a curated icon: insert into base
+  `COMPONENT`, then either surgically add its blob to blobs.json/path_index.json or rebuild lean.
 
 ## Gotchas
 - weasyprint offline: `DYLD_LIBRARY_PATH=/opt/homebrew/lib python3 ...`.

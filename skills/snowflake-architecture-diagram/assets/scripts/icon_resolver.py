@@ -38,7 +38,12 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
 def _norm(s: str | None) -> str:
-    return (s or "").strip().lower()
+    # Separator-insensitive canonical key: lowercase, and collapse any run of
+    # whitespace / underscores / hyphens to a single space. So "azure_sql",
+    # "azure-sql", and "azure  sql" all canonicalize to "azure sql" and match a
+    # single curated map key regardless of how the caller delimited the type.
+    # This is the offline half of the same normalization MAP_ICON_PATH does online.
+    return re.sub(r"[\s_-]+", " ", (s or "").strip().lower()).strip()
 
 
 @lru_cache(maxsize=1)
@@ -46,9 +51,13 @@ def _load() -> dict:
     def _j(name: str) -> dict:
         p = GEN_DIR / name
         return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    # Normalize the curated map + vocab KEYS to the same separator-insensitive
+    # canonical form used at lookup time, so a stored "dynamic_table" and a
+    # queried "dynamic table" resolve identically (last one wins on collision,
+    # which is fine -- separator variants of one key point at the same icon).
     return {
-        "map": _j("catalog_map.json"),
-        "vocab": _j("vocab_resolved.json"),
+        "map": {_norm(k): v for k, v in _j("catalog_map.json").items()},
+        "vocab": {_norm(k): v for k, v in _j("vocab_resolved.json").items()},
         "path_index": _j("path_index.json"),
         "blobs": _j("blobs.json"),
     }
