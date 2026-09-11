@@ -93,28 +93,44 @@ def smoke_test(body: str) -> None:
     exec(compile(body, "shared_rules_body", "exec"), ns)
     category = ns.get("_category")
     build_edges = ns.get("_build_edges")
-    if not callable(category) or not callable(build_edges):
-        raise SystemExit("SMOKE TEST FAILED: extracted block does not define both "
-                          "_category() and _build_edges()")
+    resolve_category = ns.get("resolve_category")
+    if not callable(category) or not callable(build_edges) or not callable(resolve_category):
+        raise SystemExit("SMOKE TEST FAILED: extracted block must define "
+                          "_category(), resolve_category(), and _build_edges()")
     # A handful of cases spanning every branch, so a future edit that breaks
     # one of them (e.g. a typo in a keyword tuple) fails HERE, at extraction
-    # time, not silently in a rendered diagram days later.
+    # time, not silently in a rendered diagram days later. _category is now
+    # icon-independent -- (component_type, label) only, no path argument.
     cases = [
-        (("snowpipe", "Snowpipe", None), "bridge"),
-        (("data share", "Inbound Share", None), "bridge"),
-        (("power bi", "Power BI", None), "onprem"),
-        (("streamlit", "Streamlit App", None), "outcome"),
-        (("user", "Analyst", None), "outcome"),
-        (("azure data factory", "Azure Data Factory", "azure/data-factory.svg"), "onprem"),
-        (("snowflake_account", "Arcadia Health (Snowflake)", "sno-icon-x.svg"), "onprem"),
-        (("dynamic table", "Bronze Dynamic Table", "sno-icon-x.svg"), "snow"),
+        (("snowpipe", "Snowpipe"), "bridge"),
+        (("data share", "Inbound Share"), "bridge"),
+        (("power bi", "Power BI"), "onprem"),
+        (("streamlit", "Streamlit App"), "outcome"),
+        (("user", "Analyst"), "outcome"),
+        (("azure data factory", "Azure Data Factory"), "onprem"),
+        (("snowflake_account", "Arcadia Health (Snowflake)"), "onprem"),
+        (("snowflake account", "Arcadia Health"), "onprem"),
+        (("dynamic table", "Bronze Dynamic Table"), "snow"),
     ]
-    for (ctype, label, path), expected in cases:
-        got = category(ctype, label, path)
+    for (ctype, label), expected in cases:
+        got = category(ctype, label)
         if got != expected:
             raise SystemExit(
-                f"SMOKE TEST FAILED: _category({ctype!r}, {label!r}, {path!r}) "
+                f"SMOKE TEST FAILED: _category({ctype!r}, {label!r}) "
                 f"= {got!r}, expected {expected!r}"
+            )
+    # resolve_category: explicit category wins; else classify from type+label;
+    # accepts either key spelling. This is the entry point both pipelines call.
+    rc_cases = [
+        ({"component_type": "data share", "label": "Inbound Share", "category": "onprem"}, "onprem"),  # explicit honored
+        ({"component_type": "data share", "label": "Inbound Share"}, "bridge"),                        # else recompute
+        ({"componentType": "dynamic table", "label": "Bronze"}, "snow"),                               # alt key spelling
+    ]
+    for node, expected in rc_cases:
+        got = resolve_category(node)
+        if got != expected:
+            raise SystemExit(
+                f"SMOKE TEST FAILED: resolve_category({node!r}) = {got!r}, expected {expected!r}"
             )
     edges = [
         {"source": "a", "target": "b", "label": "extract"},
@@ -128,7 +144,7 @@ def smoke_test(body: str) -> None:
     assert edge_styles.get("b|c") == "governance", edge_styles
     assert edge_bidir.get("c|a") is True, edge_bidir
     assert "x|y" not in edge_styles, edge_styles  # invalid style silently dropped, not stored
-    print("SMOKE TEST OK -- _category() and _build_edges() match expected output on 8+4 known cases")
+    print("SMOKE TEST OK -- _category()/resolve_category()/_build_edges() match expected output on 8+3+4 known cases")
 
 
 def main() -> int:

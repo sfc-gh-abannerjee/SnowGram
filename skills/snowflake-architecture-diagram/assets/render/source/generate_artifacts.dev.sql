@@ -57,23 +57,24 @@ def _resolve(session, label, ctype):
 # is enough to keep the offline copy honest -- just don't rename these
 # markers or the functions between them without updating
 # extract_shared_rules.py to match.
-def _category(ctype, label, path):
+def _category(ctype, label):
+    # Boundary category from component type + label ONLY. Deliberately does
+    # NOT take the resolved icon path: category drives boundary/zone
+    # placement, and the offline (manifest) and online (ICON_SEARCH) icon
+    # resolvers pick different paths -- so any icon-path input here made the
+    # two pipelines silently disagree on layout for the same model. Keep this
+    # a pure function of type+label so both pipelines classify identically.
     c = (ctype or '').lower()
     l = (label or '').lower()
-    pth = path or ''
     if any(k in c for k in ('snowpipe', 'openflow', 'kafka connector', 'connector for kafka')):
         return 'bridge'
     # An inbound/outbound Secure Data Share object is the same kind of
     # boundary-straddling construct as Snowpipe/Openflow above: data
     # crosses in from outside, but the SHARE OBJECT ITSELF is created and
-    # queried inside the consuming account. Explicit rule, not left to fall
-    # through to the icon-path heuristic below (pth.startswith('sno-icon'))
-    # -- found 2026-09-10: that heuristic accidentally decided this node's
-    # placement (inside vs outside the boundary) as a side effect of which
-    # icon it happened to resolve to, so fixing an unrelated icon bug (the
-    # WRONG, external Azure icon for "data share" silently forced 'onprem'
-    # via this same fallback) would have silently relocated every data-share
-    # node's boundary side too, with nothing to signal that had happened.
+    # queried inside the consuming account. Explicit rule so its boundary
+    # placement is decided by type/label, not by an icon-resolution side
+    # effect (an icon-path branch used to live below and did exactly that
+    # -- found 2026-09-10, now removed entirely so category is icon-independent).
     # NOTE: this is specifically the SHARE OBJECT (e.g. "Inbound Share"),
     # not the external provider/consumer ACCOUNT on the other end of it --
     # that's covered separately below ("snowflake_account"/"snowflake
@@ -99,11 +100,14 @@ def _category(ctype, label, path):
         return 'outcome'
     if c == 'user' or 'analyst' in c or 'analyst' in l:
         return 'outcome'
-    if pth and not pth.startswith('sno-icon'):
-        return 'onprem'
-    # A DIFFERENT/external Snowflake account (e.g. an inbound share
-    # provider) is not part of THIS account's boundary either.
-    if 'snowflake_account' in c or 'snowflake account' in l:
+    # A DIFFERENT/external Snowflake account -- e.g. a Secure Data Sharing
+    # PROVIDER account whose data we consume -- is NOT part of THIS account's
+    # boundary. Match the external-account signal in the component type OR the
+    # label, in both underscore and space forms (the agent emits space-form
+    # component types like "snowflake account"). Plain "snowflake" (our own
+    # account's objects) is deliberately NOT matched here -> stays 'snow'.
+    if any(k in c for k in ('snowflake_account', 'snowflake account', 'data share provider', 'external snowflake', 'provider account')) \
+       or 'snowflake account' in l or 'snowflake_account' in l:
         return 'onprem'
     if any(k in c for k in (
         's3', 'kafka', 'kinesis', 'blob', 'gcs', 'event hub', 'eventhub',
@@ -122,6 +126,21 @@ def _category(ctype, label, path):
     if any(c.startswith(p) for p in ('azure_', 'azure ', 'aws_', 'aws ', 'gcp_', 'gcp ', 'google_', 'google ')):
         return 'onprem'
     return 'snow'
+
+def resolve_category(node):
+    # Single source of truth for a node's boundary category, used by BOTH
+    # pipelines (the deployed proc and offline render_local.py). Honors an
+    # explicit category on the node first (agent/user intent), else classifies
+    # from component type + label via _category. Accepts either key spelling
+    # ('component_type' from the proc, 'componentType' from local models).
+    # Nothing here depends on icon resolution -- that is the whole point:
+    # category (which drives layout) must not vary with which icon resolver ran.
+    explicit = node.get('category')
+    if explicit:
+        return explicit
+    ctype = node.get('component_type') or node.get('componentType') or ''
+    label = node.get('label') or node.get('id') or ''
+    return _category(ctype, label)
 
 def _build_edges(edges):
     # Converts raw agent-submitted edges into the layout engine's g_edges
@@ -192,7 +211,7 @@ def run(session, nodes, edges, title, export_name, doc_json, containers=None, bo
             if uri:
                 icons[nid] = uri
             resolved[nid] = {'source': src, 'path': path}
-        cats[nid] = _category(n.get('component_type'), n.get('label'), resolved[nid].get('path'))
+        cats[nid] = resolve_category(n)
 
     g_nodes = [{'id': n.get('id'), 'label': n.get('label') or n.get('id'),
                 'componentType': n.get('component_type') or '',

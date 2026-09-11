@@ -51,7 +51,7 @@
     {
       "id": "arcadia",
       "label": "Arcadia Health (Snowflake)",
-      "componentType": "snowflake",
+      "componentType": "snowflake account",
       "zone": "Data Sharing Provider",
       "detail": "External provider account"
     },
@@ -61,14 +61,6 @@
       "componentType": "snowpipe",
       "zone": "Ingestion",
       "detail": "Auto-ingest from Blob"
-    },
-    {
-      "id": "share_in",
-      "label": "Inbound Share",
-      "componentType": "data share",
-      "zone": "Inbound Sharing",
-      "detail": "Zero-copy from Arcadia",
-      "category": "onprem"
     },
     {
       "id": "bronze",
@@ -154,21 +146,9 @@
       "style": "private_link"
     },
     {
-      "source": "arcadia",
-      "target": "share_in",
-      "label": "Secure Data Sharing",
-      "style": "data_share"
-    },
-    {
       "source": "snowpipe",
       "target": "bronze",
       "label": "COPY INTO"
-    },
-    {
-      "source": "share_in",
-      "target": "silver",
-      "label": "zero-copy",
-      "style": "data_share"
     },
     {
       "source": "bronze",
@@ -219,6 +199,12 @@
       "target": "privatelink",
       "label": "private connect",
       "style": "private_link"
+    },
+    {
+      "source": "arcadia",
+      "target": "silver",
+      "label": "Secure Data Sharing (zero-copy)",
+      "style": "data_share"
     }
   ],
   "nodeStyle": "wide",

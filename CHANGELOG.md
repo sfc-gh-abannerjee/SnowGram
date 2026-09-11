@@ -4,6 +4,47 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1 + Agent] - 2026-09-11 (offline/online parity root-causes: category, legend, arrowheads, data-sharing topology)
+
+### Fixed
+- **Offline↔online category drift (the layout differed on identical input).** Proved
+  the layout engine is deterministic (byte-identical positions local vs deployed), so
+  the drift was upstream: the proc always recomputed `_category` and ignored explicit
+  `category`, and `_category` depended on the resolved icon path (which the two icon
+  resolvers pick differently). Made `_category` icon-independent (type+label only),
+  added a shared `resolve_category(node)` (explicit-first) used by BOTH pipelines,
+  re-extracted `shared_rules.py`. Same input now renders identically offline + online.
+- **Interactive HTML legend omitted the edge-style color key.** The static SVG showed
+  Data flow / Governance / Legacy / Private connectivity / Secure data sharing; the
+  interactive HTML only showed node categories. Added the edge-style key to the HTML
+  renderer (driven by styles actually present), mirroring the SVG legend.
+- **Oversized arrowheads swallowed the L-turn on thicker connectors.** All markers used
+  `markerUnits="strokeWidth"`, so the 2.2px `data_share` line rendered a ~2.2× arrowhead
+  that covered the final approach turn. Switched every connector marker to
+  `userSpaceOnUse` (fixed size independent of line weight) in both the SVG and HTML
+  renderers; normal arrows unchanged, `data_share` normalized, and HTML/SVG arrow sizes
+  now match.
+- **Secure Data Sharing modeled incorrectly (root cause in the agent).** The agent
+  free-composed a wrong topology (provider *inside* the boundary + an intermediate
+  "Inbound Share" ETL node into Silver) because its orchestration had no canonical
+  Secure Data Sharing topology rule. Added that rule to the live `SNOWGRAM_AGENT`
+  orchestration (provider = separate EXTERNAL account outside the boundary; the share
+  is ONE direct zero-copy `data_share` edge to the consuming layer; never an
+  intermediate node or ingestion hop), taught the classifier that a `snowflake account`
+  / provider account resolves external (`onprem`), and enriched the `SECURE_DATA_SHARING`
+  entry in `PATTERN_CATALOG` with the same topology rules so retrieval reinforces it.
+  Verified on a fresh `--live` run: provider external, direct zero-copy share.
+- Corrected the `apex_health_privatelink_stub` reference fixture to the canonical
+  sharing topology (external `snowflake account` provider, direct `data_share` edge to
+  Silver, no intermediate node) and added a `tests/run.mjs` regression asserting it.
+
+### Known follow-up
+- Icon accuracy: some components (Azure SQL, Azure Private Link, data sharing) resolve
+  to wrong icons because they are missing from the curated `COMPONENT_ICON_MAP` (and, for
+  Azure SQL / Private Link, missing from the icon catalog entirely). Root fix in
+  progress: curate the map + source the genuinely-missing vendor icons + add a
+  curation-coverage safeguard.
+
 ## [Governance] - 2026-09-10 (per-author session handoff convention)
 
 ### Added

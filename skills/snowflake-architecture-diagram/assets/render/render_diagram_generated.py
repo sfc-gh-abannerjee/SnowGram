@@ -1,7 +1,7 @@
 # GENERATED FROM render_diagram.dev.sql by assets/render/build_render.py - DO NOT EDIT.
 # Canonical source: /Users/abannerjee/Documents/SnowGram/skills/snowflake-architecture-diagram/assets/render/source/render_diagram.dev.sql
-# sha256(source): c61fe87cca5ed57029ed33e40fc8f320cb0930cff0d3c63ea74f1f9ea3bba81c
-# generated: 2026-09-10T22:22:17+00:00
+# sha256(source): 4f95f8ed830ec0adab63d590e33a1425b44bf2341720b019aacab71f7bc5c49d
+# generated: 2026-09-11T17:02:24+00:00
 
 
 import json, base64
@@ -481,11 +481,11 @@ def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=No
         head.append("<desc>" + _xesc(doc["overview"]) + "</desc>")
     head.append("<rect x=\"0\" y=\"0\" width=\"" + str(W) + "\" height=\"" + str(H) + "\" fill=\"#ffffff\"/>")
     head.append("<defs>"
-                "<marker id=\"ah-dataflow\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#5b6770\"/></marker>"
-                "<marker id=\"ah-governance\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#7C5CFC\"/></marker>"
-                "<marker id=\"ah-legacy\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#C08A3E\"/></marker>"
-                "<marker id=\"ah-private_link\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#2E9E4F\"/></marker>"
-                "<marker id=\"ah-data_share\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#1763c6\"/></marker>"
+                "<marker id=\"ah-dataflow\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#5b6770\"/></marker>"
+                "<marker id=\"ah-governance\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#7C5CFC\"/></marker>"
+                "<marker id=\"ah-legacy\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#C08A3E\"/></marker>"
+                "<marker id=\"ah-private_link\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#2E9E4F\"/></marker>"
+                "<marker id=\"ah-data_share\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M0,0 L7,3 L0,6 Z\" fill=\"#1763c6\"/></marker>"
                 # Mirrored (tip pointing the opposite way) counterparts for
                 # marker-start on a bidirectional edge -- orient="auto" at
                 # the path START uses the same forward tangent as the END
@@ -494,11 +494,11 @@ def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=No
                 # pre-mirrored rather than relying on auto-start-reverse
                 # (an SVG2 feature not reliably supported by the PDF
                 # rasterizer this renderer also feeds).
-                "<marker id=\"ah-dataflow-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#5b6770\"/></marker>"
-                "<marker id=\"ah-governance-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#7C5CFC\"/></marker>"
-                "<marker id=\"ah-legacy-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#C08A3E\"/></marker>"
-                "<marker id=\"ah-private_link-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#2E9E4F\"/></marker>"
-                "<marker id=\"ah-data_share-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"strokeWidth\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#1763c6\"/></marker>"
+                "<marker id=\"ah-dataflow-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#5b6770\"/></marker>"
+                "<marker id=\"ah-governance-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#7C5CFC\"/></marker>"
+                "<marker id=\"ah-legacy-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#C08A3E\"/></marker>"
+                "<marker id=\"ah-private_link-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#2E9E4F\"/></marker>"
+                "<marker id=\"ah-data_share-start\" markerWidth=\"9\" markerHeight=\"9\" refX=\"2\" refY=\"3\" orient=\"auto\" markerUnits=\"userSpaceOnUse\"><path d=\"M7,0 L0,3 L7,6 Z\" fill=\"#1763c6\"/></marker>"
                 "</defs>")
     return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + "".join(head + body + ["</svg>"])
 
@@ -1371,16 +1371,16 @@ def _html(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=N
     s = ['<svg data-connectors-svg class="connectors" width="' + str(W2) + '" height="' + str(H2) +
          '" viewBox="' + str(-pad) + ' ' + str(-pad) + ' ' + str(W2) + ' ' + str(H2) + '" xmlns="http://www.w3.org/2000/svg">']
     s.append('<defs>'
-             '<marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow" d="M0,0 L7,3 L0,6 Z"/></marker>'
-             '<marker id="ah-gov" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-gov" d="M0,0 L7,3 L0,6 Z"/></marker>'
-             '<marker id="ah-leg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-leg" d="M0,0 L7,3 L0,6 Z"/></marker>'
-             '<marker id="ah-plink" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-plink" d="M0,0 L7,3 L0,6 Z"/></marker>'
-             '<marker id="ah-dshare" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-dshare" d="M0,0 L7,3 L0,6 Z"/></marker>'
-             '<marker id="ah-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow" d="M7,0 L0,3 L7,6 Z"/></marker>'
-             '<marker id="ah-gov-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-gov" d="M7,0 L0,3 L7,6 Z"/></marker>'
-             '<marker id="ah-leg-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-leg" d="M7,0 L0,3 L7,6 Z"/></marker>'
-             '<marker id="ah-plink-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-plink" d="M7,0 L0,3 L7,6 Z"/></marker>'
-             '<marker id="ah-dshare-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="strokeWidth"><path class="conn-arrow-dshare" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-gov" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow-gov" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-leg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow-leg" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-plink" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow-plink" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-dshare" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow-dshare" d="M0,0 L7,3 L0,6 Z"/></marker>'
+             '<marker id="ah-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah-gov-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow-gov" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah-leg-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow-leg" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah-plink-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow-plink" d="M7,0 L0,3 L7,6 Z"/></marker>'
+             '<marker id="ah-dshare-start" markerWidth="9" markerHeight="9" refX="2" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path class="conn-arrow-dshare" d="M7,0 L0,3 L7,6 Z"/></marker>'
              '</defs>')
     b = layout.get('platformBoundary')
     if b:
@@ -1419,6 +1419,7 @@ def _html(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=N
                    'private_link': 'ah-plink', 'data_share': 'ah-dshare'}
     _cat_start  = {'dataflow': 'ah-start', 'governance': 'ah-gov-start', 'legacy': 'ah-leg-start',
                    'private_link': 'ah-plink-start', 'data_share': 'ah-dshare-start'}
+    _cats_used = set()
     for e in edges:
         pts = e.get('points') or []
         if not pts:
@@ -1429,6 +1430,7 @@ def _html(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=N
         lbl = edge_labels.get(str(e.get('from')) + '|' + str(e.get('to')))
         _explicit = _estyles.get(str(e.get('from')) + '|' + str(e.get('to')))
         cat = _explicit if _explicit in _cat_marker else _edge_cat(e, lbl, _nm)
+        _cats_used.add(cat)
         is_bidir = bool(_ebidir.get(str(e.get('from')) + '|' + str(e.get('to'))))
         mstart = (' marker-start="url(#' + _cat_start[cat] + ')"') if is_bidir else ''
         s.append('<g class="connector-group cat-' + cat + '" data-source-id="' + _xesc(e.get('from')) + '" data-target-id="' +
@@ -1492,6 +1494,25 @@ def _html(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=N
         col = _pal(cat)[1]
         legend_items.append('<span class="item"><span class="sw" style="background:' + col +
                             '"></span>' + _xesc(_CAT_LABEL.get(cat, cat.title())) + '</span>')
+    # Edge-style key: mirrors the static-SVG legend so the interactive HTML
+    # also explains the connector colors (data flow / governance / legacy /
+    # private connectivity / secure data sharing). Uses the SAME CSS-var
+    # colors + dash patterns the connectors themselves render with, and only
+    # shows styles actually present in this diagram (collected in _cats_used).
+    _edge_legend = [
+        ('dataflow', 'Data flow', 'var(--connector-color)', ''),
+        ('governance', 'Governance / policy', 'var(--container-color)', '1.5 3'),
+        ('legacy', 'Legacy / transitional', 'var(--legacy-color)', '7 4'),
+        ('private_link', 'Private connectivity', 'var(--private-link-color)', ''),
+        ('data_share', 'Secure data sharing', 'var(--data-share-color)', ''),
+    ]
+    for _cat, _lab, _col, _dash in _edge_legend:
+        if _cat not in _cats_used:
+            continue
+        _da = (' stroke-dasharray="' + _dash + '"') if _dash else ''
+        _sw = ('<svg class="sw-line" width="22" height="8" viewBox="0 0 22 8" aria-hidden="true">'
+               '<line x1="0" y1="4" x2="22" y2="4" stroke="' + _col + '" stroke-width="2"' + _da + '/></svg>')
+        legend_items.append('<span class="item">' + _sw + _xesc(_lab) + '</span>')
     legend = ('<div class="legend">' + ''.join(legend_items) + '</div>') if legend_items else ''
 
     # summary-bullet hover -> replay the node's own hover behavior (reuses interactivity wiring)

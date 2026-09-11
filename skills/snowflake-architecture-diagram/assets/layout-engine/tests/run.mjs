@@ -388,5 +388,30 @@ run('nested containers (AWS Account > AWS VPC > 2 zones)', nestedContainerGraph)
   }
 }
 
+// Secure Data Sharing must be modeled as a DIRECT zero-copy edge from an
+// external provider account to a consuming medallion node -- NOT as an
+// intermediate "Inbound Share" ETL node with a second hop into the medallion.
+// This regression guards the canonical topology in the reference model after
+// the agent used to free-compose a provider-inside-boundary + inbound-share-node
+// shape (found 2026-09-11; fixed via the agent orchestration rule + classifier).
+{
+  console.log('\n# secure data sharing topology (regression: provider external + direct zero-copy edge, no intermediate share node)');
+  const model = fixture('apex_health_privatelink_stub');
+  const provider = model.nodes.find(n => n.id === 'arcadia');
+  check('provider account present', !!provider, 'arcadia node missing');
+  // No intermediate inbound-share node: nothing in the reference model is a
+  // "data share" component type sitting between provider and the medallion.
+  const shareNodes = model.nodes.filter(n => String(n.componentType || '').toLowerCase().includes('data share'));
+  check('no intermediate inbound-share node (share is an edge, not a node)', shareNodes.length === 0,
+    'found: ' + JSON.stringify(shareNodes.map(n => n.id)));
+  // The share is ONE direct edge provider -> a medallion node, styled data_share.
+  const shareEdges = model.edges.filter(e => e.source === 'arcadia');
+  const medallion = new Set(['bronze', 'silver', 'gold']);
+  check('provider has exactly one outgoing share edge', shareEdges.length === 1, 'count=' + shareEdges.length);
+  check('share edge is a direct zero-copy data_share into a medallion node',
+    shareEdges.length === 1 && shareEdges[0].style === 'data_share' && medallion.has(shareEdges[0].target),
+    JSON.stringify(shareEdges));
+}
+
 console.log('\n' + (failures === 0 ? 'ALL PASS' : failures + ' FAILURE(S)'));
 process.exit(failures === 0 ? 0 : 1);

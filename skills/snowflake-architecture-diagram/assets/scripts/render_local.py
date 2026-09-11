@@ -221,12 +221,11 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
                     luri = rs._icon_to_data_uri(icon_file)
                     if luri:
                         icons[nid] = luri
-        # category: explicit > manifest-resolved > heuristic
-        if n.get("category"):
-            cats[nid] = n["category"]
-        else:
-            resolved = rs._resolve_icon_for_object_type(ctype, manifest)
-            cats[nid] = (resolved[1] if resolved else None) or shared._category(ctype, label, icon_path)
+        # category: shared, icon-independent (explicit > type/label heuristic).
+        # Deliberately NOT via the manifest's icon-derived category, and NOT
+        # passing icon_path -- both were offline-only inputs that made this
+        # diverge from the deployed proc's classification for the same model.
+        cats[nid] = shared.resolve_category(n)
 
     g_nodes = [
         {
