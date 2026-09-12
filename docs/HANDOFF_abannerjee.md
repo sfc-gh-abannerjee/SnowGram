@@ -25,29 +25,18 @@
    `resolve_category()` (explicit-first) used by both pipelines. Same input → identical layout.
 2. Added the **edge-style legend** to the interactive HTML renderer (was SVG-only).
 3. Fixed **oversized arrowheads** swallowing L-turns: all markers → `markerUnits="userSpaceOnUse"`.
-4. **Data-sharing topology root fix** (the big one): added a canonical Secure Data Sharing
-   rule to the live `SNOWGRAM_AGENT` orchestration (provider = external account OUTSIDE the
-   boundary; share = ONE direct zero-copy `data_share` edge, no intermediate node), taught
-   the classifier a `snowflake account` provider → `onprem`, enriched the `SECURE_DATA_SHARING`
-   row in `PATTERN_CATALOG`, corrected the reference fixture + added a `tests/run.mjs` regression.
-
-## Immediate next step (icon root fix — DONE)
-Icons for **Azure SQL**, **Azure Private Link**, and **data sharing / provider** were
-wrong. Root cause was NOT a missing library (`ICON_CATALOG` has **2,752** icons; the
-correct Azure icons were always there) — it was (1) those components missing from the
-single-source curated map `COMPONENT_ICON_MAP` → both pipelines fell to semantic search
-→ wrong icons; (2) separator mismatch (`azure_sql` vs `azure sql`). Fixed: curated the
-missing components in base `COMPONENT` (icons already in `ICON_CATALOG`), made key
-matching separator-insensitive in `MAP_ICON_PATH` (online, redeployed) + `icon_resolver.py`
-(offline), re-exported `catalog_map.json` keeping the vendored blobs LEAN (2.5 MB — only
-3 new blobs added, NOT the 35 MB full catalog the default `build_icons.py` rebuild pulls),
-and added `assets/render/test_icon_coverage.py` (fails loudly on any uncurated
-fixture/core component type). All verified offline + online.
-- Icon layers to remember: full library = `ICON_CATALOG` (2,752, searched live online);
-  vendorable default providers = 1,991; offline vendored subset = **359** (lean, git-tracked).
-  Rebuild lean baseline with `build_icons.py --providers sno-icon,generic` (NOT the default
-  7 providers, which bloats blobs.json ~15x). To add a curated icon: insert into base
-  `COMPONENT`, then either surgically add its blob to blobs.json/path_index.json or rebuild lean.
+4. **Data-sharing topology root fix**: canonical Secure Data Sharing rule added to the live
+   `SNOWGRAM_AGENT` orchestration (provider = external account OUTSIDE the boundary; share =
+   ONE direct zero-copy `data_share` edge, no intermediate node), classifier + `PATTERN_CATALOG`
+   + fixture + `tests/run.mjs` regression.
+5. **Icon accuracy root fix**: curated missing components in `COMPONENT_ICON_MAP`
+   (Azure SQL / Private Link / provider), separator-insensitive key match in `MAP_ICON_PATH`
+   (online) + `icon_resolver.py` (offline), lean re-export, + `test_icon_coverage.py`.
+6. **Self-hiding type eyebrow**: card type line hides when it echoes the title
+   (`_type_echoes` = whole-word containment), always emitted + live `sgTypeEcho` +
+   Customize toggle "Repeat type label…" (`body.sg-show-types`) + present-caption fix.
+   Guards: `assets/render/test_type_echoes.py` (Python predicate) and
+   `assets/render/test_eyebrow_ui.py` (Playwright: JS + caption paths, skips w/o browser).
 
 ## Gotchas
 - weasyprint offline: `DYLD_LIBRARY_PATH=/opt/homebrew/lib python3 ...`.

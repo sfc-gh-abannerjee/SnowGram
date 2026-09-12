@@ -4,6 +4,42 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1] - 2026-09-11 (self-hiding node type eyebrow)
+
+### Changed
+- **Node cards no longer repeat the type when the title already says it.** A card's
+  uppercase "type eyebrow" (e.g. `AZURE SYNAPSE` under "Azure Synapse", `DYNAMIC TABLE`
+  under "Bronze Dynamic Table") was pure repetition that wasted a line. The type line is
+  now hidden when its canonical name appears as a whole-word phrase inside the label
+  (`_type_echoes`), and kept when it adds information the label doesn't state
+  (`SNOWFLAKE ACCOUNT` on "Arcadia Health (Snowflake)", `GOVERNANCE` on "Snowflake
+  Horizon"). Detail lines are always kept.
+
+### Added
+- **Self-healing + adjustable, not a hard drop.** The interactive HTML always emits the
+  type line (so it stays click-to-edit in Customize) and decides visibility live in the
+  browser (`sgTypeEcho`), re-evaluating on every edit -- rename a title so it no longer
+  contains the type and the eyebrow reappears; rename it to match and it re-hides.
+  Redundant ones are pre-flagged server-side (`sg-echo`) so there's no first-paint flash.
+- **Customize toggle** under Text: "Repeat type label when it matches the title"
+  (off = smart default), flips `body.sg-show-types` to force all type lines on for
+  demo/teaching. Baked into Saved HTML like other Customize settings.
+- Static SVG/PDF/PNG keep the one-time server-side drop (no JS to toggle) -- identical
+  clean default.
+
+### Fixed
+- **Regression caught in review:** Present-mode captions read the type text
+  unconditionally, so once the type line was always emitted an echo card's caption became
+  "Azure Synapse - azure synapse". The caption now skips an `sg-echo` type; informative
+  types are still appended ("Snowflake Horizon - governance").
+
+### Tests
+- `assets/render/test_type_echoes.py` -- 20-case guard on the `_type_echoes` predicate
+  (incl. the whole-word guard: `sql` must not match inside `MySQL`).
+- `assets/render/test_eyebrow_ui.py` -- Playwright UI guard for the JS + caption paths
+  (default hide/show, toggle reveal, live self-heal, present-caption); skips gracefully
+  where no browser is available.
+
 ## [Track 1 + Agent] - 2026-09-11 (offline/online parity root-causes: category, legend, arrowheads, data-sharing topology)
 
 ### Fixed

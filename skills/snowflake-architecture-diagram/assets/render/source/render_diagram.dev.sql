@@ -373,7 +373,13 @@ def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=No
         rx, ry = X(x), Y(y)
         uri = icons.get(n["id"])
         label = n.get("label") or n["id"]
-        sub = (n.get("componentType") or "").upper()
+        _ct = n.get("componentType") or ""
+        # Drop the uppercase type eyebrow when the type already appears as a
+        # whole-word phrase in the label (see _type_echoes): "Azure Synapse",
+        # "Bronze Dynamic Table", "Power BI (Legacy)" all repeat their type.
+        # Keep it when it adds info beyond the label ("Arcadia Health (Snowflake)"
+        # -> "SNOWFLAKE ACCOUNT", "Snowflake Horizon" -> "GOVERNANCE").
+        sub = "" if _type_echoes(_ct, label) else _ct.upper()
         if n.get("style") == "gateway":
             # Small icon-only chip + caption underneath, no card chrome --
             # visually reads as network plumbing (a bridge/connector), not a
@@ -936,6 +942,13 @@ _THEME_CSS = (
     'line-height:var(--node-line);letter-spacing:var(--title-track);color:var(--node-fg)}'
     '.nodes-wide .fn-sub{margin:0;font-family:var(--font-sub);font-weight:var(--sub-weight);font-size:var(--sub-size);'
     'line-height:1.2;color:var(--muted);text-transform:uppercase;letter-spacing:var(--sub-track)}'
+    # A type line that merely echoes the title (e.g. "Azure Synapse"/"AZURE SYNAPSE")
+    # is hidden by default (sg-echo, set server-side + kept live by sgTypeEcho).
+    # The Customize toggle "Repeat type label..." flips body.sg-show-types to reveal
+    # them all. Informative type lines (SNOWFLAKE ACCOUNT, DYNAMIC TABLE) never get
+    # sg-echo, so they always show.
+    '.nodes-wide .fn-sub.sg-echo{display:none}'
+    'body.sg-show-types .nodes-wide .fn-sub.sg-echo{display:block}'
     # The interactive HTML always renders in wide mode, so ".nodes-wide
     # .flow-node" above (flex-direction:row, align-items:center) has equal
     # specificity to -- and comes AFTER, so silently overrides -- the plain
@@ -986,6 +999,19 @@ def _collect_sources(doc):
 def _norm(s):
     s = (s or '').lower()
     return ' '.join(''.join(ch if ch.isalnum() else ' ' for ch in s).split())
+
+
+def _type_echoes(ctype, label):
+    # A type "eyebrow" is redundant when its canonical name already appears as a
+    # whole-word phrase INSIDE the label -- "Bronze Dynamic Table"/"DYNAMIC TABLE",
+    # "Azure Synapse"/"AZURE SYNAPSE", "Power BI (Legacy)"/"POWER BI",
+    # "Streamlit / React App"/"STREAMLIT". Space-padded so it matches whole words
+    # only ("sql" won't match inside "mysql"), and it subsumes exact equality.
+    # Only type-IN-label (not the reverse): a type that adds info beyond the label
+    # -- "Arcadia Health (Snowflake)"/"SNOWFLAKE ACCOUNT", "Snowflake Horizon"/
+    # "GOVERNANCE" -- is NOT an echo and stays shown.
+    ct = _norm(ctype)
+    return bool(ct) and (' ' + _norm(label) + ' ').find(' ' + ct + ' ') >= 0
 
 
 def _match_node(name, node_idx):
@@ -1200,6 +1226,12 @@ _PANEL_JS = (
     "var EDITS=(window.__SAVED_EDITS||{});window.__SG_EDITS=function(){return EDITS;};"
     "function applyEdits(scope){(scope||document).querySelectorAll('[data-edit-id]').forEach(function(el){"
     "var id=el.getAttribute('data-edit-id');if(Object.prototype.hasOwnProperty.call(EDITS,id))el.innerHTML=EDITS[id];});}"
+    # Self-hiding type line: hide a card's type eyebrow when its text appears as a
+    # whole-word phrase inside the title (mirrors the server-side _type_echoes).
+    # Runs on load AND after every edit (see commit), so renaming a title live
+    # re-reveals/re-hides the type.
+    "function sgNorm(s){return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}"
+    "function sgTypeEcho(){document.querySelectorAll('.flow-node').forEach(function(n){var t=n.querySelector('.fn-title'),s=n.querySelector('.fn-sub');if(!s)return;var se=sgNorm(s.textContent),te=sgNorm(t?t.textContent:'');s.classList.toggle('sg-echo',!!se&&(' '+te+' ').indexOf(' '+se+' ')>=0);});}"
     "function setSettings(on){body.classList.toggle('settings-on',!!on);if(on)exitPresent();"
     "if(!on){var p=document.getElementById('tunePanel');if(p)p.classList.remove('open');}}"
     "var logo=document.getElementById('brandLogo');"
@@ -1232,7 +1264,8 @@ _PANEL_JS = (
     "{k:'sub-size',t:'range',label:'Subheading size',min:6,max:13,step:0.5,def:8.5,unit:'px'},"
     "{k:'title-track',t:'range',label:'Title letter-spacing',min:-1,max:2,step:0.05,def:-0.1,unit:'px'},"
     "{k:'sub-track',t:'range',label:'Sub letter-spacing',min:0,max:1.5,step:0.05,def:0.6,unit:'px'},"
-    "{k:'node-line',t:'range',label:'Title line-height',min:1,max:1.6,step:0.05,def:1.15}]],"
+    "{k:'node-line',t:'range',label:'Title line-height',min:1,max:1.6,step:0.05,def:1.15},"
+    "{k:'show-type-echoes',t:'toggle',label:'Repeat type label when it matches the title',def:false,init:function(){return document.body.classList.contains('sg-show-types');},on:function(v){document.body.classList.toggle('sg-show-types',!!v);}}]],"
     "['Spacing',["
     "{k:'title-gap',t:'range',label:'Title → sub gap',min:-6,max:8,step:0.5,def:1,unit:'px'},"
     "{k:'node-gap',t:'range',label:'Icon → text gap',min:4,max:20,step:0.5,def:10,unit:'px'},"
@@ -1285,7 +1318,7 @@ _PANEL_JS = (
     "inp.addEventListener('input',function(){setVar(c.k,inp.value,c.unit||'');bb.textContent=inp.value;dump();});"
     "CTRLS.push({k:c.k,get:function(){return inp.value+(c.unit||'');},reset:function(){inp.value=c.def;bb.textContent=c.def;setVar(c.k,c.def,c.unit||'');}});}"
     "if(inp)row.appendChild(inp);d.appendChild(row);});host.appendChild(d);});dump();}"
-    "function commit(el){el.removeAttribute('contenteditable');el.classList.remove('editing');if(!el.textContent.trim())el.innerHTML='';EDITS[el.getAttribute('data-edit-id')]=el.innerHTML;rtHide();}"
+    "function commit(el){el.removeAttribute('contenteditable');el.classList.remove('editing');if(!el.textContent.trim())el.innerHTML='';EDITS[el.getAttribute('data-edit-id')]=el.innerHTML;rtHide();sgTypeEcho();}"
     "var rtBar=document.getElementById('rtBar'),rtTarget=null;"
     "function rtPos(el){if(!rtBar||!el)return;rtBar.classList.add('show');var rc=el.getBoundingClientRect();var bw=rtBar.offsetWidth,bh=rtBar.offsetHeight;var top=rc.top-bh-8;if(top<6)top=rc.bottom+8;var left=rc.left+(rc.width-bw)/2;left=Math.max(6,Math.min(left,window.innerWidth-bw-6));rtBar.style.top=top+'px';rtBar.style.left=left+'px';}"
     "function rtShow(el){rtTarget=el;rtPos(el);}"
@@ -1318,7 +1351,7 @@ _PANEL_JS = (
     "document.querySelectorAll('.connector-group').forEach(function(g){var s=g.getAttribute('data-source-id'),t=g.getAttribute('data-target-id');g.setAttribute('data-hidden',(shown[s]&&shown[t])?'0':'1');});"
     "if(k<0){var cb0=document.getElementById('capBar');if(cb0){cb0.querySelector('.cap-step').textContent='Cover';cb0.querySelector('.cap-title').textContent='';cb0.querySelector('.cap-text').textContent='';}document.querySelectorAll('.flow-node').forEach(function(n){n.classList.remove('is-primary');});return;}"
     "var id=order[k],el=byId[id];var tn=el?el.querySelector('.fn-title'):null,sn=el?el.querySelector('.fn-sub'):null;"
-    "var title=tn?tn.textContent:id;var sub=sn?sn.textContent:'';var cap=CAPS[id]||(sub?(title+' \\u2014 '+sub):title);"
+    "var title=tn?tn.textContent:id;var sub=(sn&&!sn.classList.contains('sg-echo'))?sn.textContent:'';var cap=CAPS[id]||(sub?(title+' \\u2014 '+sub):title);"
     "var cb=document.getElementById('capBar');if(cb){cb.querySelector('.cap-step').textContent=(k+1)+' / '+order.length;cb.querySelector('.cap-title').textContent=title;cb.querySelector('.cap-text').textContent=cap;}"
     "document.querySelectorAll('.flow-node').forEach(function(n){n.classList.toggle('is-primary',n===el);});}"
     "function startPresent(){setSettings(false);buildOrder();if(!order.length&&!coverWanted)return;body.classList.add('presenting');if(coverWanted){gotoCover();step=-1;showUpTo(-1);}else{gotoArch();step=0;showUpTo(0);}}"
@@ -1335,7 +1368,7 @@ _PANEL_JS = (
     "fns.forEach(function(m){var mid=m.getAttribute('data-node-id');m.classList.toggle('hl',mid===id||!!(nbr[id]&&nbr[id][mid]));m.classList.remove('hl-src');});"
     "n.classList.add('hl-src');grps.forEach(function(g){g.classList.remove('hl-edge');});(nedges[id]||[]).forEach(function(g){g.classList.add('hl-edge');});});"
     "n.addEventListener('mouseleave',function(){root.classList.remove('hovering');fns.forEach(function(m){m.classList.remove('hl','hl-src');});grps.forEach(function(g){g.classList.remove('hl-edge');});});});}"
-    "function wire(){buildTuner();applyEdits(document);wireHover();var p=document.getElementById('tunePanel');"
+    "function wire(){buildTuner();applyEdits(document);sgTypeEcho();wireHover();var p=document.getElementById('tunePanel');"
     "var tab=document.getElementById('tuneTab');if(tab)tab.addEventListener('click',function(){if(p)p.classList.add('open');});"
     "var cl=document.getElementById('tuneClose');if(cl)cl.addEventListener('click',function(){if(p)p.classList.remove('open');});"
     "var sv=document.getElementById('tuneSave');if(sv)sv.addEventListener('click',save);"
@@ -1468,11 +1501,18 @@ def _html(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=N
             continue
         if wide:
             ico = '<span class="fn-ico">' + (('<img src="' + uri + '" alt=""/>') if uri else '') + '</span>'
-            sub = _xesc(n.get('componentType') or '')
+            _ct = n.get('componentType') or ''
+            # Always EMIT the type line so it stays editable in Customize; whether
+            # it SHOWS is decided live in the browser (sgTypeEcho hides it when it
+            # merely echoes the title, and re-evaluates on every edit so a rename
+            # self-heals). Pre-flag the redundant ones server-side too (sg-echo),
+            # so the default view has no first-paint flash before the JS runs.
+            sub = _xesc(_ct)
+            sub_echo = _type_echoes(_ct, label)
             det = _xesc(n.get('detail') or '')
             txt = '<span class="fn-text"><span class="fn-title" data-edit-id="' + _xesc(tid) + '">' + _xesc(label) + '</span>'
             if sub:
-                txt += '<span class="fn-sub" data-edit-id="node:' + _xesc(str(n['id'])) + ':sub">' + sub + '</span>'
+                txt += '<span class="fn-sub' + (' sg-echo' if sub_echo else '') + '" data-edit-id="node:' + _xesc(str(n['id'])) + ':sub">' + sub + '</span>'
             if det:
                 txt += '<span class="fn-detail" data-edit-id="node:' + _xesc(str(n['id'])) + ':detail">' + det + '</span>'
             txt += '</span>'
