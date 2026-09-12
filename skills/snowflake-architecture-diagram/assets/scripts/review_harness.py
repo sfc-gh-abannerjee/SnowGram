@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 review_harness.py — regenerate a human-in-the-loop visual review package for
-the layout-engine + render pipeline, entirely offline (no Snowflake, no live
-agent) unless --live is passed.
+the layout-engine + render pipeline. By DEFAULT it also runs the live agent and
+builds a mandatory offline-vs-live SIDE-BY-SIDE (the artifact a reviewer signs
+off on); pass --offline-only to skip that (needs Snowflake + the cortex CLI).
 
 Why this exists: iterative layout-engine/render-engine changes need a fast,
 repeatable way to SEE the effect of a change (crossings, spacing, nesting)
@@ -38,11 +39,11 @@ Output: skills/snowflake-architecture-diagram/review-runs/<run-id>/
   (gitignored — regenerate on demand, this is a build artifact, not source)
 
 Usage:
-  python3 review_harness.py                      # offline, all fixtures
+  python3 review_harness.py                      # live + offline-vs-live side-by-side (default)
+  python3 review_harness.py --offline-only       # offline only; marked NOT-FOR-SIGN-OFF
   python3 review_harness.py --fixture nested_containers
   python3 review_harness.py --skip-render-sync   # skip build_render.py resync
-  python3 review_harness.py --live               # + a live-agent real-world check
-  python3 review_harness.py --live --agent TEMP.ABANNERJEE.SNOWGRAM_AGENT --connection snowhouse
+  python3 review_harness.py --agent TEMP.ABANNERJEE.SNOWGRAM_AGENT --connection snowhouse
 """
 from __future__ import annotations
 
@@ -79,6 +80,12 @@ FIXTURE_DESCRIPTIONS = {
                                      "bugs that only emerge from all 18 edges' combined obstacle/lane "
                                      "pressure. The most representative fixture for a general visual pass.",
 }
+
+# The fixture that gets the mandatory offline-vs-live side-by-side (see
+# build_side_by_side + main). It is the most representative model AND the one the
+# live-agent check composes, so the two panels are directly comparable. If this is
+# ever renamed, update it here or the side-by-side silently loses its offline panel.
+COMPARISON_FIXTURE = "apex_health_privatelink_stub"
 
 
 def _load_module(name: str, path: Path):
@@ -143,6 +150,98 @@ def screenshot(html_path: Path, png_path: Path, viewport=(1600, 1000)) -> str | 
         return None
     except Exception as e:
         return f"Screenshot failed: {e}"
+
+
+def _diagram_shot(page, html_path: Path, tmp_png: Path) -> bool:
+    """Screenshot ONLY the diagram region of a rendered page (not the header or the
+    documentation panel), so the offline and live panels compare like-for-like. Falls
+    back through selectors, then to a full-page shot if none match."""
+    page.goto(html_path.resolve().as_uri())
+    page.wait_for_timeout(400)
+    for sel in ("[data-diagram-root]", ".diagram-root", ".canvas"):
+        try:
+            loc = page.locator(sel).first
+            if loc.count() > 0:
+                loc.screenshot(path=str(tmp_png))
+                return True
+        except Exception:
+            continue
+    page.screenshot(path=str(tmp_png), full_page=True)
+    return True
+
+
+def build_side_by_side(left_html: Path | None, right_html: Path | None, out_path: Path,
+                       left_label: str, right_label: str) -> str | None:
+    """Composite the two DIAGRAMS (not full pages) into ONE image, each in an
+    EQUAL-SIZED cell (same width and height) with its diagram contain-fit + centered,
+    so a reviewer compares them at matched proportions regardless of each render's
+    native aspect ratio. Clean divider + labeled header. Returns None on success, or a
+    warning string (missing panel / no PIL / no browser) so the caller can enforce."""
+    if not left_html or not left_html.exists():
+        return "side-by-side missing the offline HTML panel"
+    if not right_html or not right_html.exists():
+        return "side-by-side missing the live HTML panel"
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as e:
+        return f"playwright unavailable for side-by-side ({e})"
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except Exception as e:
+        return f"PIL unavailable for side-by-side ({e})"
+
+    import tempfile
+    lt = Path(tempfile.mktemp(suffix="_sbs_l.png"))
+    rt = Path(tempfile.mktemp(suffix="_sbs_r.png"))
+    try:
+        with sync_playwright() as p:
+            try:
+                b = p.chromium.launch()
+            except Exception as e:
+                return f"chromium unavailable for side-by-side ({e})"
+            pg = b.new_page(viewport={"width": 1700, "height": 1200})
+            _diagram_shot(pg, left_html, lt)
+            _diagram_shot(pg, right_html, rt)
+            b.close()
+        L = Image.open(lt).convert("RGB")
+        R = Image.open(rt).convert("RGB")
+    except Exception as e:
+        return f"diagram screenshot for side-by-side failed ({e})"
+
+    bg = (238, 242, 247)
+    # Equal cells: both panels get the SAME box (the larger of each dimension); each
+    # diagram is scaled to fit inside preserving aspect, then centered/padded.
+    cell_w, cell_h = max(L.width, R.width), max(L.height, R.height)
+
+    def _cell(im):
+        s = min(cell_w / im.width, cell_h / im.height)
+        nw, nh = max(1, round(im.width * s)), max(1, round(im.height * s))
+        c = Image.new("RGB", (cell_w, cell_h), bg)
+        c.paste(im.resize((nw, nh)), ((cell_w - nw) // 2, (cell_h - nh) // 2))
+        return c
+
+    Lc, Rc = _cell(L), _cell(R)
+    gap, header, divider = 28, 52, 4
+    right_x = cell_w + gap + divider + gap
+    canvas = Image.new("RGB", (right_x + cell_w, cell_h + header), bg)
+    draw = ImageDraw.Draw(canvas)
+    try:
+        font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 22)
+    except Exception:
+        font = ImageFont.load_default()
+    draw.text((gap, 15), left_label, fill=(22, 32, 58), font=font)
+    draw.text((right_x, 15), right_label, fill=(22, 32, 58), font=font)
+    canvas.paste(Lc, (0, header))
+    canvas.paste(Rc, (right_x, header))
+    dx = cell_w + gap + divider // 2
+    draw.line([(dx, 0), (dx, cell_h + header)], fill=(41, 181, 232), width=divider)
+    canvas.save(out_path)
+    for t in (lt, rt):
+        try:
+            t.unlink()
+        except Exception:
+            pass
+    return None
 
 
 def render_fixture(name: str, out_dir: Path) -> dict:
@@ -275,7 +374,42 @@ def live_agent_check(agent_fqn: str, connection: str, out_dir: Path) -> dict | N
 
 
 def write_review_md(out_dir: Path, meta: dict, test_ok: bool, test_output: str,
-                     fixtures: list[dict], live: dict | None) -> None:
+                     fixtures: list[dict], live: dict | None,
+                     side_by_side: str | None = None, offline_only: bool = False,
+                     enforcement_error: str | None = None) -> None:
+    # Headline: the offline-vs-live side-by-side is the artifact a reviewer signs
+    # off on. It is mandatory unless --offline-only; when it is missing, say so
+    # LOUDLY at the very top instead of quietly omitting it.
+    if side_by_side:
+        sbs_lines = [
+            "## Side-by-side: offline vs live (sign-off view)",
+            "",
+            f"![offline vs live side-by-side]({side_by_side})",
+            "",
+            "Left = `render_local.py` (offline). Right = the live `SNOWGRAM_AGENT`. "
+            "Compare these two before sign-off; the per-fixture and per-pipeline "
+            "renders below are for drilling into detail.",
+            "",
+        ]
+    elif offline_only:
+        sbs_lines = [
+            "## ⚠ NOT FOR SIGN-OFF — offline-only run",
+            "",
+            "This package was generated with `--offline-only`, so the mandatory "
+            "offline-vs-live **side-by-side was NOT produced**. Do not sign off a "
+            "visual change from this package; rerun `python3 review_harness.py` "
+            "(no flag) with a live connection to get the comparison.",
+            "",
+        ]
+    else:
+        sbs_lines = [
+            "## ⚠ INCOMPLETE — side-by-side could not be produced",
+            "",
+            f"The mandatory offline-vs-live side-by-side failed: **{enforcement_error}**. "
+            "The live render or its screenshot did not succeed, so there is nothing to "
+            "sign off against. Fix the live path and rerun.",
+            "",
+        ]
     lines = [
         "# SnowGram review package",
         "",
@@ -283,21 +417,21 @@ def write_review_md(out_dir: Path, meta: dict, test_ok: bool, test_output: str,
         f"SnowGram repo: `{meta['snowgram_sha']}`" + (" (dirty)" if meta["snowgram_dirty"] else ""),
         f"snowgram-eng repo: `{meta['eng_sha']}`" + (" (dirty)" if meta["eng_dirty"] else ""),
         "",
+        *sbs_lines,
         "Regenerate this package any time with:",
         "```bash",
         "cd " + str(SCRIPTS_DIR),
-        "python3 review_harness.py" + ("" if live is None else " --live"),
+        "python3 review_harness.py" + (" --offline-only" if offline_only else ""),
         "```",
         "",
-        "Add `--live` to also run a real live-agent request (needs network + the "
-        "`cortex` CLI) and screenshot its actual downloaded HTML artifact -- slower, "
-        "but the closest thing to what a real user sees.",
+        "Live + the offline-vs-live side-by-side run BY DEFAULT (needs network + the "
+        "`cortex` CLI). Pass `--offline-only` to skip them, which produces a package "
+        "explicitly marked not-for-sign-off.",
         "",
         "> **Note on categories in these renders:** the local pipeline (`render_local.py`) "
         "resolves onprem/snow/outcome category with a simplified heuristic, not the live "
-        "agent's `component_resolver`. Use these renders to judge layout/spacing/crossings/ "
-        "nesting, not exact boundary placement for exotic component types -- use `--live` "
-        "or the agent directly for that.",
+        "agent's `component_resolver`. Use the offline renders to judge layout/spacing/ "
+        "crossings/nesting, and the live panel for exact boundary placement.",
         "",
         "## Numeric test suite (`node tests/run.mjs`)",
         "",
@@ -381,11 +515,18 @@ def main() -> int:
     ap.add_argument("--fixture", action="append", help="only render this fixture (repeatable); default: all")
     ap.add_argument("--skip-render-sync", action="store_true", help="skip build_render.py resync")
     ap.add_argument("--skip-tests", action="store_true", help="skip node tests/run.mjs")
-    ap.add_argument("--live", action="store_true", help="also run a live-agent real-world check (needs network + cortex CLI)")
-    ap.add_argument("--agent", default="TEMP.ABANNERJEE.SNOWGRAM_AGENT", help="agent FQN for --live")
-    ap.add_argument("--connection", default="snowhouse", help="snow/cortex connection for --live")
+    ap.add_argument("--offline-only", action="store_true",
+                    help="skip the live-agent render + the mandatory offline-vs-live side-by-side. "
+                         "Produces a package explicitly marked NOT-FOR-SIGN-OFF. Use only where "
+                         "Snowflake/network is unavailable.")
+    ap.add_argument("--live", action="store_true", help="(deprecated no-op) live + side-by-side is now the default")
+    ap.add_argument("--agent", default="TEMP.ABANNERJEE.SNOWGRAM_AGENT", help="agent FQN for the live check")
+    ap.add_argument("--connection", default="snowhouse", help="snow/cortex connection for the live check")
     ap.add_argument("--run-id", help="output subdir name; default: timestamp")
     args = ap.parse_args()
+    # Live + side-by-side is ENFORCED by default; opting out is explicit. --live is
+    # kept as an accepted no-op so old commands still work.
+    do_live = not args.offline_only
 
     if not args.skip_render_sync:
         print("Syncing render_diagram_generated.py from assets/render/source/...")
@@ -397,7 +538,7 @@ def main() -> int:
     run_id = args.run_id or ts
     out_dir = RUNS_DIR / run_id
     # offline/ (render_local.py fixtures, no Snowflake) and online/ (a real
-    # --live agent call's downloaded artifacts) are kept in separate
+    # live agent call's downloaded artifacts) are kept in separate
     # subfolders of the SAME run -- both are dated/versioned together, but
     # a reviewer should never have to guess which pipeline produced which
     # file sitting side by side in one flat directory.
@@ -411,17 +552,39 @@ def main() -> int:
         print("WARNING: test suite has failures -- continuing to render fixtures anyway.", file=sys.stderr)
 
     names = args.fixture or sorted(p.stem for p in FIXTURES_DIR.glob("*.json"))
+    # The side-by-side needs the comparison fixture's offline panel, so render it
+    # even when --fixture narrows the set (otherwise the mandatory composite loses
+    # its offline half whenever someone filters fixtures).
+    if do_live and COMPARISON_FIXTURE not in names:
+        names = list(names) + [COMPARISON_FIXTURE]
     fixtures = []
     for name in names:
         print(f"Rendering fixture: {name}")
         fixtures.append(render_fixture(name, offline_dir))
 
     live_result = None
-    if args.live:
+    side_by_side = None            # relative path in the package, or None
+    enforcement_error = None       # set when the mandatory side-by-side can't be produced
+    if do_live:
         online_dir = out_dir / "online"
         online_dir.mkdir(parents=True, exist_ok=True)
         print(f"Running live agent check against {args.agent} ...")
         live_result = live_agent_check(args.agent, args.connection, online_dir)
+
+        # MANDATORY side-by-side: offline comparison-fixture diagram | live-agent
+        # diagram, each screenshotted diagram-only and placed in an equal-sized cell.
+        offline_html = offline_dir / f"{COMPARISON_FIXTURE}.html"
+        live_html = online_dir / live_result["html"] if (live_result and live_result.get("html")) else None
+        sbs_path = out_dir / "side_by_side.png"
+        warn = build_side_by_side(
+            offline_html, live_html, sbs_path,
+            f"OFFLINE — render_local ({COMPARISON_FIXTURE})", "ONLINE — live agent")
+        if warn is None:
+            side_by_side = sbs_path.name
+            print(f"Side-by-side written: {sbs_path}")
+        else:
+            enforcement_error = warn
+            print(f"ENFORCEMENT FAILURE: side-by-side not produced -- {warn}", file=sys.stderr)
 
     meta = {
         "timestamp": _dt.datetime.now().isoformat(timespec="seconds"),
@@ -430,9 +593,15 @@ def main() -> int:
         "eng_sha": _git(SNOWGRAM_ENG_REPO, "rev-parse", "--short", "HEAD"),
         "eng_dirty": bool(_git(SNOWGRAM_ENG_REPO, "status", "--porcelain")),
     }
-    write_review_md(out_dir, meta, test_ok, test_output, fixtures, live_result)
+    write_review_md(out_dir, meta, test_ok, test_output, fixtures, live_result,
+                    side_by_side=side_by_side, offline_only=args.offline_only,
+                    enforcement_error=enforcement_error)
     print(f"\nReview package ready: {out_dir / 'REVIEW.md'}")
-    return 0 if test_ok else 1
+    if enforcement_error:
+        print("REVIEW PACKAGE INCOMPLETE: the mandatory offline-vs-live side-by-side was not produced. "
+              "Fix the live render, or rerun with --offline-only to acknowledge a not-for-sign-off package.",
+              file=sys.stderr)
+    return 0 if (test_ok and not enforcement_error) else 1
 
 
 if __name__ == "__main__":

@@ -37,6 +37,10 @@
    Customize toggle "Repeat type label…" (`body.sg-show-types`) + present-caption fix.
    Guards: `assets/render/test_type_echoes.py` (Python predicate) and
    `assets/render/test_eyebrow_ui.py` (Playwright: JS + caption paths, skips w/o browser).
+7. **Review harness enforces the side-by-side**: `review_harness.py` now runs live +
+   an offline-vs-live side-by-side BY DEFAULT (`--offline-only` opts out with a loud
+   NOT-FOR-SIGN-OFF banner; a failed side-by-side exits non-zero). `build_side_by_side`
+   screenshots diagram-only regions and composites them in equal-sized cells.
 
 ## Gotchas
 - weasyprint offline: `DYLD_LIBRARY_PATH=/opt/homebrew/lib python3 ...`.

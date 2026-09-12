@@ -4,6 +4,26 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1] - 2026-09-12 (review harness: enforced offline-vs-live side-by-side)
+
+### Changed
+- **`review_harness.py` now runs the live agent + a mandatory offline-vs-live
+  side-by-side BY DEFAULT.** Previously `--live` was optional and, even with it, the
+  harness only wrote separate offline and online sections -- there was no combined
+  comparison and nothing forced one, so a reviewer could sign off from offline-only
+  renders. Now the side-by-side is the headline of `REVIEW.md`; `--offline-only` is the
+  explicit opt-out and stamps a loud "NOT FOR SIGN-OFF" banner. If a default (live) run
+  can't produce the side-by-side, the harness prints ENFORCEMENT FAILURE, writes an
+  INCOMPLETE banner, and exits non-zero. (`--live` kept as an accepted no-op.)
+
+### Added
+- **`build_side_by_side`**: composites the two DIAGRAMS (not full pages) into one image.
+  It screenshots only the diagram region of each (`[data-diagram-root]` → `.diagram-root`
+  → `.canvas`), so the live render's documentation panel no longer skews the comparison,
+  and places both in EQUAL-SIZED cells (contain-fit, preserving each diagram's aspect
+  ratio, centered + padded) with a clean divider and labeled panels -- a fair,
+  matched-proportion comparison.
+
 ## [Track 1] - 2026-09-11 (self-hiding node type eyebrow)
 
 ### Changed
