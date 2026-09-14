@@ -75,7 +75,7 @@
       "label": "Bronze",
       "componentType": "dynamic table",
       "role": "Dynamic table",
-      "zone": "Medallion \u2014 Bronze",
+      "zone": "Medallion",
       "detail": "Raw landed data"
     },
     {
@@ -83,7 +83,7 @@
       "label": "Silver",
       "componentType": "dynamic table",
       "role": "Dynamic table",
-      "zone": "Medallion \u2014 Silver",
+      "zone": "Medallion",
       "detail": "Cleansed & conformed"
     },
     {
@@ -91,7 +91,7 @@
       "label": "Gold",
       "componentType": "dynamic table",
       "role": "Dynamic table",
-      "zone": "Medallion \u2014 Gold",
+      "zone": "Medallion",
       "detail": "Curated analytics marts"
     },
     {
