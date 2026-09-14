@@ -374,12 +374,14 @@ def _svg(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=No
         uri = icons.get(n["id"])
         label = n.get("label") or n["id"]
         _ct = n.get("componentType") or ""
-        # Drop the uppercase type eyebrow when the type already appears as a
-        # whole-word phrase in the label (see _type_echoes): "Azure Synapse",
-        # "Bronze Dynamic Table", "Power BI (Legacy)" all repeat their type.
-        # Keep it when it adds info beyond the label ("Arcadia Health (Snowflake)"
-        # -> "SNOWFLAKE ACCOUNT", "Snowflake Horizon" -> "GOVERNANCE").
-        sub = "" if _type_echoes(_ct, label) else _ct.upper()
+        _role = n.get("role") or ""
+        # Use an explicit `role` field (display type, decoupled from componentType)
+        # when present -- it is always shown and is never echo-checked. Fall back to
+        # componentType with the echo-hide for nodes that don't carry a role.
+        if _role:
+            sub = _role.upper()
+        else:
+            sub = "" if _type_echoes(_ct, label) else _ct.upper()
         if n.get("style") == "gateway":
             # Small icon-only chip + caption underneath, no card chrome --
             # visually reads as network plumbing (a bridge/connector), not a
@@ -850,9 +852,9 @@ _THEME_CSS = (
     'text-align:center;color:var(--node-fg);overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.18);'
     'transition:background .2s,border-color .2s,color .2s,box-shadow .2s}'
     '.flow-node img{width:38px;height:38px;margin-bottom:4px}'
-    '.fn-title{font-weight:600;font-size:11.5px;line-height:1.15}'
-    '.fn-sub{margin-top:2px;font-size:9.5px;line-height:1.1;color:var(--muted)}'
-    '.fn-detail{margin-top:2px;font-size:9px;line-height:1.2;color:var(--muted);font-style:italic}'
+    '.fn-title{font-weight:600;font-size:11.5px;line-height:1.15;overflow-wrap:anywhere}'
+    '.fn-sub{margin-top:2px;font-size:9.5px;line-height:1.1;color:var(--muted);overflow-wrap:anywhere}'
+    '.fn-detail{margin-top:2px;font-size:9px;line-height:1.2;color:var(--muted);font-style:italic;overflow-wrap:anywhere}'
     '.gateway-node{background:transparent;border:none;box-shadow:none;padding:8px 0 0 0;justify-content:flex-start}'
     '.gw-chip{width:32px;height:32px;border-radius:9px;background:rgba(41,181,232,.12);'
     'border:1.25px dashed var(--accent);display:flex;align-items:center;justify-content:center}'
@@ -939,14 +941,12 @@ _THEME_CSS = (
     '.nodes-wide .fn-ico img{width:100%;height:100%;margin:0;object-fit:contain}'
     '.nodes-wide .fn-text{display:flex;flex-direction:column;min-width:0;gap:var(--title-gap)}'
     '.nodes-wide .fn-title{font-family:var(--font-title);font-weight:var(--title-weight);font-size:var(--title-size);'
-    'line-height:var(--node-line);letter-spacing:var(--title-track);color:var(--node-fg)}'
+    'line-height:var(--node-line);letter-spacing:var(--title-track);color:var(--node-fg);overflow-wrap:anywhere}'
     '.nodes-wide .fn-sub{margin:0;font-family:var(--font-sub);font-weight:var(--sub-weight);font-size:var(--sub-size);'
-    'line-height:1.2;color:var(--muted);text-transform:uppercase;letter-spacing:var(--sub-track)}'
-    # A type line that merely echoes the title (e.g. "Azure Synapse"/"AZURE SYNAPSE")
-    # is hidden by default (sg-echo, set server-side + kept live by sgTypeEcho).
-    # The Customize toggle "Repeat type label..." flips body.sg-show-types to reveal
-    # them all. Informative type lines (SNOWFLAKE ACCOUNT, DYNAMIC TABLE) never get
-    # sg-echo, so they always show.
+    'line-height:1.2;color:var(--muted);text-transform:uppercase;letter-spacing:var(--sub-track);overflow-wrap:anywhere}'
+    # Nodes with an explicit `role` field always show their subheading (data-role="1").
+    # For nodes using the componentType fallback, the echo-hide suppresses the eyebrow
+    # when the type merely repeats the label. The Customize toggle reveals them all.
     '.nodes-wide .fn-sub.sg-echo{display:none}'
     'body.sg-show-types .nodes-wide .fn-sub.sg-echo{display:block}'
     # The interactive HTML always renders in wide mode, so ".nodes-wide
@@ -1231,7 +1231,7 @@ _PANEL_JS = (
     # Runs on load AND after every edit (see commit), so renaming a title live
     # re-reveals/re-hides the type.
     "function sgNorm(s){return (s||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}"
-    "function sgTypeEcho(){document.querySelectorAll('.flow-node').forEach(function(n){var t=n.querySelector('.fn-title'),s=n.querySelector('.fn-sub');if(!s)return;var se=sgNorm(s.textContent),te=sgNorm(t?t.textContent:'');s.classList.toggle('sg-echo',!!se&&(' '+te+' ').indexOf(' '+se+' ')>=0);});}"
+    "function sgTypeEcho(){document.querySelectorAll('.flow-node').forEach(function(n){var t=n.querySelector('.fn-title'),s=n.querySelector('.fn-sub');if(!s)return;if(s.getAttribute('data-role'))return;var se=sgNorm(s.textContent),te=sgNorm(t?t.textContent:'');s.classList.toggle('sg-echo',!!se&&(' '+te+' ').indexOf(' '+se+' ')>=0);});}"
     "function setSettings(on){body.classList.toggle('settings-on',!!on);if(on)exitPresent();"
     "if(!on){var p=document.getElementById('tunePanel');if(p)p.classList.remove('open');}}"
     "var logo=document.getElementById('brandLogo');"
@@ -1502,17 +1502,19 @@ def _html(layout, icons, edge_labels, title, doc, edge_bidir=None, edge_styles=N
         if wide:
             ico = '<span class="fn-ico">' + (('<img src="' + uri + '" alt=""/>') if uri else '') + '</span>'
             _ct = n.get('componentType') or ''
-            # Always EMIT the type line so it stays editable in Customize; whether
-            # it SHOWS is decided live in the browser (sgTypeEcho hides it when it
-            # merely echoes the title, and re-evaluates on every edit so a rename
-            # self-heals). Pre-flag the redundant ones server-side too (sg-echo),
-            # so the default view has no first-paint flash before the JS runs.
-            sub = _xesc(_ct)
-            sub_echo = _type_echoes(_ct, label)
+            _role = n.get('role') or ''
+            # `role` is a display-type field decoupled from componentType (which drives
+            # the icon). When role is present it is always emitted with data-role="1"
+            # so sgTypeEcho never applies the echo-hide to it. When absent, fall back to
+            # componentType with the usual echo-hide (server-side sg-echo + JS live).
+            sub_display = _role or _ct
+            sub = _xesc(sub_display)
+            sub_echo = False if _role else _type_echoes(_ct, label)
+            sub_role_attr = ' data-role="1"' if _role else ''
             det = _xesc(n.get('detail') or '')
             txt = '<span class="fn-text"><span class="fn-title" data-edit-id="' + _xesc(tid) + '">' + _xesc(label) + '</span>'
             if sub:
-                txt += '<span class="fn-sub' + (' sg-echo' if sub_echo else '') + '" data-edit-id="node:' + _xesc(str(n['id'])) + ':sub">' + sub + '</span>'
+                txt += '<span class="fn-sub' + (' sg-echo' if sub_echo else '') + '"' + sub_role_attr + ' data-edit-id="node:' + _xesc(str(n['id'])) + ':sub">' + sub + '</span>'
             if det:
                 txt += '<span class="fn-detail" data-edit-id="node:' + _xesc(str(n['id'])) + ':detail">' + det + '</span>'
             txt += '</span>'

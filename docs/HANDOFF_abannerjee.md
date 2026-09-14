@@ -41,6 +41,12 @@
    an offline-vs-live side-by-side BY DEFAULT (`--offline-only` opts out with a loud
    NOT-FOR-SIGN-OFF banner; a failed side-by-side exits non-zero). `build_side_by_side`
    screenshots diagram-only regions and composites them in equal-sized cells.
+8. **Consistent card subheadings via decoupled `role` field**: added `role` to the node
+   model (shown as the type subheading, decoupled from `component_type`/icon). Both
+   `render_local.py` + `generate_artifacts.dev.sql` merge it. All fixture nodes updated
+   with canonical roles + label fixes (Horizon, CoWork, SPCS Apps, Bronze/Silver/Gold
+   tiers, Arcadia as Secure data share). Text overflow-wrap fix. Agent Step 3d updated
+   with `role` schema + canonical naming conventions.
 
 ## Gotchas
 - weasyprint offline: `DYLD_LIBRARY_PATH=/opt/homebrew/lib python3 ...`.

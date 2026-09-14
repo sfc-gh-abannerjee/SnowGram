@@ -256,12 +256,14 @@ def build(model: dict, title: str, doc: dict | None, *, online_icons: bool = Fal
 
     html_layout = _run_layout(json.dumps({**base_graph, "nodeStyle": "wide"}), wide=True)
     id_to_detail: dict = {n.get("id"): n.get("detail") or "" for n in nodes}
+    id_to_role: dict = {n.get("id"): n.get("role") or "" for n in nodes}
     for ln in html_layout.get("nodes", []) or []:
         nid = ln.get("id")
         ln["label"] = id_to_label.get(nid, ln.get("label") or nid)
         ln["componentType"] = id_to_type.get(nid, "")
         ln["category"] = cats.get(nid)
         ln["detail"] = id_to_detail.get(nid, "")
+        ln["role"] = id_to_role.get(nid, "")
 
     enrich: dict = {"icons": icons, "edgeLabels": edge_labels, "edgeBidirectional": edge_bidirectional, "edgeStyles": edge_styles}
     if doc:

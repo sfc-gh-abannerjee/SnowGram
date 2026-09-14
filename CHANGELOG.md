@@ -4,6 +4,39 @@ All notable changes to SnowGram will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [Track 1 + Agent] - 2026-09-13 (consistent card subheadings via decoupled role field + label/naming fixes)
+
+### Added
+- **`role` node field**: an optional display-type subheading, decoupled from `component_type`
+  (which continues to drive icon resolution). When present, the role is always shown on
+  every card in uppercase with `data-role="1"` so the echo-hide logic never suppresses it.
+  The `sgTypeEcho` JS skips any span carrying `data-role`. Both offline (`render_local.py`)
+  and online (`generate_artifacts.dev.sql`) pipelines now merge the `role` field onto layout
+  nodes before passing them to the renderer.
+- **Consistent subheadings on every card** -- no more missing or echo-suppressed type lines.
+  Every node in the Apex Health fixture now shows a meaningful, informative subheading:
+  Cloud data warehouse, OLTP database, Object storage, Transformation, Orchestration,
+  Private connectivity, Secure data share, Auto-ingest, Dynamic table, Governance, AI copilot,
+  Application, BI tool.
+
+### Changed
+- **Label name fixes**: Snowflake Horizon -> "Horizon"; Cortex Cowork -> "CoWork" (capital W);
+  Streamlit / React App -> "Streamlit / SPCS Apps".
+- **Medallion tier labels**: "Bronze Dynamic Table" / "Silver Dynamic Table" / "Gold Dynamic
+  Table" -> "Bronze" / "Silver" / "Gold" (with role "Dynamic table").
+- **Arcadia Health**: label drops "(Snowflake)"; role is "Secure data share" instead of
+  "SNOWFLAKE ACCOUNT".
+- **Text overflow fix**: `overflow-wrap:anywhere` added to `.fn-title`, `.fn-sub`, `.fn-detail`
+  CSS rules (both narrow and wide variants) so long unbreakable tokens wrap instead of clipping.
+  Fixes the "TARGET_LAG=DOWNSTREAM" truncation visible in the online render.
+- **Agent guidance**: Step 3d updated with `role` in the node schema, canonical `role` values
+  for each component family, and canonical product label names (Horizon / CoWork /
+  Streamlit+SPCS Apps / Snowpipe / Snowpipe Streaming).
+
+### Tests
+- `test_eyebrow_ui.py` updated to match new behavior: role cards visible by default
+  (not echo-suppressed), role appears in present-mode caption (informative, not a repeat).
+
 ## [Track 1] - 2026-09-12 (review harness: enforced offline-vs-live side-by-side)
 
 ### Changed

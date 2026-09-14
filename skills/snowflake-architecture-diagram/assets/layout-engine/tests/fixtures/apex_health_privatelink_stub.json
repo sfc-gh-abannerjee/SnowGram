@@ -4,6 +4,7 @@
       "id": "synapse",
       "label": "Azure Synapse",
       "componentType": "azure synapse",
+      "role": "Cloud data warehouse",
       "zone": "Azure Sources",
       "detail": "Enterprise DW extract",
       "category": "onprem"
@@ -12,6 +13,7 @@
       "id": "azsql",
       "label": "Azure SQL",
       "componentType": "azure sql",
+      "role": "OLTP database",
       "zone": "Azure Sources",
       "detail": "OLTP source system",
       "category": "onprem"
@@ -20,6 +22,7 @@
       "id": "blob",
       "label": "Azure Blob Storage",
       "componentType": "azure blob storage",
+      "role": "Object storage",
       "zone": "Azure Sources",
       "detail": "Landing zone for files",
       "category": "onprem"
@@ -28,6 +31,7 @@
       "id": "dbt",
       "label": "dbt",
       "componentType": "dbt",
+      "role": "Transformation",
       "zone": "Azure Transform",
       "detail": "SQL transformations",
       "category": "onprem"
@@ -36,6 +40,7 @@
       "id": "adf",
       "label": "Azure Data Factory",
       "componentType": "azure data factory",
+      "role": "Orchestration",
       "zone": "Azure Orchestration",
       "detail": "Pipeline orchestration",
       "category": "onprem"
@@ -44,70 +49,80 @@
       "id": "privatelink",
       "label": "Azure Private Link",
       "componentType": "private link",
+      "role": "Private connectivity",
       "zone": "Private Connectivity",
       "detail": "Private inbound to Snowflake",
       "category": "onprem"
     },
     {
       "id": "arcadia",
-      "label": "Arcadia Health (Snowflake)",
+      "label": "Arcadia Health",
       "componentType": "snowflake account",
+      "role": "Secure data share",
       "zone": "Data Sharing Provider",
-      "detail": "External provider account"
+      "detail": "Inbound from provider account"
     },
     {
       "id": "snowpipe",
       "label": "Snowpipe",
       "componentType": "snowpipe",
+      "role": "Auto-ingest",
       "zone": "Ingestion",
       "detail": "Auto-ingest from Blob"
     },
     {
       "id": "bronze",
-      "label": "Bronze Dynamic Table",
+      "label": "Bronze",
       "componentType": "dynamic table",
+      "role": "Dynamic table",
       "zone": "Medallion \u2014 Bronze",
       "detail": "Raw landed data"
     },
     {
       "id": "silver",
-      "label": "Silver Dynamic Table",
+      "label": "Silver",
       "componentType": "dynamic table",
+      "role": "Dynamic table",
       "zone": "Medallion \u2014 Silver",
       "detail": "Cleansed & conformed"
     },
     {
       "id": "gold",
-      "label": "Gold Dynamic Table",
+      "label": "Gold",
       "componentType": "dynamic table",
+      "role": "Dynamic table",
       "zone": "Medallion \u2014 Gold",
       "detail": "Curated analytics marts"
     },
     {
       "id": "horizon",
-      "label": "Snowflake Horizon",
+      "label": "Horizon",
       "componentType": "governance",
+      "role": "Governance",
       "zone": "Governance",
       "detail": "RBAC, masking, lineage, PHI"
     },
     {
       "id": "cortex",
-      "label": "Cortex Cowork",
+      "label": "CoWork",
       "componentType": "cortex",
+      "role": "AI copilot",
       "zone": "Serve",
       "detail": "AI copilot for analysts"
     },
     {
       "id": "streamlit",
-      "label": "Streamlit / React App",
+      "label": "Streamlit / SPCS Apps",
       "componentType": "streamlit",
+      "role": "Application",
       "zone": "Serve",
       "detail": "Custom analyst UI"
     },
     {
       "id": "powerbi",
-      "label": "Power BI (Legacy)",
+      "label": "Power BI",
       "componentType": "power bi",
+      "role": "BI tool",
       "zone": "Legacy BI",
       "detail": "Transitional dashboards",
       "category": "onprem"

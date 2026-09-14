@@ -251,18 +251,21 @@ def run(session, nodes, edges, title, export_name, doc_json, containers=None, bo
     except Exception:
         html_layout = None
 
-    # componentType + category + detail drive the node subhead in the HTML render.
+    # componentType + category + detail + role drive the node subhead in the HTML render.
     id_to_type = {}
     id_to_detail = {}
+    id_to_role = {}
     for n in nodes:
         id_to_type[n.get('id')] = n.get('component_type') or ''
         id_to_detail[n.get('id')] = n.get('detail') or ''
+        id_to_role[n.get('id')] = n.get('role') or ''
     for ln in (html_layout.get('nodes', []) if html_layout else []) or []:
         nid = ln.get('id')
         ln['label'] = id_to_label.get(nid, ln.get('label') or nid)
         ln['componentType'] = id_to_type.get(nid, '')
         ln['category'] = cats.get(nid)
         ln['detail'] = id_to_detail.get(nid, '')
+        ln['role'] = id_to_role.get(nid, '')
 
     enrich = {'icons': icons, 'edgeLabels': edge_labels, 'edgeBidirectional': edge_bidirectional, 'edgeStyles': edge_styles}
     doc = None
