@@ -244,6 +244,62 @@ def build_side_by_side(left_html: Path | None, right_html: Path | None, out_path
     return None
 
 
+def build_side_by_side_html(left_html: Path | None, right_html: Path | None, out_path: Path,
+                            left_label: str, right_label: str) -> str | None:
+    """Build an interactive side-by-side HTML that embeds both diagrams in iframes (srcdoc)
+    so all functionality -- Customize, Present, hover, save -- is fully preserved in each
+    panel. Returns None on success, a warning string on failure."""
+    if not left_html or not left_html.exists():
+        return "side-by-side HTML: missing offline panel"
+    if not right_html or not right_html.exists():
+        return "side-by-side HTML: missing live panel"
+    try:
+        left_content = left_html.read_text(encoding="utf-8")
+        right_content = right_html.read_text(encoding="utf-8")
+    except Exception as e:
+        return f"side-by-side HTML: could not read panels ({e})"
+    # Escape for HTML attribute (srcdoc): & must be &amp;, " must be &quot;.
+    # < and > stay literal -- they are valid inside srcdoc attribute values per spec.
+    def _srcdoc(s: str) -> str:
+        return s.replace("&", "&amp;").replace('"', "&quot;")
+    page = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>SnowGram side-by-side review</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}}
+.sbs-header{{display:flex;height:46px;background:#16203a;color:#fff;align-items:center;flex-shrink:0}}
+.sbs-label{{flex:1;text-align:center;font-size:12px;font-weight:600;letter-spacing:.06em;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 12px}}
+.sbs-divider-h{{width:4px;background:#29B5E8;height:100%;flex-shrink:0}}
+.sbs-panels{{display:flex;height:calc(100vh - 46px)}}
+.sbs-panel{{flex:1;overflow:hidden;min-width:0}}
+.sbs-panel iframe{{width:100%;height:100%;border:none;display:block}}
+.sbs-divider-v{{width:4px;background:#29B5E8;flex-shrink:0}}
+</style>
+</head>
+<body>
+<div class="sbs-header">
+  <div class="sbs-label">{left_label}</div>
+  <div class="sbs-divider-h"></div>
+  <div class="sbs-label">{right_label}</div>
+</div>
+<div class="sbs-panels">
+  <div class="sbs-panel"><iframe srcdoc="{_srcdoc(left_content)}" sandbox="allow-scripts allow-same-origin allow-modals allow-downloads"></iframe></div>
+  <div class="sbs-divider-v"></div>
+  <div class="sbs-panel"><iframe srcdoc="{_srcdoc(right_content)}" sandbox="allow-scripts allow-same-origin allow-modals allow-downloads"></iframe></div>
+</div>
+</body>
+</html>"""
+    try:
+        out_path.write_text(page, encoding="utf-8")
+    except Exception as e:
+        return f"side-by-side HTML: could not write ({e})"
+    return None
+
+
 def render_fixture(name: str, out_dir: Path) -> dict:
     # `out_dir` here is the run's offline/ subfolder (see main()) -- every
     # path returned is relative to IT, so write_review_md() must prefix
@@ -375,8 +431,8 @@ def live_agent_check(agent_fqn: str, connection: str, out_dir: Path) -> dict | N
 
 def write_review_md(out_dir: Path, meta: dict, test_ok: bool, test_output: str,
                      fixtures: list[dict], live: dict | None,
-                     side_by_side: str | None = None, offline_only: bool = False,
-                     enforcement_error: str | None = None) -> None:
+                     side_by_side: str | None = None, side_by_side_html: str | None = None,
+                     offline_only: bool = False, enforcement_error: str | None = None) -> None:
     # Headline: the offline-vs-live side-by-side is the artifact a reviewer signs
     # off on. It is mandatory unless --offline-only; when it is missing, say so
     # LOUDLY at the very top instead of quietly omitting it.
@@ -391,6 +447,10 @@ def write_review_md(out_dir: Path, meta: dict, test_ok: bool, test_output: str,
             "renders below are for drilling into detail.",
             "",
         ]
+        if side_by_side_html:
+            sbs_lines.insert(-1, f"**Interactive version (Customize / Present / hover fully functional):** "
+                                  f"open [`{side_by_side_html}`]({side_by_side_html}) in a browser.")
+            sbs_lines.insert(-1, "")
     elif offline_only:
         sbs_lines = [
             "## ⚠ NOT FOR SIGN-OFF — offline-only run",
@@ -563,7 +623,8 @@ def main() -> int:
         fixtures.append(render_fixture(name, offline_dir))
 
     live_result = None
-    side_by_side = None            # relative path in the package, or None
+    side_by_side = None            # relative path to PNG composite, or None
+    side_by_side_html = None       # relative path to interactive HTML, or None
     enforcement_error = None       # set when the mandatory side-by-side can't be produced
     if do_live:
         online_dir = out_dir / "online"
@@ -581,10 +642,23 @@ def main() -> int:
             f"OFFLINE — render_local ({COMPARISON_FIXTURE})", "ONLINE — live agent")
         if warn is None:
             side_by_side = sbs_path.name
-            print(f"Side-by-side written: {sbs_path}")
+            print(f"Side-by-side PNG written: {sbs_path}")
         else:
             enforcement_error = warn
-            print(f"ENFORCEMENT FAILURE: side-by-side not produced -- {warn}", file=sys.stderr)
+            print(f"ENFORCEMENT FAILURE: side-by-side PNG not produced -- {warn}", file=sys.stderr)
+
+        # Interactive HTML side-by-side: same two panels as the PNG but fully functional
+        # (Customize, Present, hover all preserved -- each diagram lives in its own iframe).
+        sbs_html_path = out_dir / "side_by_side.html"
+        sbs_html_warn = build_side_by_side_html(
+            offline_html, live_html, sbs_html_path,
+            f"OFFLINE — render_local ({COMPARISON_FIXTURE})", "ONLINE — live agent")
+        if sbs_html_warn is None:
+            side_by_side_html = sbs_html_path.name
+            print(f"Side-by-side HTML written: {sbs_html_path}")
+        else:
+            side_by_side_html = None
+            print(f"WARNING: interactive side-by-side HTML not produced -- {sbs_html_warn}", file=sys.stderr)
 
     meta = {
         "timestamp": _dt.datetime.now().isoformat(timespec="seconds"),
@@ -594,8 +668,8 @@ def main() -> int:
         "eng_dirty": bool(_git(SNOWGRAM_ENG_REPO, "status", "--porcelain")),
     }
     write_review_md(out_dir, meta, test_ok, test_output, fixtures, live_result,
-                    side_by_side=side_by_side, offline_only=args.offline_only,
-                    enforcement_error=enforcement_error)
+                    side_by_side=side_by_side, side_by_side_html=side_by_side_html,
+                    offline_only=args.offline_only, enforcement_error=enforcement_error)
     print(f"\nReview package ready: {out_dir / 'REVIEW.md'}")
     if enforcement_error:
         print("REVIEW PACKAGE INCOMPLETE: the mandatory offline-vs-live side-by-side was not produced. "
